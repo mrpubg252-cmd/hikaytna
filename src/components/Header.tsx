@@ -61,10 +61,11 @@ export default function Header() {
     }
   };
 
-  const handleSearch = (e?: React.FormEvent) => {
+  const handleSearch = (e?: React.FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/?q=${encodeURIComponent(searchQuery)}`);
+    const queryToSearch = customQuery !== undefined ? customQuery : searchQuery;
+    if (queryToSearch.trim()) {
+      navigate(`/?q=${encodeURIComponent(queryToSearch.trim())}`);
       setIsSearchOpen(false);
     }
   };
@@ -232,7 +233,7 @@ export default function Header() {
                 {['قيامة عثمان', 'المتوحش', 'طائر الرفراف', 'صلاح الدين'].map(tag => (
                   <button 
                     key={tag}
-                    onClick={() => { setSearchQuery(tag); handleSearch(); }}
+                    onClick={() => { setSearchQuery(tag); handleSearch(undefined, tag); }}
                     className="px-4 py-2 bg-white/5 rounded-full hover:bg-white/10 hover:text-white transition-all border border-white/5"
                   >
                     {tag}

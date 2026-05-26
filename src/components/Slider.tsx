@@ -4,6 +4,114 @@ import { Volume2, VolumeX, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Series } from '../services/firebase';
 
+interface SliderShadowVideoProps {
+  src: string;
+  isMuted: boolean;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  onEnded: () => void;
+  onError: () => void;
+}
+
+const SliderShadowVideo: React.FC<SliderShadowVideoProps> = ({
+  src,
+  isMuted,
+  videoRef,
+  onEnded,
+  onError
+}) => {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const videoElementRef = useRef<HTMLVideoElement | null>(null);
+
+  React.useLayoutEffect(() => {
+    if (!hostRef.current) return;
+
+    hostRef.current.innerHTML = '';
+    const shadowRoot = hostRef.current.attachShadow({ mode: 'closed' });
+
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.tabIndex = -1;
+    video.controls = false;
+    video.playsInline = true;
+    (video as any).webkitPlaysInline = true;
+    video.autoplay = true;
+    video.loop = false;
+    video.muted = isMuted;
+
+    video.setAttribute('controlsList', 'nodownload nofullscreen noremoteplayback');
+    (video as any).disablePictureInPicture = true;
+    (video as any).disableRemotePlayback = true;
+
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('webkit-playsinline', 'true');
+    video.setAttribute('x5-playsinline', 'true');
+    video.setAttribute('x5-video-player-type', 'h5-page');
+    video.setAttribute('x5-video-player-fullscreen', 'false');
+    video.setAttribute('x-webkit-airplay', 'deny');
+    video.setAttribute('aria-hidden', 'true');
+
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'cover';
+    video.style.pointerEvents = 'none';
+
+    video.src = src;
+
+    shadowRoot.appendChild(video);
+    videoElementRef.current = video;
+
+    if (videoRef) {
+      (videoRef as any).current = video;
+    }
+
+    const handleEnded = () => onEnded();
+    const handleError = () => onError();
+
+    video.addEventListener('ended', handleEnded);
+    video.addEventListener('error', handleError);
+
+    video.play().catch(() => {});
+
+    return () => {
+      video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('error', handleError);
+      try {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      } catch (err) {}
+      if (videoRef) {
+        (videoRef as any).current = null;
+      }
+    };
+  }, [src, videoRef]);
+
+  useEffect(() => {
+    if (videoElementRef.current) {
+      videoElementRef.current.muted = isMuted;
+    }
+  }, [isMuted]);
+
+  return <div ref={hostRef} className="w-full h-full" />;
+};
+
+const getYoutubeEmbedUrl = (url: string) => {
+  if (!url) return '';
+  const lowerUrl = url.toLowerCase();
+  if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) {
+    let videoId = '';
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    if (match && match[2].length === 11) {
+      videoId = match[2];
+    }
+    if (videoId) {
+      return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${videoId}&showinfo=0&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1&enablejsapi=1`;
+    }
+  }
+  return '';
+};
+
 interface SliderProps {
   series: Series[];
 }
@@ -47,12 +155,21 @@ export default function Slider({ series }: SliderProps) {
     const current = activeSeries[index];
     
     // If there's a trailer, show image for 1s then switch to video
-    if (current.trailer) {
+    if (current?.trailer) {
       const timer = setTimeout(() => {
         setShowVideo(true);
       }, 1000);
-      return () => clearTimeout(timer);
-    } else {
+
+      // Safety Watchdog: Auto-advance after 30 seconds so it never hangs
+      const watchdog = setTimeout(() => {
+        nextSlide();
+      }, 30000);
+
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(watchdog);
+      };
+    } else if (current) {
       // Fallback: if no trailer, move to next slide after 5s
       const timer = setTimeout(nextSlide, 5000);
       return () => clearTimeout(timer);
@@ -79,30 +196,6 @@ export default function Slider({ series }: SliderProps) {
     }
   }, [showVideo, index]);
 
-  // Global interaction listener to auto-unmute when the user interacts elsewhere on screen if possible
-  useEffect(() => {
-    const handleInteraction = () => {
-      const video = videoRef.current;
-      if (video && showVideo && isMuted) {
-        video.muted = false;
-        setIsMuted(false);
-        video.play().catch(() => {});
-        setIsTrailerPlaying(true);
-      }
-      cleanup();
-    };
-
-    const cleanup = () => {
-      window.removeEventListener('click', handleInteraction);
-      window.removeEventListener('touchstart', handleInteraction);
-    };
-
-    window.addEventListener('click', handleInteraction);
-    window.addEventListener('touchstart', handleInteraction);
-
-    return cleanup;
-  }, [isMuted, showVideo]);
-
   // Clean up HTML5 video elements & release GPU/RAM instantly upon component unmounting
   useEffect(() => {
     return () => {
@@ -122,6 +215,15 @@ export default function Slider({ series }: SliderProps) {
   if (activeSeries.length === 0) return null;
 
   const current = activeSeries[index];
+  if (!current) return null;
+
+  const youtubeUrl = getYoutubeEmbedUrl(current?.trailer || '');
+  const isDirect = current?.trailer ? (
+    current.trailer.toLowerCase().includes('.mp4') ||
+    current.trailer.toLowerCase().includes('.m3u8') ||
+    current.trailer.toLowerCase().includes('.webm') ||
+    current.trailer.toLowerCase().includes('.ogg')
+  ) : false;
 
   return (
     <div 
@@ -143,40 +245,56 @@ export default function Slider({ series }: SliderProps) {
             alt={current.title}
             animate={{ opacity: showVideo ? 0 : 1 }}
             transition={{ duration: 1 }}
-            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+            className="w-full h-full object-fill"
+            onError={(e) => {
+              const currentSrc = e.currentTarget.src;
+              if (currentSrc.includes('/api/v1/image-proxy?url=')) {
+                try {
+                  const urlPart = currentSrc.split('url=')[1];
+                  if (urlPart) {
+                    e.currentTarget.src = decodeURIComponent(urlPart);
+                    return;
+                  }
+                } catch(err) {}
+              }
+              e.currentTarget.src = 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png';
+            }}
           />
 
           {/* Video Trailer */}
-          {showVideo && current.trailer && (
+          {showVideo && current?.trailer && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 1 }}
               className="absolute inset-0 overflow-hidden"
             >
-              <video
-                ref={videoRef}
-                src={current.trailer}
-                className="w-full h-full object-fill pointer-events-none select-none"
-                autoPlay
-                muted={isMuted}
-                onEnded={nextSlide}
-                playsInline={true}
-                tabIndex={-1}
-                disablePictureInPicture={true}
-                disableRemotePlayback={true}
-                controlsList="nodownload nofullscreen noremoteplayback"
-                preload="auto"
-                controls={false}
-                {...{
-                  "x-webkit-airplay": "deny",
-                  "aria-hidden": "true"
-                }}
-                onError={() => {
-                  console.error("Video failed to load, moving to next slide");
-                  nextSlide();
-                }}
-              />
+              {youtubeUrl ? (
+                <iframe
+                  src={youtubeUrl}
+                  className="w-full h-full object-cover scale-[1.35] pointer-events-none border-0"
+                  allow="autoplay; encrypted-media; picture-in-picture"
+                  referrerPolicy="no-referrer"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    pointerEvents: 'none',
+                    backgroundColor: 'black'
+                  }}
+                />
+              ) : isDirect ? (
+                <SliderShadowVideo
+                  src={current.trailer || ''}
+                  isMuted={isMuted}
+                  videoRef={videoRef}
+                  onEnded={nextSlide}
+                  onError={() => {
+                    console.error("Video failed to load, moving to next slide");
+                    nextSlide();
+                  }}
+                />
+              ) : null}
               {/* Transparent Click Shield covering the raw video element from TV browser curation/detection */}
               <div className="absolute inset-0 z-10 bg-transparent pointer-events-auto cursor-default" />
             </motion.div>

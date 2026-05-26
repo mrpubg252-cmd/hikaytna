@@ -45,35 +45,58 @@ export function normalizeArabic(text: string): string {
 export function fuzzyMatchArabic(target: string, query: string): boolean {
   if (!target || !query) return false;
   
+  const rawTarget = target.trim().toLowerCase();
+  const rawQuery = query.trim().toLowerCase();
+  
+  // Layer 1: Raw case-insensitive exact check
+  if (rawTarget.includes(rawQuery) || rawQuery.includes(rawTarget)) return true;
+
+  // Layer 2: Basic normalization check (characters-swap only, keep "ال" and spaces)
+  const normBasic = (str: string) => {
+    return str.toLowerCase()
+      .replace(/[أإآ]/g, "ا")
+      .replace(/ة/g, "ه")
+      .replace(/ى/g, "ي")
+      .replace(/[\u064B-\u065F]/g, "") // Diacritics
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+  const basicTarget = normBasic(rawTarget);
+  const basicQuery = normBasic(rawQuery);
+  if (basicTarget.includes(basicQuery) || basicQuery.includes(basicTarget)) return true;
+  
+  // Layer 3: Advanced prefix-stripping normalization
   const normTarget = normalizeArabic(target);
   const normQuery = normalizeArabic(query);
   
-  if (!normTarget || !normQuery) return false;
-
-  // 1. Direct Include (fast check)
-  if (normTarget.includes(normQuery) || normQuery.includes(normTarget)) return true;
+  if (normTarget && normQuery) {
+    if (normTarget.includes(normQuery) || normQuery.includes(normTarget)) return true;
+  }
   
-  // 2. Word-based matching (Strong signal)
-  // Split into words and check if there's a match for any word longer than 2 chars
-  const targetWords = target.split(/\s+/).map(w => normalizeArabic(w)).filter(w => w.length > 2);
-  const queryWords = query.split(/\s+/).map(w => normalizeArabic(w)).filter(w => w.length > 2);
+  // Layer 4: Word-based checking for query intersection
+  const targetWords = target.split(/\s+/).map(w => normalizeArabic(w)).filter(w => w.length >= 2);
+  const queryWords = query.split(/\s+/).map(w => normalizeArabic(w)).filter(w => w.length >= 2);
 
   for (const qWord of queryWords) {
     for (const tWord of targetWords) {
-      // If words are identical after normalization
       if (tWord === qWord) return true;
-      
-      // If one word is a substantial part of another
-      if (tWord.includes(qWord) && qWord.length >= 3) return true;
+      if (tWord.includes(qWord) && qWord.length >= 2) return true;
     }
   }
 
-  // 3. Levenshtein for minor typos
+  // Layer 5: Levenshtein distance for typos on fully normalized text
+  if (!normTarget || !normQuery) return false;
+  
+  // Skip expensive check for very long strings to prevent hanging
+  if (normTarget.length > 60 || normQuery.length > 60) {
+    return false;
+  }
+
   const longer = normTarget.length >= normQuery.length ? normTarget : normQuery;
   const shorter = normTarget.length < normQuery.length ? normTarget : normQuery;
   
   const editDistance = getEditDistance(longer, shorter);
-  const threshold = longer.length <= 4 ? 0.85 : 0.65; // Relaxed threshold for longer strings
+  const threshold = longer.length <= 4 ? 0.85 : 0.65;
   const similarity = (longer.length - editDistance) / longer.length;
   
   return similarity >= threshold;

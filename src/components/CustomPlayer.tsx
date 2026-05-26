@@ -4,16 +4,18 @@ import Hls from 'hls.js';
 import { 
   Play, Pause, Volume2, VolumeX, Maximize, Minimize, 
   RotateCcw, RotateCw, List, Settings, CheckCircle2, X,
-  ArrowRight, Sparkles, Shield, ExternalLink
+  ArrowRight, Sparkles, Shield, ExternalLink, ChevronLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Episode } from '../services/firebase';
 import { progressService } from '../services/progressService';
 import HorizontalEpisodeList from './HorizontalEpisodeList';
+import { useDevice } from '../context/DeviceAndNavigationContext';
 
 interface CustomPlayerProps {
   videoUrl: string;
+  activeServerUrl?: string;
   seriesId: string;
   seriesImage: string;
   episodeIndex: number;
@@ -26,9 +28,248 @@ interface CustomPlayerProps {
   onTimeUpdate?: (time: number) => void;
 }
 
+interface ShadowVideoProps {
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  isPlaying: boolean;
+  isMuted: boolean;
+  className?: string;
+  onTimeUpdate?: (e: any) => void;
+  onLoadedMetadata?: (e: any) => void;
+  onError?: (e: any) => void;
+  onWaiting?: (e: any) => void;
+  onPlaying?: (e: any) => void;
+  onSeeking?: (e: any) => void;
+  onSeeked?: (e: any) => void;
+  onStalled?: (e: any) => void;
+  onCanPlay?: (e: any) => void;
+  onCanPlayThrough?: (e: any) => void;
+}
+
+const ShadowVideo: React.FC<ShadowVideoProps> = ({
+  videoRef,
+  isPlaying,
+  isMuted,
+  className,
+  onTimeUpdate,
+  onLoadedMetadata,
+  onError,
+  onWaiting,
+  onPlaying,
+  onSeeking,
+  onSeeked,
+  onStalled,
+  onCanPlay,
+  onCanPlayThrough,
+}) => {
+  const { isTV, isMobile } = useDevice();
+  const hostRef = useRef<HTMLDivElement>(null);
+  const videoElementRef = useRef<HTMLVideoElement | null>(null);
+
+  const isIOS = typeof window !== 'undefined' ? 
+    (/iPhone|iPad|iPod/.test(window.navigator.userAgent) || 
+     (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1)) : false;
+
+  // Enforce zero controls on smart TV, iOS, and mobile browser fallbacks
+  React.useEffect(() => {
+    if ((!isTV && !isIOS && !isMobile) || !videoRef.current) return;
+    const video = videoRef.current;
+    
+    // Force controls off at load
+    video.controls = false;
+    video.removeAttribute('controls');
+    video.setAttribute('controlsList', 'nodownload nofullscreen noremoteplayback');
+    (video as any).disablePictureInPicture = true;
+    (video as any).disableRemotePlayback = true;
+    (video as any).webkitPlaysInline = true;
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('webkit-playsinline', 'true');
+    
+    const interval = setInterval(() => {
+      if (video.controls) {
+        video.controls = false;
+        video.removeAttribute('controls');
+      }
+    }, 500); // Increased interval to 500ms for better performance
+    
+    return () => clearInterval(interval);
+  }, [isTV, isMobile, videoRef]);
+
+  // If it's a TV, iOS device (Safari mobile), or mobile browser, fallback to standard React video tag
+  // Web browser engines fail to respect playsinline and trigger native player hijack when placed inside Closed Shadow Roots.
+  if (isTV || isIOS || isMobile) {
+    return (
+      <video
+        ref={videoRef as any}
+        className={className}
+        playsInline
+        autoPlay
+        muted={isMuted}
+        x-webkit-airplay="deny"
+        controls={false}
+        disablePictureInPicture
+        controlsList="nodownload nofullscreen noremoteplayback"
+        onTimeUpdate={onTimeUpdate}
+        onLoadedMetadata={onLoadedMetadata}
+        onError={onError}
+        onWaiting={onWaiting}
+        onPlaying={onPlaying}
+        onSeeking={onSeeking}
+        onSeeked={onSeeked}
+        onStalled={onStalled}
+        onCanPlay={onCanPlay}
+        onCanPlayThrough={onCanPlayThrough}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          pointerEvents: 'none',
+          backgroundColor: 'transparent',
+          transition: 'all 500ms ease',
+          opacity: '1',
+          filter: 'none'
+        }}
+      />
+    );
+  }
+
+  // Non-TV standard behavior (Shadow DOM)
+  return <ShadowVideoInternal 
+      videoRef={videoRef} isPlaying={isPlaying} isMuted={isMuted} className={className} 
+      onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata} onError={onError}
+      onWaiting={onWaiting} onPlaying={onPlaying} onSeeking={onSeeking}
+      onSeeked={onSeeked} onStalled={onStalled} onCanPlay={onCanPlay} onCanPlayThrough={onCanPlayThrough}
+  />;
+};
+
+// Extracted internal component to prevent hook rules violation
+const ShadowVideoInternal: React.FC<ShadowVideoProps> = ({
+  videoRef,
+  isPlaying,
+  isMuted,
+  className,
+  onTimeUpdate,
+  onLoadedMetadata,
+  onError,
+  onWaiting,
+  onPlaying,
+  onSeeking,
+  onSeeked,
+  onStalled,
+  onCanPlay,
+  onCanPlayThrough,
+}) => {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const videoElementRef = useRef<HTMLVideoElement | null>(null);
+
+  React.useEffect(() => {
+    if (videoElementRef.current) {
+      videoElementRef.current.muted = isMuted;
+    }
+  }, [isMuted]);
+  
+  React.useLayoutEffect(() => {
+    if (!hostRef.current) return;
+    
+    const shadowRoot = hostRef.current.attachShadow({ mode: 'closed' });
+    const video = document.createElement('video');
+    video.muted = isMuted; // Set initial muted state
+    video.preload = 'auto';
+
+    video.tabIndex = -1;
+    video.controls = false;
+    video.playsInline = true;
+    (video as any).webkitPlaysInline = true;
+    
+    // Prevent downloads, PiP, etc.
+    video.setAttribute('controlsList', 'nodownload nofullscreen noremoteplayback');
+    (video as any).disablePictureInPicture = true;
+    (video as any).disableRemotePlayback = true;
+
+    // Mobile/TV browser inline plays attributes
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('webkit-playsinline', 'true');
+    video.setAttribute('x5-playsinline', 'true');
+    video.setAttribute('x5-video-player-type', 'h5-page');
+    video.setAttribute('x5-video-player-fullscreen', 'false');
+    video.setAttribute('x-webkit-airplay', 'deny');
+    video.setAttribute('aria-hidden', 'true');
+
+    // CSS Styling for Shadow Root (Tailwind cannot enter a closed shadow)
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'contain';
+    video.style.pointerEvents = 'none';
+    video.style.backgroundColor = 'transparent';
+    video.style.transition = 'all 500ms ease';
+    video.style.opacity = isPlaying ? '1' : '0.9'; // Increased opacity for better visibility
+    // Removed blur filter for mobile/TV performance optimization
+    
+    shadowRoot.appendChild(video);
+    videoElementRef.current = video;
+
+    // Constantly suppress controls via frequency intervals
+    const interval = setInterval(() => {
+      if (video.controls) {
+        video.controls = false;
+        video.removeAttribute('controls');
+      }
+    }, 500);
+
+    // Bind ref
+    if (videoRef) {
+      (videoRef as any).current = video;
+    }
+
+    // Forward listeners safely to replicate React element behaviour
+    const listeners: { [key: string]: (e: Event) => void } = {
+      timeupdate: (e) => onTimeUpdate?.(e),
+      loadedmetadata: (e) => onLoadedMetadata?.(e),
+      error: (e) => onError?.(e),
+      waiting: (e) => onWaiting?.(e),
+      playing: (e) => onPlaying?.(e),
+      seeking: (e) => onSeeking?.(e),
+      seeked: (e) => onSeeked?.(e),
+      stalled: (e) => onStalled?.(e),
+      canplay: (e) => onCanPlay?.(e),
+      canplaythrough: (e) => onCanPlayThrough?.(e),
+    };
+
+    Object.keys(listeners).forEach((event) => {
+      video.addEventListener(event, listeners[event]);
+    });
+
+    return () => {
+      clearInterval(interval);
+      Object.keys(listeners).forEach((event) => {
+        video.removeEventListener(event, listeners[event]);
+      });
+      try {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      } catch (err) {
+        console.warn('ShadowVideo cleanup error on unmount:', err);
+      }
+      if (videoRef) {
+        (videoRef as any).current = null;
+      }
+    };
+  }, [videoRef]);
+
+  // Handle playing style update dynamically
+  useEffect(() => {
+    if (videoElementRef.current) {
+      videoElementRef.current.style.opacity = isPlaying ? '1' : '0.9';
+    }
+  }, [isPlaying]);
+
+  return <div ref={hostRef} className={className} style={{ width: '100%', height: '100%' }} />;
+};
+
 const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   const {
     videoUrl,
+    activeServerUrl,
     seriesId,
     seriesImage,
     episodeIndex,
@@ -41,9 +282,22 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     onTimeUpdate,
   } = props;
 
+  const resolvedVideoUrl = React.useMemo(() => {
+    if (!videoUrl) return '';
+    if (videoUrl.includes('mega.nz')) {
+      // Convert standard Mega file URLs into the embed URL representation
+      // e.g. /file/... -> /embed/...
+      return videoUrl.replace(/\/file\//i, '/embed/');
+    }
+    return videoUrl;
+  }, [videoUrl]);
+
   const { profile } = useAuth();
+  const { isTV, isMobile } = useDevice();
+  const isLowEnd = isMobile || isTV; // Optimization flag for reduced motion/effects
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastPositionRef = useRef<number>(0);
 
   useImperativeHandle(ref, () => ({
     seekTo: (seconds: number) => {
@@ -64,19 +318,49 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
+  const [volume, setVolume] = useState(() => {
+    const saved = localStorage.getItem('player_volume');
+    return saved !== null ? parseFloat(saved) : 1;
+  });
+  const [isMuted, setIsMuted] = useState(() => {
+    const saved = localStorage.getItem('player_muted');
+    return saved === 'true';
+  });
+
+  // Keep video mute state in sync and save to localStorage
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = isMuted;
+    }
+    localStorage.setItem('player_muted', isMuted ? 'true' : 'false');
+  }, [isMuted, videoRef.current]);
+
+  // Keep volume in sync and save to localStorage
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.volume = volume;
+    }
+    localStorage.setItem('player_volume', volume.toString());
+  }, [volume, videoRef.current]);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [showControls, setShowControls] = useState(true);
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [showEpisodeMenu, setShowEpisodeMenu] = useState(false);
+  const [isVolumeAdjustMode, setIsVolumeAdjustMode] = useState(false);
+  const [showResumeNotification, setShowResumeNotification] = useState(false);
+  const [resumeTimeText, setResumeTimeText] = useState('');
+  const lastButtonClickTimeRef = useRef<number>(0);
   const [isIframeFallback, setIsIframeFallback] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [showTimeoutOptions, setShowTimeoutOptions] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const isLocalOfflineVideo = videoUrl && videoUrl.startsWith('blob:');
+  const [showOfflineNotification, setShowOfflineNotification] = useState(false);
   const [showRewindAnimation, setShowRewindAnimation] = useState(false);
   const [showForwardAnimation, setShowForwardAnimation] = useState(false);
   const [isHoveringControls, setIsHoveringControls] = useState(false);
+  const lastMousePosRef = useRef({ x: 0, y: 0 });
   const handleMouseEnterControls = () => {
     if (window.matchMedia('(hover: hover)').matches) {
       setIsHoveringControls(true);
@@ -86,6 +370,36 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     setIsHoveringControls(false);
   };
   const [isSearchOverlayActive, setIsSearchOverlayActive] = useState(false);
+
+const SafariNotification = () => {
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const [show, setShow] = useState(() => {
+    if (!isSafari) return false;
+    return !sessionStorage.getItem('safari_warning_shown');
+  });
+
+  useEffect(() => {
+    if (show) {
+      sessionStorage.setItem('safari_warning_shown', 'true');
+      const timer = setTimeout(() => setShow(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [show]);
+
+  if (!show) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="absolute top-4 inset-x-4 z-[200] bg-zinc-900/90 backdrop-blur-md border border-white/10 text-white p-3 rounded-lg text-sm text-center shadow-xl"
+    >
+      <p className="font-medium">قد تظهر بعض المشاكل في مشغل سفاري.</p>
+      <p className="text-xs text-zinc-400 mt-1">يرجى اختيار متصفح كروم لتجربة أفضل.</p>
+    </motion.div>
+  );
+};
 
   // Connection status tracking to adapt streaming speeds
   useEffect(() => {
@@ -98,6 +412,42 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  // Offline Wi-Fi tip timer (disappears after 3 seconds)
+  useEffect(() => {
+    if (isOffline && isLocalOfflineVideo) {
+      setShowOfflineNotification(true);
+      const timer = setTimeout(() => {
+        setShowOfflineNotification(false);
+        setIsLoading(false); // Instantly ready
+      }, 3000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowOfflineNotification(false);
+    }
+  }, [isOffline, isLocalOfflineVideo, resolvedVideoUrl]);
+
+  // Auto-Orient to landscape when maximized + playing
+  useEffect(() => {
+    if (isPlaying && isMaximized) {
+      if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.lock === 'function') {
+        // Attempt to lock to landscape
+        (screen as any).orientation.lock('landscape').catch((e: any) => console.warn("Orientation lock unsupported or declined by user gesture", e));
+      }
+    } else {
+      // Unlock when paused or closed
+      if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.unlock === 'function') {
+        (screen as any).orientation.unlock();
+      }
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.unlock === 'function') {
+        (screen as any).orientation.unlock();
+      }
+    };
+  }, [isPlaying, isMaximized]);
 
   // Dynamic viewport measurement state for iOS landscape maximizes
   const [viewportHeight, setViewportHeight] = useState('100%');
@@ -169,81 +519,449 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     };
   }, []);
 
-  // --- Professional Ad Management System (YouTube Style Embedded) ---
+  // --- Professional Video Ad Management System (YouTube Style Embedded) ---
   const [adBreakActive, setAdBreakActive] = useState(false);
-  const [adStage, setAdStage] = useState<'pre-countdown' | 'playing'>('pre-countdown');
+  const [adIsPlaying, setAdIsPlaying] = useState(true);
+  const [adMuted, setAdMuted] = useState(false);
+  const [adVolume, setAdVolume] = useState(1);
+  const [adDuration, setAdDuration] = useState(15);
+  const [adCurrentTime, setAdCurrentTime] = useState(0);
   const [adCountdown, setAdCountdown] = useState(3);
-  const [adIframeLoaded, setAdIframeLoaded] = useState(false);
-  const [adLoadSeconds, setAdLoadSeconds] = useState(0);
-  const [adIframeKey, setAdIframeKey] = useState(0);
+  const [useIframeAd, setUseIframeAd] = useState(false);
+  const [iframeHasLoaded, setIframeHasLoaded] = useState(false);
+  const adFallbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [adsBlocked, setAdsBlocked] = useState(false);
+  const [visualAdPoints, setVisualAdPoints] = useState<number[]>([]);
+  const lastTimeRef = useRef<number>(0);
   const adPointsRef = useRef<Set<number>>(new Set());
+  const preRollTriggeredRef = useRef<string | null>(null);
   const sessionStartTimeRef = useRef<number>(0);
-  const AD_URL = "https://www.effectivecpmnetwork.com/n5afwdtr78?key=21317cc52736e0f8228abe7f47a236ca";
+  const adVideoRef = useRef<HTMLVideoElement>(null);
 
+  const [adCampaigns, setAdCampaigns] = useState<any[]>([]);
+
+  const [currentAdVideoSrc, setCurrentAdVideoSrc] = useState<string>("");
+  const [currentAdClickThrough, setCurrentAdClickThrough] = useState<string>("");
+  const [currentAdImpression, setCurrentAdImpression] = useState<string>("");
+
+  // Auto focus the ad skip button on TV when the countdown reaches 0
   useEffect(() => {
-    // Probe the ad network domain silently upon load
-    const probeAds = async () => {
+    if (isTV && adBreakActive && adCountdown === 0) {
+      setTimeout(() => {
+        const btn = document.getElementById('ad-skip-button');
+        if (btn) {
+          btn.focus();
+          document.querySelectorAll('[data-tv-focusable="true"]').forEach(el => el.classList.remove('tv-focused'));
+          btn.classList.add('tv-focused');
+        }
+      }, 100);
+    }
+  }, [isTV, adBreakActive, adCountdown]);
+
+  // Dynamic fetcher that pulls from GitHub the user's customizable campaigns
+  useEffect(() => {
+    const fetchLatestAds = async () => {
+      const customAdUrl = "https://www.effectivecpmnetwork.com/n5afwdtr78?key=21317cc52736e0f8228abe7f47a236ca";
+      const customCampaign = {
+        videoUrl: "",
+        clickThrough: customAdUrl,
+        impressionUrl: "",
+        impressionUrls: [],
+        trackingUrls: [],
+        defaultDuration: 30
+      };
+
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1800);
+        const githubUrl = "https://raw.githubusercontent.com/mrpubg252-cmd/esp-config/refs/heads/main/ads.json";
+        const res = await fetch(githubUrl);
+        if (!res.ok) throw new Error("Could not fetch latest ads JSON");
         
-        await fetch(AD_URL, { 
-          mode: 'no-cors', 
-          method: 'HEAD',
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
+        const rawContent = await res.text();
+        if (!rawContent || rawContent.trim() === "") {
+          console.log("GitHub ads file is empty. Activating fallback ads.");
+          setAdCampaigns([customCampaign]);
+          setCurrentAdVideoSrc("");
+          setCurrentAdClickThrough(customAdUrl);
+          return;
+        }
+
+        let adsList: any[] = [];
+        let adLinkUrl = "";
+
+        // Attempt to parse as JSON first
+        try {
+          const data = JSON.parse(rawContent);
+          
+          if (Array.isArray(data)) {
+            adsList = data;
+          } else if (data && typeof data === 'object') {
+            if (Array.isArray(data.ads)) {
+              adsList = data.ads;
+            } else if (Array.isArray(data.campaigns)) {
+              adsList = data.campaigns;
+            } else if (data.videoUrl || data.video_url || data.url) {
+              adsList = [data];
+            } else if (data.vastUrl || data.vast_url || data.adUrl || data.link || data.ad_url || data.clickThrough || data.click_through) {
+              adLinkUrl = data.vastUrl || data.vast_url || data.adUrl || data.link || data.ad_url || data.clickThrough || data.click_through || "";
+            }
+          } else if (typeof data === 'string' && data.startsWith('http')) {
+            adLinkUrl = data;
+          }
+        } catch (jsonErr) {
+          const trimmed = rawContent.trim();
+          if (trimmed.startsWith('http')) {
+            adLinkUrl = trimmed;
+          } else if (trimmed.startsWith('<')) {
+            await handleVastXml(trimmed);
+            return;
+          }
+        }
+
+        // Helper to parse VAST XML
+        async function handleVastXml(xmlText: string) {
+          try {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+            
+            const ads = xmlDoc.getElementsByTagName("Ad");
+            const parsedCampaigns: any[] = [];
+
+            for (let j = 0; j < ads.length; j++) {
+              const adNode = ads[j];
+              const mediaFiles = adNode.getElementsByTagName("MediaFile");
+              let videoUrl = "";
+              for (let i = 0; i < mediaFiles.length; i++) {
+                const type = mediaFiles[i].getAttribute("type") || "";
+                const delivery = mediaFiles[i].getAttribute("delivery") || "";
+                if (type.includes("mp4") || type.includes("webm") || delivery === "progressive") {
+                  videoUrl = mediaFiles[i].textContent?.trim() || "";
+                  if (videoUrl) break;
+                }
+              }
+              if (!videoUrl && mediaFiles.length > 0) {
+                videoUrl = mediaFiles[0].textContent?.trim() || "";
+              }
+
+              const clickThroughs = adNode.getElementsByTagName("ClickThrough");
+              const clickThrough = clickThroughs.length > 0 ? clickThroughs[0].textContent?.trim() : "";
+
+              const impressionUrls: string[] = [];
+              const impressions = adNode.getElementsByTagName("Impression");
+              for (let i = 0; i < impressions.length; i++) {
+                const url = impressions[i].textContent?.trim();
+                if (url) impressionUrls.push(url);
+              }
+
+              const trackingUrls: string[] = [];
+              const trackings = adNode.getElementsByTagName("Tracking");
+              for (let i = 0; i < trackings.length; i++) {
+                const event = trackings[i].getAttribute("event") || "";
+                if (event === "start" || event === "creativeView") {
+                  const url = trackings[i].textContent?.trim();
+                  if (url) trackingUrls.push(url);
+                }
+              }
+
+              if (videoUrl) {
+                parsedCampaigns.push({
+                  videoUrl,
+                  clickThrough: clickThrough || adLinkUrl || "https://tiny-ambition.com",
+                  impressionUrl: impressionUrls[0] || "",
+                  impressionUrls,
+                  trackingUrls,
+                  defaultDuration: 30
+                });
+              }
+            }
+
+            if (parsedCampaigns.length > 0) {
+              setAdCampaigns(parsedCampaigns);
+              setCurrentAdVideoSrc(parsedCampaigns[0].videoUrl);
+              setCurrentAdClickThrough(parsedCampaigns[0].clickThrough);
+              setCurrentAdImpression(parsedCampaigns[0].impressionUrl || "");
+              console.log("Successfully parsed VAST XML campaigns:", parsedCampaigns);
+              return true;
+            }
+          } catch (e) {
+            console.error("Failed to parse VAST XML:", e);
+          }
+          return false;
+        }
+
+        if (adLinkUrl) {
+          console.log("Found VAST / Ad link:", adLinkUrl);
+          try {
+            const resV = await fetch(`/api/v1/resolve-vast?url=${encodeURIComponent(adLinkUrl)}`);
+            if (resV.ok) {
+              const dataV = await resV.json();
+              if (dataV.status) {
+                const campaign = {
+                  videoUrl: dataV.mediaFiles?.[0] || "https://www.silent-basis.pro/152327/199275/425826_abc27z.mp4",
+                  clickThrough: dataV.clickThrough,
+                  impressionUrl: dataV.impressionUrls?.[0] || "",
+                  impressionUrls: dataV.impressionUrls || [],
+                  trackingUrls: dataV.trackingUrls || [],
+                  defaultDuration: 30
+                };
+                setAdCampaigns([campaign]);
+                setCurrentAdVideoSrc(campaign.videoUrl);
+                setCurrentAdClickThrough(campaign.clickThrough);
+                setCurrentAdImpression(campaign.impressionUrl);
+                console.log("VAST URL resolved seamlessly via backend proxy:", campaign);
+                return;
+              }
+            }
+          } catch (err) {
+            console.warn("Direct fetch of VAST URL via proxy failed. Parsing format type.", err);
+          }
+
+          const endsWithVideo = /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(adLinkUrl);
+          if (endsWithVideo || adLinkUrl.includes("silence") || adLinkUrl.includes("silent") || adLinkUrl.includes("mp4")) {
+            const campaign = {
+              videoUrl: adLinkUrl,
+              clickThrough: adLinkUrl,
+              impressionUrl: "",
+              impressionUrls: [],
+              trackingUrls: [],
+              defaultDuration: 30
+            };
+            setAdCampaigns([campaign]);
+            setCurrentAdVideoSrc(adLinkUrl);
+            setCurrentAdClickThrough(adLinkUrl);
+            setCurrentAdImpression("");
+            console.log("Direct video url campaign loaded:", campaign);
+            return;
+          } else {
+            const promoCampaign = {
+              videoUrl: "https://www.silent-basis.pro/152327/199275/425826_abc27z.mp4",
+              clickThrough: adLinkUrl,
+              impressionUrl: "",
+              impressionUrls: [],
+              trackingUrls: [],
+              defaultDuration: 15
+            };
+            setAdCampaigns([promoCampaign]);
+            setCurrentAdVideoSrc(promoCampaign.videoUrl);
+            setCurrentAdClickThrough(promoCampaign.clickThrough);
+            setCurrentAdImpression("");
+            console.log("Premium sponsor video fallback loaded with redirect URL:", promoCampaign);
+            return;
+          }
+        }
+
+        if (adsList.length > 0) {
+          const parsed = adsList.map((x: any) => {
+            const finalImpressions = x.impressionUrls || (x.impressionUrl ? [x.impressionUrl] : []) || [];
+            const clickUrl = x.link || x.clickThrough || x.click_through || x.click || x.redirect || x.adUrl || "https://tiny-ambition.com";
+            return {
+              videoUrl: x.videoUrl || x.video_url || x.url || x.src || x.mediaFile || "",
+              clickThrough: clickUrl,
+              impressionUrl: x.impressionUrl || x.impression_url || x.impression || x.track || "",
+              impressionUrls: Array.from(new Set([...finalImpressions, clickUrl])),
+              trackingUrls: x.trackingUrls || [],
+              defaultDuration: Number(x.defaultDuration || x.default_duration || x.duration || 30)
+            };
+          }).filter(x => x.videoUrl || x.clickThrough);
+
+          // Highly intelligent background VAST resolver for custom ad elements
+          const fullyResolved = await Promise.all(parsed.map(async (camp) => {
+            if (camp.clickThrough && (
+              camp.clickThrough.includes("vast") || 
+              camp.clickThrough.includes(".xml") || 
+              camp.clickThrough.includes("tiny-ambition.com") || 
+              camp.clickThrough.includes("silent-basis.pro") || 
+              camp.clickThrough.includes("/d/") || 
+              camp.clickThrough.includes("omg10.com") ||
+              camp.clickThrough.includes("demXFkz")
+            )) {
+              try {
+                const resV = await fetch(`/api/v1/resolve-vast?url=${encodeURIComponent(camp.clickThrough)}`);
+                if (resV.ok) {
+                  const dataV = await resV.json();
+                  if (dataV.status) {
+                    camp.clickThrough = dataV.clickThrough;
+                    camp.impressionUrls = Array.from(new Set([...camp.impressionUrls, ...(dataV.impressionUrls || [])]));
+                    camp.trackingUrls = Array.from(new Set([...camp.trackingUrls, ...(dataV.trackingUrls || [])]));
+                    if (dataV.impressionUrls?.[0]) {
+                      camp.impressionUrl = dataV.impressionUrls[0];
+                    }
+                    console.log("Ad campaign successfully resolved via proxy server. New clickThrough:", camp.clickThrough);
+                  }
+                }
+              } catch (e) {
+                console.warn("VAST proxy check fail for", camp.clickThrough, e);
+              }
+            }
+            return camp;
+          }));
+
+          if (fullyResolved.length > 0) {
+            const finalSet = [customCampaign, ...fullyResolved];
+            setAdCampaigns(finalSet);
+            setCurrentAdVideoSrc(finalSet[0].videoUrl);
+            setCurrentAdClickThrough(finalSet[0].clickThrough);
+            setCurrentAdImpression(finalSet[0].impressionUrl || "");
+            console.log("Successfully resolved and loaded dynamic campaign list:", finalSet);
+            return;
+          }
+        }
+
+        console.log("Adding default user ad to campaign list.");
+        setAdCampaigns([customCampaign]);
+        setCurrentAdVideoSrc("");
+        setCurrentAdClickThrough(customAdUrl);
+
       } catch (err) {
-        // Adblocker detected or ad provider offline - bypass ads completely
-        console.warn("Notice: Ad blocker detected or ad network unreachable. Activating full premium ad-free mode.");
-        setAdsBlocked(true);
+        console.warn("Resolving premium user ads from fallback:", err);
+        setAdCampaigns([customCampaign]);
+        setCurrentAdVideoSrc("");
+        setCurrentAdClickThrough(customAdUrl);
       }
     };
-    probeAds();
+    fetchLatestAds();
   }, []);
 
   const showAdBreak = () => {
-    // If user is premium or adblocker is active, skip ads entirely
-    if (profile?.isPremium || adsBlocked) return;
+    if (profile?.isPremium || localStorage.getItem('ads_removed_forever') === 'true' || isOffline || isLocalOfflineVideo) {
+      const video = videoRef.current;
+      if (video) {
+        video.play().catch(() => {});
+        setIsPlaying(true);
+      }
+      return;
+    }
+    if (adCampaigns.length === 0) {
+      const video = videoRef.current;
+      if (video) {
+        video.play().catch(() => {});
+        setIsPlaying(true);
+      }
+      return;
+    }
 
     if (videoRef.current) {
       videoRef.current.pause();
     }
     setIsPlaying(false);
+
+    // Pick random cinematic video ad source from campaign state list
+    const randomIndex = Math.floor(Math.random() * adCampaigns.length);
+    const campaign = adCampaigns[randomIndex];
+    setCurrentAdVideoSrc(campaign.videoUrl);
+    setCurrentAdClickThrough(campaign.clickThrough);
+    setCurrentAdImpression(campaign.impressionUrl);
+
+    // Fire impression and tracking pixels (BOTH Image and Fetch with no-cors to guarantee earnings registration)
+    const trackUrls = [
+      ...(campaign.impressionUrls || []),
+      ...(campaign.trackingUrls || []),
+      ...(campaign.impressionUrl ? [campaign.impressionUrl] : [])
+    ];
+
+    const uniqueTrackUrls = Array.from(new Set(trackUrls));
+
+    uniqueTrackUrls.forEach((url) => {
+      if (url && url.startsWith('http')) {
+        // Fire via Fetch api in no-cors background mode
+        fetch(url, { mode: 'no-cors' }).catch((err) => {
+          console.warn("Fetch tracking pixel fail:", err);
+        });
+        
+        // Fire via standard programmatic Image elements to ensure cookies + referrer context are properly saved
+        try {
+          const img = new Image();
+          img.src = url;
+        } catch (e) {
+          console.warn("Image tracking pixel fail:", e);
+        }
+      }
+    });
+
     setAdBreakActive(true);
-    setAdStage('pre-countdown');
-    setAdCountdown(3); // Undergoes 3 seconds premium countdown before showing ad Web iframe
-    setAdIframeLoaded(false);
-    setAdLoadSeconds(0);
-    setAdIframeKey(prev => prev + 1);
+    setAdIsPlaying(true);
+    setAdMuted(false);
+    setIframeHasLoaded(false);
+
+    if (adFallbackTimeoutRef.current) {
+      clearTimeout(adFallbackTimeoutRef.current);
+    }
+    
+    // Check if we should use iframe ad mode
+    const isForcedNetwork = campaign.clickThrough?.includes('effectivecpmnetwork.com');
+    const isIframeAd = !campaign.videoUrl || 
+                      campaign.videoUrl === "" ||
+                      campaign.clickThrough?.includes('omg10.com') || 
+                      campaign.clickThrough?.includes('tiny-ambition.com') ||
+                      isForcedNetwork ||
+                      campaign.clickThrough?.includes('silence') ||
+                      campaign.clickThrough?.includes('silent');
+    setUseIframeAd(isIframeAd); // Dynamically set iframe mode instead of forcing true to let MP4 ads play beautifully!
+    setIframeHasLoaded(false);
+
+    // If it's a web-ad, set a safety timeout to force visibility if it fails to send load event
+    const safetyTime = 6000;
+    adFallbackTimeoutRef.current = setTimeout(() => {
+      setIframeHasLoaded(true); 
+      console.log("Forced ad visibility after safety timeout (6s)");
+    }, safetyTime);
+
+    // Skip button is now available after 8 seconds for better engagement
+    setAdCountdown(8);
+    setAdDuration(30);
+
+    setAdCurrentTime(0);
+    setAdDuration(isForcedNetwork ? 30 : (campaign.defaultDuration || 20));
   };
 
   useEffect(() => {
-    if (!videoUrl) return;
+    if (!resolvedVideoUrl || isOffline || isLocalOfflineVideo) return;
 
-    // Reset tracking for new video
     sessionStartTimeRef.current = Date.now();
-    adPointsRef.current.clear(); // Allow points to re-trigger for new episode
+    lastTimeRef.current = 0;
+    adPointsRef.current.clear();
+    const newPoints: number[] = [];
+
+    // Generate smarter trigger points for ads (Yellow Markers)
+    // First ad scheduled early (after 30-45 seconds) for quick verification
+    let nextScheduledPoint = Math.floor(Math.random() * 15) + 30; 
+    for (let i = 0; i < 8; i++) {
+      adPointsRef.current.add(nextScheduledPoint);
+      newPoints.push(nextScheduledPoint);
+      // Next ads every 2-4 minutes for active monetization session
+      nextScheduledPoint += Math.floor(Math.random() * 120) + 120;
+    }
+    setVisualAdPoints(newPoints);
+
+    console.log("Ad points scheduled:", newPoints);
 
     const interval = setInterval(() => {
-      // 1. Session Timing (Wall Clock)
       const wallTimeSeconds = Math.floor((Date.now() - sessionStartTimeRef.current) / 1000);
-
-      // 2. Video Timing (Stream)
       const video = videoRef.current;
       const videoTimeSeconds = video ? Math.floor(video.currentTime) : 0;
+      
+      const currentTime = isIframeFallback ? wallTimeSeconds : (videoTimeSeconds > 0 ? videoTimeSeconds : wallTimeSeconds);
+      const previousTime = lastTimeRef.current;
+      lastTimeRef.current = currentTime;
+      
+      if (adBreakActive || adCampaigns.length === 0) return; 
 
-      // Logic: Use video time for native, wall time for embeds
-      const currentTime = isIframeFallback ? wallTimeSeconds : videoTimeSeconds;
+      // If user is Gold/Premium, or offline, skip
+      if (profile?.isPremium || localStorage.getItem('ads_removed_forever') === 'true' || isOffline || isLocalOfflineVideo) {
+        return;
+      }
 
-      // Defined trigger seconds - no longer starting from 10 seconds to avoid annoying users!
-      // Trigger at 5 minutes (300s), 15 minutes (900s), 25 minutes (1500s) etc.
-      const triggerPoints = [300, 900, 1500, 2100];
+      // Trigger scheduled mid-rolls (Natural playback or Seeking past)
+      const points = Array.from(adPointsRef.current) as number[];
+      for (const pt of points) {
+        // Condition 1: Natural playback hits the point
+        // Condition 2: User seeks past the point (jumped from before pt to after pt)
+        const hitPoint = (currentTime >= pt && currentTime < pt + 3);
+        const jumpedPastPoint = (previousTime < pt && currentTime > pt + 1);
 
-      for (const pt of triggerPoints) {
-        if (!adPointsRef.current.has(pt) && currentTime >= pt) {
-          adPointsRef.current.add(pt);
+        if (hitPoint || jumpedPastPoint) {
+          console.log(`Triggering ad at ${pt}s. Method: ${jumpedPastPoint ? 'Seek Detection' : 'Linear Playback'}`);
+          adPointsRef.current.delete(pt); 
+          setVisualAdPoints(prev => prev.filter(p => p !== pt));
           showAdBreak();
           break;
         }
@@ -251,51 +969,100 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [videoUrl, isIframeFallback, adsBlocked]);
+  }, [resolvedVideoUrl, isIframeFallback, adsBlocked, profile, adCampaigns, isOffline, isLocalOfflineVideo]);
 
+  // Autoplay handler for the ad video element
+  useEffect(() => {
+    if (adBreakActive && adVideoRef.current) {
+      const playPromise = adVideoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn("Autoplay muted triggered to bypass browser policies", err);
+          setAdMuted(true);
+          if (adVideoRef.current) {
+            adVideoRef.current.muted = true;
+            adVideoRef.current.play().catch(() => {});
+          }
+        });
+      }
+    }
+  }, [adBreakActive, currentAdVideoSrc]);
+
+  // Unified physical countdown and iframe timer progress
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (adBreakActive) {
-      if (adStage === 'pre-countdown') {
-        if (adCountdown > 0) {
-          timer = setTimeout(() => setAdCountdown(prev => prev - 1), 1000);
-        } else {
-          // Pre-countdown finished, open the ad stage
-          setAdStage('playing');
-          setAdCountdown(5); // 5 seconds ad duration countdown
-          setAdIframeLoaded(false);
-          setAdLoadSeconds(0);
-        }
-      } else if (adStage === 'playing') {
-        if (!adIframeLoaded) {
-          if (adLoadSeconds >= 2) {
-            // Elegant instant auto-bypass for blocked ad script / failed/slow network loading
-            handleSkipAd();
-          } else {
-            timer = setTimeout(() => {
-              setAdLoadSeconds(prev => prev + 1);
-            }, 1000);
-          }
-        } else {
-          if (adCountdown > 0) {
-            timer = setTimeout(() => setAdCountdown(prev => prev - 1), 1000);
-          }
-        }
+      if (adCountdown > 0) {
+        timer = setTimeout(() => {
+          setAdCountdown(prev => Math.max(0, prev - 1));
+        }, 1000);
+      }
+      
+      // If using iframe ad, we need a manual ticker for adCurrentTime
+      if (useIframeAd) {
+        const progressInterval = setInterval(() => {
+          setAdCurrentTime(prev => {
+            if (prev >= adDuration) {
+              clearInterval(progressInterval);
+              return prev;
+            }
+            return prev + 0.1;
+          });
+        }, 100);
+        return () => {
+          clearTimeout(timer);
+          clearInterval(progressInterval);
+        };
       }
     }
     return () => clearTimeout(timer);
-  }, [adBreakActive, adStage, adCountdown, adIframeLoaded, adLoadSeconds]);
+  }, [adBreakActive, adCountdown, useIframeAd, adDuration]);
 
-  const handleSkipAd = () => {
+  const handleSkipAd = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    if (adFallbackTimeoutRef.current) {
+      clearTimeout(adFallbackTimeoutRef.current);
+    }
     setAdBreakActive(false);
+    setIframeHasLoaded(false);
     const video = videoRef.current;
     if (video) {
-      // Restore correct active volume settings and unmute to secure the audio output
       video.muted = isMuted;
       video.volume = volume;
       video.play().catch(() => {});
       setIsPlaying(true);
     }
+  };
+
+  const handlePlayPauseAd = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+
+    // If it's an iframe ad, interactions are handled natively inside the embedded webpage frame.
+    // There is no need to trigger annoying external browser popups when the user touches this area.
+    if (useIframeAd && currentAdClickThrough) {
+      return;
+    }
+
+    const adVideo = adVideoRef.current;
+    if (!adVideo) return;
+    if (adIsPlaying) {
+      adVideo.pause();
+      setAdIsPlaying(false);
+    } else {
+      adVideo.play().catch(() => {});
+      setAdIsPlaying(true);
+    }
+  };
+
+  const handleToggleMuteAd = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const adVideo = adVideoRef.current;
+    if (!adVideo) return;
+    adVideo.muted = !adMuted;
+    setAdMuted(!adMuted);
   };
   // ------------------------------------------------------------------
 
@@ -338,7 +1105,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
 
   // Initialize PlayerJS if loaded and direct stream is used (non-embed)
   useEffect(() => {
-    if (!playerjsLoaded || isIframeFallback || !videoUrl) return;
+    if (!playerjsLoaded || isIframeFallback || !resolvedVideoUrl) return;
 
     const PlayerjsClass = (window as any).Playerjs;
     if (!PlayerjsClass) return;
@@ -363,7 +1130,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     try {
       const pjs = new PlayerjsClass({
         id: 'pjs-player',
-        file: videoUrl,
+        file: resolvedVideoUrl,
         autoplay: true,
       });
 
@@ -382,7 +1149,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
         playerjsInstanceRef.current = null;
       }
     };
-  }, [playerjsLoaded, videoUrl, isIframeFallback]);
+  }, [playerjsLoaded, resolvedVideoUrl, isIframeFallback]);
 
   // Check if link is iframe/embed only or a standard direct video
   useEffect(() => {
@@ -390,28 +1157,35 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     setIsBuffering(false);
     setIsIframeFallback(false);
     
-    if (!videoUrl) {
+    if (!resolvedVideoUrl) {
       return;
     }
     
-    const urlLower = videoUrl.toLowerCase();
+    const urlLower = resolvedVideoUrl.toLowerCase();
     
-    // Explicitly handle our secure frame proxies
-    if (urlLower.startsWith('/api/v1/secured-player')) {
-      setIsIframeFallback(true);
-      setIsLoading(false);
-      setIsPlaying(true);
-      return;
-    }
+      // Explicitly handle our secure frame proxies
+      if (urlLower.startsWith('/api/v1/secured-player')) {
+        setIsIframeFallback(true);
+        setIsLoading(false);
+        setIsPlaying(true);
+        return;
+      }
     
     const isDirectVideo = 
+      urlLower.startsWith('blob:') ||
+      urlLower.startsWith('/api/v1/stream-proxy') ||
       urlLower.includes('.mp4') || 
       urlLower.includes('.m3u8') || 
       urlLower.includes('.webm') || 
       urlLower.includes('.ogg') || 
       urlLower.includes('.mov') ||
       urlLower.includes('.jpg') ||
-      urlLower.includes('.png');
+      urlLower.includes('.png') ||
+      (activeServerUrl && (
+        activeServerUrl.toLowerCase().includes('.mp4') ||
+        activeServerUrl.toLowerCase().includes('.m3u8') ||
+        activeServerUrl.toLowerCase().includes('.webm')
+      ));
 
     if (!isDirectVideo) {
       setIsIframeFallback(true);
@@ -431,15 +1205,16 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     if (!video) return;
 
     let hls: Hls | null = null;
+    const isHlsStream = !urlLower.startsWith('blob:') && (urlLower.includes('.m3u8') || (activeServerUrl && activeServerUrl.toLowerCase().includes('.m3u8')));
 
-    if (urlLower.includes('.m3u8')) {
+    if (isHlsStream) {
       if (Hls.isSupported()) {
         hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
-          maxBufferLength: 180,          // Load up to 180 seconds ahead of time for ultimate slow network safety
-          maxMaxBufferLength: 360,       // Max buffer capacity up to 6 minutes of continuous streaming
-          maxBufferSize: 180 * 1024 * 1024, // Aggressively cache video content in RAM
+          maxBufferLength: 20,           // Balanced: Faster start, enough buffer for stability
+          maxMaxBufferLength: 180,       // 3 minutes of buffer
+          maxBufferSize: 48 * 1024 * 1024, // 48MB RAM limit for better buffering
           progressive: true,
           capLevelToPlayerSize: true,    // Matches stream level size dynamically to save bandwidth on mobile
           autoStartLoad: true,
@@ -452,14 +1227,21 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
           manifestLoadingMaxRetry: 8,
           levelLoadingMaxRetry: 8,
         });
-        hls.loadSource(videoUrl);
+        hls.loadSource(resolvedVideoUrl);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setIsLoading(false);
           setIsBuffering(false);
           resumeWatchProgress();
-          video.play().catch(() => setIsPlaying(false));
-          setIsPlaying(true);
+          video.muted = isMuted;
+          video.volume = volume;
+          video.play().then(() => {
+            setIsPlaying(true);
+            setShowControls(false); // Hide controls if playing perfectly
+          }).catch(() => {
+            setIsPlaying(false);
+            setShowControls(true); // Keep controls open so user can press play
+          });
         });
         hls.on(Hls.Events.ERROR, (event, data) => {
           if (data.fatal) {
@@ -473,8 +1255,8 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                 hls?.recoverMediaError();
                 break;
               default:
-                console.warn("HLS unrecoverable fatal error, falling back to iframe:", data);
-                setIsIframeFallback(true);
+                console.warn("HLS unrecoverable fatal error, staying in player for retry logic:", data);
+                setShowTimeoutOptions(true); // Let user decide rather than auto-switching to inferior player
                 setIsLoading(false);
                 break;
             }
@@ -490,29 +1272,44 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
           }
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = videoUrl;
+        video.src = resolvedVideoUrl;
         video.load(); // Explicitly trigger hardware media system on Safari & iOS
         video.addEventListener('loadedmetadata', () => {
           setIsLoading(false);
           setIsBuffering(false);
           resumeWatchProgress();
-          video.play().catch(() => setIsPlaying(false));
-          setIsPlaying(true);
+          video.muted = isMuted;
+          video.volume = volume;
+          video.play().then(() => {
+            setIsPlaying(true);
+            setShowControls(false);
+          }).catch(() => {
+            setIsPlaying(false);
+            setShowControls(true);
+          });
         });
       } else {
-        setIsIframeFallback(true);
+        console.warn("HLS not supported in this environment, showing options");
+        setShowTimeoutOptions(true);
         setIsLoading(false);
       }
     } else {
       // Regular streaming files (MP4/WebM)
-      video.src = videoUrl;
+      video.src = resolvedVideoUrl;
       video.load(); // Explicitly call .load() for instant cross-browser parsing
       const onPlayable = () => {
         setIsLoading(false);
         setIsBuffering(false);
         resumeWatchProgress();
-        video.play().catch(() => setIsPlaying(false));
-        setIsPlaying(true);
+        video.muted = isMuted;
+        video.volume = volume;
+        video.play().then(() => {
+          setIsPlaying(true);
+          setShowControls(false);
+        }).catch(() => {
+          setIsPlaying(false);
+          setShowControls(true);
+        });
         video.removeEventListener('canplay', onPlayable);
       };
       video.addEventListener('canplay', onPlayable);
@@ -527,7 +1324,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
         video.src = '';
       }
     };
-  }, [videoUrl, episodeIndex, playerjsLoaded]);
+  }, [resolvedVideoUrl, episodeIndex, playerjsLoaded]);
 
   // Resume progress logic
   const resumeWatchProgress = () => {
@@ -536,12 +1333,89 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     const savedSecond = progressService.getProgress(seriesId, episodeIndex);
     if (savedSecond > 0 && savedSecond < (video.duration || 100000)) {
       video.currentTime = savedSecond;
+      
+      // Calculate minutes and seconds for the professional notification text
+      const mins = Math.floor(savedSecond / 60);
+      const secs = Math.floor(savedSecond % 60);
+      const formattedEp = episodes[episodeIndex]?.title || `${episodeIndex + 1}`;
+      setResumeTimeText(`الحلقة ${formattedEp} عند الدقيقة ${mins}:${secs.toString().padStart(2, '0')}`);
+      setShowResumeNotification(true);
+      setTimeout(() => setShowResumeNotification(false), 4500);
     }
   };
 
+  // Load initial progress and default duration for iframe embeds
+  useEffect(() => {
+    if (isIframeFallback) {
+      const savedSecond = progressService.getProgress(seriesId, episodeIndex);
+      if (savedSecond > 0) {
+        setCurrentTime(savedSecond);
+        const mins = Math.floor(savedSecond / 60);
+        const secs = Math.floor(savedSecond % 60);
+        const formattedEp = episodes[episodeIndex]?.title || `${episodeIndex + 1}`;
+        setResumeTimeText(`الحلقة ${formattedEp} عند الدقيقة ${mins}:${secs.toString().padStart(2, '0')}`);
+        setShowResumeNotification(true);
+        const timer = setTimeout(() => setShowResumeNotification(false), 4500);
+        return () => clearTimeout(timer);
+      } else {
+        setCurrentTime(0);
+      }
+      setDuration(3600); // Default 1 hour estimation for embed streams
+    }
+  }, [isIframeFallback, seriesId, episodeIndex, episodes]);
+
+  // Instant watch progress save on component unmount and browser close (beforeunload)
+  useEffect(() => {
+    const saveCurrentProgress = () => {
+      if (isIframeFallback) {
+        if (currentTime > 5) {
+          progressService.saveProgress(seriesId, episodeIndex, currentTime);
+        }
+      } else {
+        const video = videoRef.current;
+        if (video && video.currentTime > 5) {
+          progressService.saveProgress(seriesId, episodeIndex, video.currentTime);
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', saveCurrentProgress);
+    return () => {
+      window.removeEventListener('beforeunload', saveCurrentProgress);
+      saveCurrentProgress();
+    };
+  }, [seriesId, episodeIndex, isIframeFallback, currentTime]);
+
+  // Simulating time progress inside frame embeds to keep the timeline working perfectly!
+  useEffect(() => {
+    if (!isIframeFallback || !isPlaying) return;
+    const interval = setInterval(() => {
+      setCurrentTime(prev => {
+        const next = prev + 1;
+        const total = duration || 3600;
+        if (next >= total) {
+          setIsPlaying(false);
+          return 0;
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isIframeFallback, isPlaying, duration]);
+
   // Auto-Save watch progress every 4 seconds
   useEffect(() => {
-    if (isIframeFallback || playerjsLoaded) return;
+    if (isIframeFallback) {
+      if (playerjsLoaded) return;
+      const interval = setInterval(() => {
+        if (isPlaying && currentTime > 5) {
+          progressService.saveProgress(seriesId, episodeIndex, currentTime);
+        }
+      }, 4000);
+      return () => clearInterval(interval);
+    }
+    
+    if (playerjsLoaded) return;
     const interval = setInterval(() => {
       const video = videoRef.current;
       if (video && isPlaying && video.currentTime > 5) {
@@ -550,7 +1424,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [isPlaying, isIframeFallback, seriesId, episodeIndex, playerjsLoaded]);
+  }, [isPlaying, isIframeFallback, seriesId, episodeIndex, playerjsLoaded, currentTime]);
 
   // Mouse activity or interactions to reset the controls timer
   const resetControlsTimeout = (forceShow: boolean = false) => {
@@ -563,24 +1437,186 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
       controlsTimeoutRef.current = null;
     }
 
-    if (showControls) {
-      const isTV = /SmartTV|WebOS|Tizen|AppleTV|AndroidTV|GoogleTV|Opera TV|Viera|SonyDTV/i.test(navigator.userAgent);
-      
-      // If speed menu or episode menu or search is active, do not auto-hide controls to let the user select
-      if (showSpeedMenu || showEpisodeMenu || isSearchOverlayActive) {
+    if (showControls || forceShow) {
+      // If episode menu or search is active, do not auto-hide controls to let the user select
+      if (showEpisodeMenu || isSearchOverlayActive) {
         return;
       }
 
       // If hovering controls on desktop, keep it visible. On TV, bypass hover lock because magic remote pointer sticks.
-      if (isHoveringControls && !isTV) {
+      if (isHoveringControls && !isTV && !showSpeedMenu) {
         return;
       }
 
       controlsTimeoutRef.current = setTimeout(() => {
         setShowControls(false);
-      }, 3000); // 3 seconds timeout
+        setShowSpeedMenu(false);
+        setIsVolumeAdjustMode(false);
+      }, isTV ? 5050 : 3000); // Slightly shorter timeout on TV
     }
   };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isTV) {
+      const dx = Math.abs(e.clientX - lastMousePosRef.current.x);
+      const dy = Math.abs(e.clientY - lastMousePosRef.current.y);
+      if (dx < 4 && dy < 4) {
+        return; // Skip fake mouse moves to let controls hide properly
+      }
+    }
+    lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+    resetControlsTimeout(false);
+  };
+
+  // Basic remote control key listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isOkKey = e.key === 'Enter' || e.key === 'Select' || e.key === 'OK' || e.key === 'Ok' || e.keyCode === 13 || e.keyCode === 23 || e.keyCode === 66;
+
+      // Unconditional ad break key override (works on ALL devices/remotes)
+      if (adBreakActive) {
+        if (adCountdown === 0 && isOkKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleSkipAd();
+          return;
+        }
+        // Eat all navigation/select keystrokes while ad is running to protect visual state
+        const keysToPrevent = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Select', 'OK', ' ', 'Escape'];
+        const keyCodesToPrevent = [13, 23, 66, 37, 38, 39, 40];
+        if (keysToPrevent.includes(e.key) || keyCodesToPrevent.includes(e.keyCode)) {
+          e.preventDefault();
+        }
+        return;
+      }
+
+      if (!isTV) return;
+
+      const tvKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Select', 'OK', 'Ok', ' ', 'Select', 'Accept'];
+      if (!tvKeys.includes(e.key) && e.keyCode !== 13) return;
+
+      // If volume adjust mode is active, prevent standard controls handler
+      if (isVolumeAdjustMode) {
+        return;
+      }
+
+      // 1. If controls are hidden, any navigation key wakes up the controls of the video player,
+      // EXCEPT when a context drawer or specialized menu is already active!
+      if (!showControls) {
+        if (showEpisodeMenu || showSpeedMenu || isVolumeAdjustMode) {
+          return; // Don't hijack if drawers or adjusting is already active
+        }
+        e.preventDefault();
+        setShowControls(true);
+        resetControlsTimeout(true);
+        
+        // Let the DOM update, then target the Play/Pause button or selection
+        setTimeout(() => {
+          const playBtn = containerRef.current?.querySelector('.play-pause-btn') as HTMLElement;
+          if (playBtn) {
+            playBtn.focus();
+            playBtn.classList.add('tv-focused');
+          }
+        }, 80);
+        return;
+      }
+
+      // 2. If controls are active:
+      if (e.key === ' ' || e.key === 'MediaPlayPause') {
+        e.preventDefault();
+        handlePlayPause();
+        resetControlsTimeout(true);
+      } else if (e.key === 'ArrowLeft') {
+        // If the focused element of the browser is NOT another button (e.g. they are just watching), they can seek directly
+        const activeEl = document.activeElement as HTMLElement;
+        const isButtonFocused = activeEl && (activeEl.getAttribute('data-tv-focusable') === 'true');
+        if (!isButtonFocused) {
+          e.preventDefault();
+          skipTime(-10);
+          resetControlsTimeout(true);
+        }
+      } else if (e.key === 'ArrowRight') {
+        const activeEl = document.activeElement as HTMLElement;
+        const isButtonFocused = activeEl && (activeEl.getAttribute('data-tv-focusable') === 'true');
+        if (!isButtonFocused) {
+          e.preventDefault();
+          skipTime(10);
+          resetControlsTimeout(true);
+        }
+      } else if (e.key === 'ArrowUp') {
+        const activeEl = document.activeElement as HTMLElement;
+        const isButtonFocused = activeEl && (activeEl.getAttribute('data-tv-focusable') === 'true');
+        if (!isButtonFocused && showControls && !showEpisodeMenu && !showSpeedMenu && !isVolumeAdjustMode) {
+          e.preventDefault();
+          setShowControls(false);
+          setShowSpeedMenu(false);
+          setIsVolumeAdjustMode(false);
+        } else if (!showControls) {
+          e.preventDefault();
+          toggleControls();
+        }
+      } else if (e.key === 'ArrowDown') {
+        if (!showControls) {
+          e.preventDefault();
+          toggleControls();
+        }
+      } else if (e.key === 'Enter' || e.key === 'Select' || e.key === 'OK' || e.key === 'Ok' || e.keyCode === 13) {
+        const activeEl = document.activeElement as HTMLElement;
+        const isButtonFocused = activeEl && (activeEl.getAttribute('data-tv-focusable') === 'true');
+        if (!isButtonFocused) {
+          e.preventDefault();
+          toggleControls();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showControls, isPlaying, isTV, adBreakActive, adCountdown, showEpisodeMenu, showSpeedMenu, isVolumeAdjustMode]);
+
+
+  // Automatically focus active episode/first item or close button when episode drawer menu opens
+  useEffect(() => {
+    if (showEpisodeMenu) {
+      setTimeout(() => {
+        const drawer = document.getElementById('episode-drawer');
+        if (!drawer) return;
+        
+        // Find visible active episode button
+        const activeEpBtn = drawer.querySelector('[data-active="true"]') as HTMLElement;
+        if (activeEpBtn) {
+          activeEpBtn.focus();
+          document.querySelectorAll('[data-tv-focusable="true"]').forEach(el => el.classList.remove('tv-focused'));
+          activeEpBtn.classList.add('tv-focused');
+          activeEpBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          // Fallback to first focusable button
+          const closeBtn = drawer.querySelector('[data-tv-focusable="true"]') as HTMLElement;
+          if (closeBtn) {
+            closeBtn.focus();
+            document.querySelectorAll('[data-tv-focusable="true"]').forEach(el => el.classList.remove('tv-focused'));
+            closeBtn.classList.add('tv-focused');
+          }
+        }
+      }, 150);
+    }
+  }, [showEpisodeMenu]);
+
+
+  // Automatically trigger a helpful timeout fallback if loading hangs (e.g., slow server, CORS, or blocked autoplay)
+  useEffect(() => {
+    let timer: any;
+    if (isLoading) {
+      setShowTimeoutOptions(false);
+      timer = setTimeout(() => {
+        // Only show options, never switch to iframe automatically anymore
+        setShowTimeoutOptions(true);
+      }, isTV ? 10000 : 15000); // More generous loading time
+    } else {
+      setShowTimeoutOptions(false);
+    }
+    return () => clearTimeout(timer);
+  }, [isLoading, resolvedVideoUrl, isTV]);
+
 
   // Toggle controls visibility cleanly and securely
   const toggleControls = () => {
@@ -597,25 +1633,54 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
 
   // Handle Play/Pause Action
   const handlePlayPause = (e?: React.MouseEvent) => {
+    lastButtonClickTimeRef.current = Date.now();
     if (e) e.stopPropagation();
+    
+    if (isIframeFallback) {
+      setIsPlaying(prev => {
+        const nextVal = !prev;
+        if (!nextVal) {
+          setShowControls(true);
+        } else {
+          setShowControls(false);
+        }
+        return nextVal;
+      });
+      return;
+    }
+
     const video = videoRef.current;
     if (!video) return;
+
+    // Restore unmuted audio state if it was muted merely by autoplay blocks
+    if (video.muted && !isMuted) {
+      video.muted = false;
+    }
 
     if (isPlaying) {
       video.pause();
       setIsPlaying(false);
-      setShowControls(false); // Do not show controls on pause! Keep clean screen as explicitly requested.
+      setShowControls(true); // Show controls and centered button when paused
     } else {
+      if (video) {
+        video.muted = isMuted;
+        video.volume = volume;
+      }
       video.play().catch(() => {});
       setIsPlaying(true);
-      setShowControls(false); // Do not show controls on play/resume! Keep clean screen.
+      setShowControls(false); // Hide controls on play/resume
     }
   };
 
   // Core gesture state machine
   const handleInteraction = (clientX: number, clientY: number, currentTarget: HTMLElement) => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video && !isIframeFallback) return;
+
+    // Restore unmuted audio state if it was muted merely by autoplay blocks
+    if (video && video.muted && !isMuted) {
+      video.muted = false;
+    }
 
     const rect = currentTarget.getBoundingClientRect();
     const clickX = clientX - rect.left;
@@ -640,7 +1705,8 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
 
     const isDoubleTap = !isExactCenter && (zone === 'left' || zone === 'right') &&
                         (zone === lastTapRef.current.side) &&
-                        (now - lastTapRef.current.time < DOUBLE_TAP_DELAY);
+                        (now - lastTapRef.current.time < DOUBLE_TAP_DELAY) &&
+                        (now - lastButtonClickTimeRef.current > 800);
 
     lastTapRef.current = { time: now, side: zone };
 
@@ -670,17 +1736,30 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     };
 
     if (isExactCenter) {
-      // EXACT CENTER (بالنص فقط): Toggle play/pause only, keep controls strictly hidden
+      // EXACT CENTER (بالنص فقط): Toggle play/pause and manage controls visibility
       setShowSpeedMenu(false);
       setShowEpisodeMenu(false);
-      if (isPlaying) {
-        video.pause();
-        setIsPlaying(false);
-        setShowControls(false); // Do not show controls on pause! Keep clean screen as explicitly requested.
-      } else {
-        video.play().catch(() => {});
-        setIsPlaying(true);
-        setShowControls(false); // Do not show controls on play/resume! Keep clean screen.
+      if (isIframeFallback) {
+        setIsPlaying(prev => {
+          const nextVal = !prev;
+          if (!nextVal) {
+            setShowControls(true);
+          } else {
+            setShowControls(false);
+          }
+          return nextVal;
+        });
+      } else if (video) {
+        if (isPlaying) {
+          video.pause();
+          setIsPlaying(false);
+          setShowControls(true); // Show controls and play/pause button on pause
+          resetControlsTimeout(true);
+        } else {
+          video.play().catch(() => {});
+          setIsPlaying(true);
+          setShowControls(false); // Hide controls on play/resume
+        }
       }
     } else {
       // Clicking anywhere outside the EXACT center (top, bottom, left/right margins) toggles controls
@@ -697,6 +1776,13 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
 
   const handlePlayerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
+
+    // If it's a programmatic click (e.g., from TV Enter key when controls are hidden)
+    // The clientX and clientY will be perfectly 0
+    if (e.clientX === 0 && e.clientY === 0 && isTV) {
+      toggleControls();
+      return;
+    }
 
     if (Date.now() - lastTouchTimeRef.current < 600) {
       return;
@@ -738,10 +1824,13 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     }
   };
 
-  const handleVideoError = () => {
-    console.warn("Native video playback failed, falling back to iframe player.");
-    setIsIframeFallback(true);
-    setIsLoading(false);
+  const handleVideoError = (e: any) => {
+    console.warn("Native video playback encountered an issue:", e?.type || e?.message || "unknown_error");
+    // Instead of immediate fallback, try to wait or show timeout options
+    if (!showTimeoutOptions) {
+      setShowTimeoutOptions(true);
+    }
+    setIsBuffering(false);
   };
 
   const formatTime = (seconds: number) => {
@@ -771,26 +1860,64 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     setDuration(video.duration);
   };
 
+  const handleCanPlay = () => {
+    setIsBuffering(false);
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Explicitly sync volume and muted state to override any browser-native mute/reset behaviors
+    video.muted = isMuted;
+    video.volume = volume;
+
+    if (lastPositionRef.current > 0) {
+      // Only restore if it's significantly different (e.g., reset to 0)
+      if (Math.abs(video.currentTime - lastPositionRef.current) > 1) {
+        video.currentTime = lastPositionRef.current;
+      }
+      lastPositionRef.current = 0; // Clear it
+    }
+  };
+
+
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
-    const video = videoRef.current;
-    if (!video || isNaN(duration) || duration === 0) return;
+    setShowSpeedMenu(false);
+    setShowEpisodeMenu(false);
+    setIsVolumeAdjustMode(false);
+    if (isNaN(duration) || duration === 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const width = rect.width;
     const clickPercent = clickX / width;
     
-    video.currentTime = clickPercent * duration;
-    setCurrentTime(video.currentTime);
+    const targetTime = clickPercent * duration;
+    if (isIframeFallback) {
+      setCurrentTime(targetTime);
+    } else {
+      const video = videoRef.current;
+      if (video) {
+        video.currentTime = targetTime;
+        setCurrentTime(video.currentTime);
+      }
+    }
     resetControlsTimeout();
   };
 
   const skipTime = (amount: number, e?: React.MouseEvent | React.TouchEvent) => {
     if (e) e.stopPropagation();
-    const video = videoRef.current;
-    if (!video) return;
-    video.currentTime = Math.min(Math.max(0, video.currentTime + amount), duration);
-    setCurrentTime(video.currentTime);
+    setShowSpeedMenu(false);
+    setShowEpisodeMenu(false);
+    setIsVolumeAdjustMode(false);
+    
+    if (isIframeFallback) {
+      setCurrentTime(prev => Math.min(Math.max(0, prev + amount), duration));
+    } else {
+      const video = videoRef.current;
+      if (video) {
+        video.currentTime = Math.min(Math.max(0, video.currentTime + amount), duration);
+        setCurrentTime(video.currentTime);
+      }
+    }
     resetControlsTimeout(showControls);
 
     if (amount < 0) {
@@ -814,8 +1941,8 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     resetControlsTimeout();
   };
 
-  const toggleMute = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const toggleMute = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     const video = videoRef.current;
     if (video) {
       video.muted = !isMuted;
@@ -836,9 +1963,20 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
 
   const toggleBrowserFullscreen = () => {
     const container = containerRef.current;
-    const video = videoRef.current;
-
     if (!container) return;
+
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || 
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    
+    if (isIOS) {
+      // Allow iPhone to use native video player
+      if (videoRef.current && (videoRef.current as any).webkitEnterFullscreen) {
+        (videoRef.current as any).webkitEnterFullscreen();
+      } else {
+        onToggleMaximize();
+      }
+      return;
+    }
 
     // Check if any element is already in fullscreen
     const isFullscreen = document.fullscreenElement || (document as any).webkitFullscreenElement;
@@ -850,47 +1988,357 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
         (document as any).webkitExitFullscreen();
       }
     } else {
-      const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-      
-      if (isIOS) {
-        if (isIframeFallback) {
-          // If playing inside an iframe on iOS, cross-origin security prevents us from touching the inner video.
-          // Therefore, we MUST use our custom high-performance CSS fullscreen (Cinema Mode) which fits the screen perfectly.
-          onToggleMaximize();
-        } else {
-          // iOS Safari on iPhone requires native video fullscreen to hide Safari's URL/address bar completely!
-          // We find the active video element (could be our native fallback video or a playerjs video)
-          const targetVideo = video || document.querySelector('#pjs-player video') || document.querySelector('video');
-          if (targetVideo && (targetVideo as any).webkitEnterFullscreen) {
-            try {
-              (targetVideo as any).webkitEnterFullscreen();
-            } catch (e) {
-              console.error("Failed to enter webkitEnterFullscreen, falling back to CSS maximize", e);
-              onToggleMaximize();
-            }
-          } else {
-            onToggleMaximize();
-          }
-        }
+      // Desktop/Other: Use native Fullscreen
+      if (container.requestFullscreen) {
+        container.requestFullscreen().catch(() => onToggleMaximize());
+      } else if ((container as any).webkitRequestFullscreen) {
+        (container as any).webkitRequestFullscreen();
       } else {
-        // Desktop/Other: Use native Fullscreen
-        if (container.requestFullscreen) {
-          container.requestFullscreen().catch(() => onToggleMaximize());
-        } else if ((container as any).webkitRequestFullscreen) {
-          (container as any).webkitRequestFullscreen();
-        } else if (video && (video as any).webkitEnterFullscreen) {
-          (video as any).webkitEnterFullscreen();
-        } else {
-          onToggleMaximize();
-        }
+        onToggleMaximize();
       }
     }
   };
 
+  // Professional TV Remote Detection & Spatial Auto-Handling
+  useEffect(() => {
+    if (!isTV) return;
+
+    const handleTvKeyDown = (e: KeyboardEvent) => {
+      if (!isTV) return;
+      if (adBreakActive) return; // Skip normal TV key navigation overlay while an ad break is active
+
+      const isOkKey = e.key === 'Enter' || e.key === 'Select' || e.key === 'OK' || e.key === 'Ok' || e.keyCode === 13 || e.keyCode === 23 || e.keyCode === 66;
+      const isBackKey = e.key === 'Escape' || e.key === 'Back' || e.key === 'GoBack' || e.key === 'BrowserBack' || e.keyCode === 27 || e.keyCode === 4 || e.keyCode === 10009 || e.keyCode === 461;
+      
+      let directionKey = '';
+      if (e.key === 'ArrowUp' || e.keyCode === 19) directionKey = 'ArrowUp';
+      else if (e.key === 'ArrowDown' || e.keyCode === 20) directionKey = 'ArrowDown';
+      else if (e.key === 'ArrowLeft' || e.keyCode === 21) directionKey = 'ArrowLeft';
+      else if (e.key === 'ArrowRight' || e.keyCode === 22) directionKey = 'ArrowRight';
+
+      const isArrowKey = directionKey !== '';
+
+      if (isBackKey) {
+        if (showEpisodeMenu) { setShowEpisodeMenu(false); e.preventDefault(); e.stopPropagation(); return; }
+        if (showSpeedMenu) { setShowSpeedMenu(false); e.preventDefault(); e.stopPropagation(); return; }
+        if (showControls) { setShowControls(false); e.preventDefault(); e.stopPropagation(); return; }
+        if (isMaximized) {
+          onToggleMaximize();
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+      }
+
+      if (isArrowKey || isOkKey) {
+        // Auto-show controls on any remote interaction
+        if (!showControls && !adBreakActive && !showEpisodeMenu && !showSpeedMenu) {
+          setShowControls(true);
+          resetControlsTimeout(true);
+          
+          // Force focus onto the play/pause button if nothing is currently focused in the player
+          setTimeout(() => {
+            const activeEl = document.activeElement;
+            const container = containerRef.current;
+            if (container && (!activeEl || !container.contains(activeEl))) {
+              const playBtn = container.querySelector('.play-pause-btn') as HTMLElement;
+              if (playBtn) {
+                playBtn.focus();
+                playBtn.classList.add('tv-focused');
+              }
+            }
+          }, 50);
+          return;
+        }
+
+        resetControlsTimeout(true);
+
+        if (isArrowKey) {
+          const activeEl = document.activeElement as HTMLElement;
+
+          // SPECIAL: If focused on Progress Bar, Left/Right should SEEK, not move focus
+          if (activeEl?.getAttribute('aria-label') === 'شريط التقدم' && (directionKey === 'ArrowLeft' || directionKey === 'ArrowRight')) {
+             return; // Let the progress bar onKeyDown handle it
+          }
+
+          // Special handling for adjusting modes
+          if (isVolumeAdjustMode) {
+            if (directionKey === 'ArrowUp' || directionKey === 'ArrowDown') {
+              return;
+            } else if (directionKey === 'ArrowLeft' || directionKey === 'ArrowRight') {
+              setIsVolumeAdjustMode(false);
+            }
+          }
+
+          // Spatial Navigation Logic
+          e.preventDefault();
+          moveTvFocus(directionKey);
+        }
+      }
+    };
+
+    const moveTvFocus = (direction: string) => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      const activeEl = document.activeElement as HTMLElement;
+      
+      // Prioritize focus group based on open overlays
+      let scopeContainer: HTMLElement = container;
+      if (showEpisodeMenu) {
+        scopeContainer = document.getElementById('episode-drawer') || container;
+      } else if (showSpeedMenu) {
+        scopeContainer = document.getElementById('speed-menu') || container;
+      }
+
+      const focusables = Array.from(scopeContainer.querySelectorAll('[data-tv-focusable="true"]')) as HTMLElement[];
+      const visibleFocusables = focusables.filter(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).display !== 'none' && window.getComputedStyle(el).visibility !== 'hidden';
+      });
+
+      if (visibleFocusables.length === 0) return;
+
+      // If nothing relevant focused, jump to logical primary
+      if (!activeEl || !scopeContainer.contains(activeEl)) {
+        const target = visibleFocusables[0];
+        target.focus();
+        visibleFocusables.forEach(f => f.classList.remove('tv-focused'));
+        target.classList.add('tv-focused');
+        return;
+      }
+
+      const curRect = activeEl.getBoundingClientRect();
+      const curCenter = { x: curRect.left + curRect.width / 2, y: curRect.top + curRect.height / 2 };
+
+      let bestTarget: HTMLElement | null = null;
+      let minDistance = Infinity;
+
+      visibleFocusables.forEach(candidate => {
+        if (candidate === activeEl) return;
+        const candRect = candidate.getBoundingClientRect();
+        const candCenter = { x: candRect.left + candRect.width / 2, y: candRect.top + candRect.height / 2 };
+
+        const dx = candCenter.x - curCenter.x;
+        const dy = candCenter.y - curCenter.y;
+
+        let isPossible = false;
+        if (direction === 'ArrowUp') isPossible = dy < -5;
+        if (direction === 'ArrowDown') isPossible = dy > 5;
+        if (direction === 'ArrowLeft') isPossible = dx < -5;
+        if (direction === 'ArrowRight') isPossible = dx > 5;
+
+        if (isPossible) {
+          const dist = direction === 'ArrowUp' || direction === 'ArrowDown'
+            ? Math.abs(dy) + Math.abs(dx) * 4 // Prefer vertical alignment for Up/Down
+            : Math.abs(dx) + Math.abs(dy) * 4; // Prefer horizontal alignment for Left/Right
+
+          if (dist < minDistance) {
+            minDistance = dist;
+            bestTarget = candidate;
+          }
+        }
+      });
+
+      if (bestTarget) {
+        (bestTarget as HTMLElement).focus();
+        // Global cleanup and local assignment to prevent focus duplication visuals
+        container.querySelectorAll('.tv-focused').forEach(f => f.classList.remove('tv-focused'));
+        (bestTarget as HTMLElement).classList.add('tv-focused');
+      }
+    };
+
+    window.addEventListener('keydown', handleTvKeyDown);
+    return () => window.removeEventListener('keydown', handleTvKeyDown);
+  }, [isTV, showControls, adBreakActive]);
+
+  // Master custom controls layout (Premium Translucent Dashboard)
+  const controlsLayout = (
+    <div 
+      className={cn(
+        "absolute inset-x-0 bottom-0 z-[120] p-1.5 transition-all duration-300 flex flex-col gap-1 pb-[calc(0.375rem+env(safe-area-inset-bottom))] pl-[calc(0.375rem+env(safe-area-inset-left))] pr-[calc(0.375rem+env(safe-area-inset-right))]",
+        (showControls && !isSearchOverlayActive) ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+      )}
+    >
+      <div className={cn(
+        "bg-[#0c0c10]/98 border border-white/5 rounded-xl p-1.5 sm:p-2 flex flex-col gap-1",
+        !isLowEnd ? "shadow-[0_24px_60px_rgba(0,0,0,0.95)] backdrop-blur-md" : "shadow-none"
+      )}>
+        
+        {/* Timeline slider row */}
+        <div className="flex flex-col gap-0.5 w-full px-1 py-1">
+          <button 
+            onClick={handleSeek}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowLeft') {
+                e.preventDefault(); e.stopPropagation(); skipTime(-10);
+              } else if (e.key === 'ArrowRight') {
+                e.preventDefault(); e.stopPropagation(); skipTime(10);
+              }
+            }}
+            tabIndex={showControls ? 0 : -1}
+            data-tv-focusable={showControls ? "true" : "false"}
+            aria-label="شريط التقدم"
+            className="h-2 w-full bg-zinc-900/90 border border-white/[0.03] rounded-full cursor-pointer relative group/timeline focus:ring-4 focus:ring-primary focus:outline-none focus:scale-y-150 transition-all hover:scale-y-150 block text-left"
+          >
+            {/* Yellow Ad Indicators like YouTube */}
+            {visualAdPoints.length > 0 && visualAdPoints.map((pt: number) => {
+              const totalDuration = duration || (videoRef.current?.duration) || 3600;
+              const ratio = pt / totalDuration;
+              if (ratio > 1) return null;
+              return (
+                <div 
+                  key={pt}
+                  className="absolute w-1 px-0.5 h-full z-[25] top-0 pointer-events-none flex items-center justify-center"
+                  style={{ left: `${ratio * 100}%` }}
+                >
+                   <div className="w-[3px] h-full bg-yellow-400 shadow-[0_0_10px_rgba(234,179,8,1)] border-x border-black/20" />
+                </div>
+              );
+            })}
+            
+            {/* Crimson Progress fill */}
+            <div 
+              className="absolute top-0 left-0 h-full bg-gradient-to-r from-red-600 to-[#E50914] shadow-[0_0_12px_rgba(229,9,20,0.7)] rounded-full transition-all duration-75"
+              style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+            />
+          </button>
+
+          {/* Video Duration metrics */}
+          <div className="flex justify-between text-[10px] font-black tracking-wider text-zinc-400 font-mono mt-0.5">
+            <span>{formatTime(currentTime)}</span>
+            <span>{formatTime(duration)}</span>
+          </div>
+        </div>
+
+        {/* Functional Dashboard Options Row */}
+        <div className="flex flex-row items-center justify-between w-full gap-1 sm:gap-2 mt-1">
+          
+          {/* Left controls: Volume, Play/Pause, Rewind, Fast Forward */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            <button 
+              onClick={handlePlayPause}
+              tabIndex={showControls ? 0 : -1}
+              data-tv-focusable={showControls ? "true" : "false"}
+              className="p-1.5 bg-primary hover:bg-[#c10d10] text-white rounded-full transition-all active:scale-95 shadow-lg shadow-primary/30 focus:ring-4 focus:ring-primary focus:scale-110 focus:outline-none play-pause-btn"
+              title={isPlaying ? "إيقاف" : "تشغيل"}
+            >
+              {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
+            </button>
+
+            <button 
+              onClick={(e) => skipTime(-10, e)}
+              tabIndex={showControls ? 0 : -1}
+              data-tv-focusable={showControls ? "true" : "false"}
+              className="p-1 text-zinc-405 hover:text-white transition-colors hover:scale-105 active:scale-95 focus:ring-4 focus:ring-primary focus:scale-110 focus:outline-none rounded-full shrink-0"
+              title="الرجوع 10 ثواني"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+
+            <button 
+              onClick={(e) => skipTime(10, e)}
+              tabIndex={showControls ? 0 : -1}
+              data-tv-focusable={showControls ? "true" : "false"}
+              className="p-1 text-zinc-405 hover:text-white transition-colors hover:scale-105 active:scale-95 focus:ring-4 focus:ring-primary focus:scale-110 focus:outline-none rounded-full shrink-0"
+              title="التقديم 10 ثواني"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+            </button>
+
+            <div className="relative flex items-center gap-1 group/volume pl-1 border-l border-white/5 shrink-0">
+              {isVolumeAdjustMode && isTV ? (
+                <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-black/95 border border-primary rounded-xl p-2 w-32 flex flex-col items-center gap-1 z-50">
+                  <span className="text-sm font-black text-white">{Math.round(volume * 100)}%</span>
+                  <div className="text-[8px] text-yellow-400">▲ / ▼ للتعديل</div>
+                </div>
+              ) : isVolumeAdjustMode ? (
+                <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 bg-[#0c0c11]/98 border border-primary/40 rounded-2xl p-3 w-40 flex flex-col items-center gap-2 shadow-[0_15px_40px_rgba(229,9,20,0.3)] z-50 text-center font-sans backdrop-blur-xl">
+                  <span className="text-lg font-black">{Math.round((isMuted ? 0 : volume) * 100)}%</span>
+                </div>
+              ) : null}
+              <button 
+                onClick={(e) => {
+                  if (isTV) {
+                    e.stopPropagation();
+                    setIsVolumeAdjustMode(!isVolumeAdjustMode);
+                  } else {
+                    toggleMute(e);
+                  }
+                }}
+                onKeyDown={(e) => { 
+                  const isOkKey = e.key === 'Enter' || e.key === 'Select' || e.key === 'OK' || e.key === 'Ok' || e.keyCode === 13;
+                  if (isOkKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsVolumeAdjustMode(!isVolumeAdjustMode);
+                    resetControlsTimeout(true);
+                  } else if (isVolumeAdjustMode) {
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault(); e.stopPropagation();
+                      const newVol = Math.min(1, volume + 0.1);
+                      setVolume(newVol);
+                      if (videoRef.current) videoRef.current.volume = newVol;
+                    } else if (e.key === 'ArrowDown') {
+                      e.preventDefault(); e.stopPropagation();
+                      const newVol = Math.max(0, volume - 0.1);
+                      setVolume(newVol);
+                      if (videoRef.current) videoRef.current.volume = newVol;
+                    }
+                  }
+                }}
+                tabIndex={showControls ? 0 : -1}
+                data-tv-focusable={showControls ? "true" : "false"}
+                className={cn(
+                  "p-1 text-zinc-400 hover:text-white transition-all focus:ring-4 focus:ring-primary focus:outline-none rounded-full shrink-0",
+                  isVolumeAdjustMode ? "ring-4 ring-primary bg-primary/20 scale-110 text-white" : ""
+                )}
+              >
+                {isMuted || volume === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Right controls */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setShowSpeedMenu(!showSpeedMenu); setShowEpisodeMenu(false); }}
+              tabIndex={showControls ? 0 : -1}
+              data-tv-focusable={showControls ? "true" : "false"}
+              className="flex items-center gap-0.5 px-1.5 py-1 sm:px-2 rounded-lg bg-white/5 border border-white/10 text-[8px] sm:text-[9px] font-black uppercase tracking-wider focus:ring-4 focus:ring-primary focus:scale-110 focus:outline-none shrink-0"
+            >
+              {playbackRate}x
+            </button>
+            {!isLocalOfflineVideo && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowEpisodeMenu(!showEpisodeMenu); setShowSpeedMenu(false); setIsVolumeAdjustMode(false); }}
+                tabIndex={showControls ? 0 : -1}
+                data-tv-focusable={showControls ? "true" : "false"}
+                className="flex items-center gap-1 sm:gap-1.5 bg-primary/25 hover:bg-primary/35 px-2 py-1 sm:px-3 sm:py-2 rounded-xl border border-primary/40 text-white font-black text-[9px] sm:text-xs tracking-tight shadow-xl focus:ring-4 focus:ring-primary focus:outline-none focus:bg-primary/40 shrink-0"
+              >
+                <List className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-primary" />
+                <span>الحلقات</span>
+              </button>
+            )}
+            <button 
+              onClick={toggleBrowserFullscreen}
+              tabIndex={showControls ? 0 : -1}
+              data-tv-focusable={showControls ? "true" : "false"}
+              className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg border border-white/10 focus:ring-4 focus:ring-primary focus:scale-110 focus:outline-none shrink-0"
+            >
+              {isMaximized ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div 
+      id="custom-video-player-container"
       ref={containerRef}
-      onMouseMove={() => resetControlsTimeout(false)}
+      onMouseMove={handleMouseMove}
       onMouseLeave={() => isPlaying && !isHoveringControls && setShowControls(false)}
       onClick={handlePlayerClick}
       className={cn(
@@ -902,511 +2350,466 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
       )}
       style={isMaximized ? { height: viewportHeight, width: '100vw', top: 0, left: 0 } : undefined}
     >
-      {!videoUrl ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 gap-4">
-          <div className="w-14 h-14 border-4 border-primary border-t-transparent rounded-full animate-spin shadow-lg shadow-primary/20" />
-          <p className="text-zinc-400 text-sm font-bold tracking-widest text-center px-4">جاري تجهيز سيرفرات المشغل المباشر...</p>
-        </div>
-      ) : isIframeFallback ? (
-        // Iframe / Web Embed Player view
-        <div className="relative w-full h-full flex items-center justify-center bg-black">
-          {!adBreakActive ? (
-            <iframe 
-              src={videoUrl}
-              className="w-full h-full border-none"
-              allowFullScreen
-              allow="autoplay; encrypted-media; picture-in-picture"
-              title="External Movie Player"
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center text-zinc-500 font-bold text-xs gap-2 select-none">
-              <Sparkles className="w-5 h-5 text-primary animate-pulse" />
-              <span>جاري تشغيل الفاصل الإعلاني المؤقت...</span>
-            </div>
-          )}
-          
-          <div className="absolute top-4 right-4 z-40 flex items-center gap-2 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)]">
-            <button
-              onClick={() => setShowEpisodeMenu(!showEpisodeMenu)}
-              className="flex items-center gap-2 bg-black/80 backdrop-blur-md px-3 py-2 rounded-xl border border-white/10 hover:bg-black text-white hover:text-primary transition-all text-[10px] font-black uppercase tracking-wider shadow-2xl"
-            >
-              <List className="w-4 h-4 text-primary" />
-              اختيار حلقة
-            </button>
-            
-            <button
-              onClick={toggleBrowserFullscreen}
-              className="p-2 bg-black/80 backdrop-blur-md rounded-xl border border-white/10 hover:bg-black text-white hover:text-primary transition-all shadow-2xl"
-              title={isMaximized ? "تصغير الشاشة" : "تكبير الشاشة"}
-            >
-              {isMaximized ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
-      ) : playerjsLoaded ? (
-        // Dynamic custom PlayerJS renderer container
-        <div className="relative w-full h-full">
-          <div id="pjs-player" className="w-full h-full bg-black" />
-          
-          {/* Transparent bar for floating episode and maximize triggers on PlayerJS */}
-          <div className="absolute top-4 right-4 z-40 flex items-center gap-2 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)]">
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowEpisodeMenu(!showEpisodeMenu); }}
-              className="flex items-center gap-2 bg-black/85 backdrop-blur-md px-3 py-2 rounded-xl border border-white/10 hover:bg-black text-white hover:text-primary transition-all text-[10px] font-black uppercase tracking-wider shadow-2xl"
-            >
-              <List className="w-4 h-4 text-primary" />
-              الحلقات
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); toggleBrowserFullscreen(); }}
-              className="p-2 bg-black/85 backdrop-blur-md rounded-xl border border-white/10 hover:bg-black text-white hover:text-primary transition-all shadow-2xl"
-            >
-              {isMaximized ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
-      ) : (
-        // High fidelity completely updated stable native fallback player (Netflix / YouTube styling)
-        <>
-          {isLoading && (
-            <div className="absolute inset-0 z-[200] flex flex-col items-center justify-center bg-black gap-4 select-none">
-              <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin shadow-xl shadow-primary/30" />
-              <div className="flex flex-col items-center gap-1.5 text-center px-6">
-                <p className="text-white text-sm font-black tracking-widest uppercase">جاري التجهيز والتشغيل...</p>
-                <p className="text-zinc-500 text-[10px] font-bold">يرجى الانتظار لحين تحميل سيرفرات البث المستقر</p>
-                {isOffline && (
-                  <span className="mt-2 bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded-full text-[9px] font-black animate-pulse">
-                     ⚠️ أنت غير متصل بالإنترنت حالياً
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          <video
-            ref={videoRef}
-            onTimeUpdate={handleTimeUpdate}
-            onLoadedMetadata={handleLoadedMetadata}
-            onError={handleVideoError}
-            onWaiting={() => setIsBuffering(true)}
-            onPlaying={() => { setIsBuffering(false); setIsLoading(false); }}
-            onSeeking={() => setIsBuffering(true)}
-            onSeeked={() => setIsBuffering(false)}
-            onStalled={() => setIsBuffering(true)}
-            onCanPlay={() => setIsBuffering(false)}
-            onCanPlayThrough={() => setIsBuffering(false)}
-            preload="auto"
-            className={cn(
-              "w-full h-full object-contain pointer-events-none transition-all duration-500",
-              !isPlaying ? "opacity-60 blur-[2px]" : "opacity-100 blur-0"
-            )}
-            playsInline={true}
-            tabIndex={-1}
-            disablePictureInPicture={true}
-            disableRemotePlayback={true}
-            controlsList="nodownload nofullscreen noremoteplayback"
-            controls={false}
-            {...{
-              "x-webkit-airplay": "deny",
-              "aria-hidden": "true"
-            }}
-          />
-
-          {!isLoading && (
-            <>
-              {/* Paused Overlay Dimming Layer */}
-              {!isPlaying && (
-                <div className="absolute inset-0 z-20 bg-gradient-to-t from-black/60 to-transparent backdrop-blur-[2px] pointer-events-none" />
-              )}
-
-              {/* Master Video overlay gestures & controls layer */}
-              <div 
-                onClick={handlePlayerClick}
-                onTouchStart={handlePlayerTouch}
-                className="absolute inset-0 z-[100] select-none touch-none cursor-pointer flex items-center justify-center"
-              >
-                {/* Left side rewinding feedback animation */}
-                <div className="absolute left-[10%] sm:left-[15%] pointer-events-none z-20">
-                  <AnimatePresence>
-                    {showRewindAnimation && (
-                      <motion.div 
-                        initial={{ opacity: 0, scale: 0.4 }}
-                        animate={{ opacity: 1, scale: 1.1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                        className="flex flex-col items-center justify-center bg-black/85 text-white rounded-full w-20 h-20 border border-white/10 shadow-[0_0_30px_rgba(229,9,20,0.3)]"
-                      >
-                        <RotateCcw className="w-8 h-8 text-primary animate-pulse" />
-                        <span className="text-[10px] font-black tracking-wider mt-1">10- ث</span>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {/* Central Play indicator overlay */}
-                <div className="pointer-events-none z-20">
-                  <div className={cn(
-                    "transition-all duration-300 transform",
-                    !isPlaying ? "opacity-100 scale-100" : "opacity-0 scale-90"
-                  )}>
-                    <div className="w-12 h-12 bg-black/80 backdrop-blur-md border border-white/15 rounded-full text-white flex items-center justify-center shadow-2xl">
-                      <Play className="w-5 h-5 text-primary fill-primary ml-0.5 animate-pulse" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right side forwarding feedback animation */}
-                <div className="absolute right-[10%] sm:right-[15%] pointer-events-none z-20">
-                  <AnimatePresence>
-                    {showForwardAnimation && (
-                      <motion.div 
-                        initial={{ opacity: 0, scale: 0.4 }}
-                        animate={{ opacity: 1, scale: 1.1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                        className="flex flex-col items-center justify-center bg-black/85 text-white rounded-full w-20 h-20 border border-white/10 shadow-[0_0_30px_rgba(229,9,20,0.3)]"
-                      >
-                        <RotateCw className="w-8 h-8 text-primary animate-pulse" />
-                        <span className="text-[10px] font-black tracking-wider mt-1">10+ ث</span>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-
-              {/* Master custom controls layout (Premium Translucent Dashboard) */}
-              <div 
-                onClick={(e) => e.stopPropagation()}
-                onMouseEnter={handleMouseEnterControls}
-                onMouseLeave={handleMouseLeaveControls}
-                className={cn(
-                  "absolute inset-x-0 bottom-0 z-[120] p-1.5 transition-all duration-300 flex flex-col gap-1 pb-[calc(0.375rem+env(safe-area-inset-bottom))] pl-[calc(0.375rem+env(safe-area-inset-left))] pr-[calc(0.375rem+env(safe-area-inset-right))]",
-                  (showControls && !isSearchOverlayActive) ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
-                )}
-              >
-            <div className="bg-[#0c0c10]/98 border border-white/5 rounded-xl p-1.5 sm:p-2 flex flex-col gap-1 shadow-[0_24px_60px_rgba(0,0,0,0.95)]">
-              
-              {/* Timeline slider row */}
-              <div className="flex flex-col gap-0.5 w-full">
-                <div 
-                  onClick={handleSeek}
-                  className="h-1.5 w-full bg-zinc-900/90 border border-white/[0.03] rounded-full cursor-pointer relative group/timeline"
-                >
-                  {/* Crimson Progress fill */}
-                  <div 
-                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-red-600 to-[#E50914] shadow-[0_0_12px_rgba(229,9,20,0.7)] rounded-full transition-all duration-75"
-                    style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
-                  />
-                  
-                  {/* Handle indicator */}
-                  <div 
-                    className="absolute top-1/2 -track-translate-y-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full border-2 border-primary scale-0 group-hover/timeline:scale-100 transition-transform duration-150 shadow-lg shadow-black/80"
-                    style={{ left: `calc(${(currentTime / (duration || 1)) * 100}% - 6px)` }}
-                  />
-                </div>
-
-                {/* Video Duration metrics */}
-                <div className="flex justify-between text-[10px] font-black tracking-wider text-zinc-400 font-mono">
-                  <span>{formatTime(duration)}</span>
-                  <span>{formatTime(currentTime)}</span>
-                </div>
-              </div>
-
-              {/* Functional Dashboard Options Row */}
-              <div className="flex flex-row items-center justify-between w-full gap-2">
-                
-                {/* Left controls: Volume, Play/Pause, Rewind, Fast Forward */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button 
-                    onClick={handlePlayPause}
-                    className="p-1.5 bg-primary hover:bg-[#c10d10] text-white rounded-full transition-all active:scale-95 shadow-lg shadow-primary/30"
-                    title={isPlaying ? "إيقاف" : "تشغيل"}
-                  >
-                    {isPlaying ? <Pause className="w-3.5 h-3.5 animate-pulse" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
-                  </button>
-
-                  <button 
-                    onClick={(e) => skipTime(-10, e)}
-                    className="p-1 text-zinc-405 hover:text-white transition-colors hover:scale-105 active:scale-95"
-                    title="الرجوع 10 ثواني"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                  </button>
-
-                  <button 
-                    onClick={(e) => skipTime(10, e)}
-                    className="p-1 text-zinc-405 hover:text-white transition-colors hover:scale-105 active:scale-95"
-                    title="التقديم 10 ثواني"
-                  >
-                    <RotateCw className="w-3.5 h-3.5" />
-                  </button>
-
-                  {/* Volume Controller with seamless popup */}
-                  <div className="flex items-center gap-1 group/volume pl-1 border-l border-white/5">
-                    <button 
-                      onClick={toggleMute}
-                      className="p-1 text-zinc-400 hover:text-white transition-colors"
-                    >
-                      {isMuted || volume === 0 ? <VolumeX className="w-3.5 h-3.5 text-zinc-500" /> : <Volume2 className="w-3.5 h-3.5 text-primary" />}
-                    </button>
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max="1" 
-                      step="0.05"
-                      value={isMuted ? 0 : volume}
-                      onChange={handleVolumeChange}
-                      className="w-8 sm:w-12 accent-primary h-1 bg-zinc-800 rounded-lg cursor-pointer transition-all opacity-40 group-hover/volume:opacity-100 focus:opacity-100"
-                    />
-                  </div>
-                </div>
-
-                {/* Right controls: Speed Modifier, Episode List toggle, Fullscreen */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  
-                  {/* Playback rate settings menu switcher */}
-                  <div className="relative">
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); setShowSpeedMenu(!showSpeedMenu); setShowEpisodeMenu(false); }}
-                      className="flex items-center gap-0.5 px-2 py-1 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-[8px] sm:text-[9px] font-black uppercase tracking-wider transition-all"
-                    >
-                      <Settings className="w-3 h-3 text-zinc-400 animate-spin-slow" />
-                      {playbackRate}x
-                    </button>
-
-                    {showSpeedMenu && (
-                      <div className="absolute bottom-full mb-2 left-0 w-20 bg-[#0a0a0d]/95 backdrop-blur-2xl border border-white/10 rounded-xl overflow-hidden shadow-2xl z-40 flex flex-col p-1">
-                        {[0.5, 1, 1.25, 1.5, 2].map(speed => (
-                          <button
-                            key={speed}
-                            onClick={() => handleSpeedChange(speed)}
-                            className={cn(
-                              "w-full text-center py-1 rounded-md text-[9px] font-bold transition-all px-1.5 text-right",
-                              playbackRate === speed ? "bg-primary text-white" : "hover:bg-white/5 text-zinc-400"
-                            )}
-                          >
-                            {speed}x
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Fully polished EPISODES Switcher drawer */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setShowEpisodeMenu(!showEpisodeMenu); setShowSpeedMenu(false); }}
-                    className="flex items-center gap-1.5 bg-primary/25 hover:bg-primary/35 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border border-primary/40 text-white font-black text-[10px] sm:text-xs tracking-tight shadow-xl active:scale-95 transition-all pointer-events-auto"
-                  >
-                    <List className="w-3.5 h-3.5 text-primary" />
-                    <span>الحلقات</span>
-                  </button>
-
-                  {/* Browser fullscreen trigger */}
-                  <button 
-                    onClick={toggleBrowserFullscreen}
-                    className="p-1 text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg transition-all border border-white/5"
-                    title="ملئ الشاشة"
-                  >
-                    {isMaximized ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-
-              </div>
-            </div>
-          </div>
-          </>)}
-        </>
-      )}
-
-      {/* YOUTUBE-STYLE FULLSCREEN AD OVERLAY */}
+      {/* ----------------- PROFESSIONAL AD OVERLAY ----------------- */}
       <AnimatePresence>
         {adBreakActive && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[400] bg-black overflow-hidden flex flex-col no-toggle"
-            onClick={(e) => e.stopPropagation()}
+            className="absolute inset-0 z-[2000] bg-zinc-950 flex flex-col items-center justify-center overflow-hidden"
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
           >
-            {adStage === 'pre-countdown' ? (
-              /* Pre-countdown screen before launching ad content */
-              <div className="flex-1 flex flex-col items-center justify-center bg-zinc-950 text-white p-6 relative select-none">
-                <div className="absolute inset-0 bg-radial-gradient from-primary/10 via-transparent to-transparent opacity-60 pointer-events-none" />
-                
-                <div className="relative flex flex-col items-center gap-6 max-w-sm text-center">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/25 text-[10px] text-primary font-black animate-pulse">
-                    <Sparkles className="w-3 h-3 fill-current" />
-                    <span>محبوب الجماهير: حكايتنا</span>
-                  </span>
-
-                  <h3 className="text-xl sm:text-2xl font-black text-white/95 leading-snug font-sans">
-                    سيظهر الإعلان المدعوم بعد ثوانٍ قليلة لضمان استمرار السيرفرات المجانية بجودة عالية
-                  </h3>
-
-                  <div className="relative w-24 h-24 flex items-center justify-center">
-                    <div className="absolute inset-0 rounded-full border-4 border-white/5 border-t-primary animate-spin" />
-                    <span className="text-4xl font-black text-primary font-mono animate-bounce">{adCountdown}</span>
+            {useIframeAd ? (
+              <div className="absolute inset-0 w-full h-full bg-zinc-950 flex items-center justify-center">
+                <iframe
+                  src={currentAdClickThrough}
+                  className="w-full h-full border-0"
+                  sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+                  onLoad={() => setIframeHasLoaded(true)}
+                  style={{ opacity: iframeHasLoaded ? 1 : 0.4 }}
+                />
+                {!iframeHasLoaded && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 gap-3 pointer-events-none">
+                    <div className="w-10 h-10 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-zinc-400 text-xs font-bold font-sans">جاري تحميل إعلان الشريك الموثوق...</p>
                   </div>
-
-                  <p className="text-zinc-500 text-xs font-bold leading-relaxed px-4">
-                    يمكنك الحصول على اشتراك بريميوم خالٍ تماماً من الإعلانات بمشاركة الرابط الخاص بك مع أقاربك وأصدقائك وكسب 10 نقاط!
-                  </p>
-                </div>
+                )}
               </div>
             ) : (
-              /* Actual Playing Ad State */
-              <>
-                {/* Header Information Bar */}
-                <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-black/80 to-transparent flex items-center justify-between px-6 z-20 pointer-events-none">
-                  <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 pointer-events-auto">
-                    <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-                    <span className="text-[10px] font-black text-white uppercase tracking-widest">محتوى إعلاني مدعوم</span>
-                  </div>
-                </div>
-
-                {/* Main Ad Content (Embedded Iframe) */}
-                <div className="flex-1 w-full bg-white relative">
-                  <iframe 
-                    key={adIframeKey}
-                    src={`${AD_URL}&cb=${adIframeKey}`} 
-                    className="w-full h-full border-none pointer-events-auto"
-                    title="Advertisement"
-                    onLoad={() => setAdIframeLoaded(true)}
-                    referrerPolicy="no-referrer"
-                    sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-storage-access-by-user-activation"
-                  />
-                  {!adIframeLoaded && (
-                    <div className="absolute inset-0 bg-zinc-950 flex items-center justify-center flex-col gap-4 p-8 select-none text-center">
-                      {/* Premium Animated Background */}
-                      <div className="absolute inset-0 bg-radial-gradient from-primary/10 via-transparent to-transparent opacity-60 pointer-events-none animate-pulse" />
-                      
-                      <div className="relative z-10 flex flex-col items-center gap-4 max-w-sm">
-                        <div className="relative w-16 h-16 flex items-center justify-center">
-                          <div className="absolute inset-x-0 inset-y-0 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-                          <Sparkles className="w-6 h-6 text-primary animate-pulse" />
-                        </div>
-
-                        <h3 className="text-lg font-extrabold text-white font-sans leading-snug">
-                          جاري تهيئة خوادم الإرسال الداعم...
-                        </h3>
-                        
-                        <p className="text-zinc-400 text-xs font-semibold leading-relaxed">
-                          يتم الآن فحص اتصال الإرسال الآمن لضمان استمرار تشغيل السيرفرات مجاناً بجودة ممتازة. ({adLoadSeconds}ث)
-                        </p>
-
-                        {adLoadSeconds >= 2 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setAdIframeKey(prev => prev + 1);
-                              setAdLoadSeconds(0);
-                            }}
-                            className="mt-2 px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] text-white font-black transition-all active:scale-95 flex items-center gap-2 backdrop-blur-md"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5 text-primary animate-spin" style={{ animationDuration: '3s' }} />
-                            تحديث الاتصال والتحميل الفوري 🔄
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Corner Skip Button Overlay */}
-                <div className="absolute bottom-8 right-0 z-30 flex flex-col items-end gap-2 pr-0">
-                  {/* Skip is allowed if countdown reaches 0 OR if advertisement load exceeds 4 seconds */}
-                  {(!adIframeLoaded && adLoadSeconds < 4) || (adIframeLoaded && adCountdown > 0) ? (
-                    <div className="bg-black/95 backdrop-blur-xl border border-white/10 border-r-0 px-6 py-3 rounded-l-xl text-white font-black text-xs tracking-widest flex items-center gap-3 select-none">
-                      <div className="w-4 h-4 rounded-full border-2 border-white/20 border-t-white animate-spin" />
-                      {!adIframeLoaded ? `جاري التحميل... (${4 - adLoadSeconds}ث)` : `يمكنك التخطي بعد ${adCountdown}`}
-                    </div>
-                  ) : (
-                    <motion.button 
-                      initial={{ x: 100 }}
-                      animate={{ x: 0 }}
-                      onClick={handleSkipAd}
-                      className="bg-primary text-white hover:bg-white hover:text-black hover:scale-105 px-8 py-4 rounded-l-2xl border border-white/20 border-r-0 transition-all font-black text-sm uppercase tracking-widest shadow-[0_0_40px_rgba(229,9,20,0.5)] flex items-center gap-3 active:scale-95"
-                    >
-                      تخطي الإعلان
-                      <ArrowRight className="w-4 h-4 text-white" />
-                    </motion.button>
-                  )}
-                </div>
-              </>
+              <video
+                ref={adVideoRef}
+                src={currentAdVideoSrc}
+                autoPlay
+                playsInline={true}
+                muted={adMuted}
+                onEnded={() => handleSkipAd()}
+                onTimeUpdate={() => {
+                  if (adVideoRef.current) {
+                    setAdCurrentTime(adVideoRef.current.currentTime);
+                  }
+                }}
+                onDurationChange={() => {
+                  if (adVideoRef.current) {
+                     setAdDuration(adVideoRef.current.duration || 30);
+                  }
+                }}
+                className="w-full h-full object-contain pointer-events-auto bg-black cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (currentAdClickThrough) {
+                    setUseIframeAd(true);
+                  }
+                }}
+              />
             )}
+
+            {/* Top Bar with Branding and Mute button for Video Ads */}
+            <div className="absolute top-4 left-4 right-4 z-[2100] flex justify-between items-center pointer-events-none">
+              <div className="bg-black/75 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" />
+                <span className="text-[10px] text-zinc-300 font-black font-sans">
+                  {useIframeAd ? "موقع الشريك الراعي" : "إعلان ممول"}
+                </span>
+              </div>
+              
+              {useIframeAd && currentAdVideoSrc ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setUseIframeAd(false);
+                    setIframeHasLoaded(false);
+                  }}
+                  className="pointer-events-auto px-3 py-1.5 bg-zinc-900/90 hover:bg-zinc-800 border border-white/15 text-white rounded-xl text-[10px] font-black font-sans transition-all active:scale-95 flex items-center gap-1.5 backdrop-blur-md"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5 rotate-180 animate-pulse-horizontal" />
+                  <span>العودة لمشاهدة الإعلان Video</span>
+                </button>
+              ) : !useIframeAd ? (
+                <button
+                  onClick={handleToggleMuteAd}
+                  className="pointer-events-auto p-2 bg-black/75 backdrop-blur-md rounded-xl border border-white/10 hover:bg-black/90 text-white transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                >
+                  {adMuted ? <VolumeX className="w-4 h-4 text-zinc-400" /> : <Volume2 className="w-4 h-4 text-white" />}
+                </button>
+              ) : null}
+            </div>
+
+            {/* Bottom Controls / Skip Action Button Row */}
+            <div className="absolute bottom-6 left-6 right-6 z-[2100] flex justify-between items-end pointer-events-none">
+              
+              {/* Left Action Banner (Clickable) */}
+              <div 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (currentAdClickThrough) {
+                    setUseIframeAd(true);
+                  }
+                }}
+                className="pointer-events-auto cursor-pointer bg-black/80 border border-white/10 hover:border-yellow-500 hover:bg-black p-3 rounded-2xl flex items-center gap-3 transition-all max-w-xs text-right backdrop-blur-md"
+              >
+                <div className="w-8 h-8 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-500 text-sm font-black">
+                  🔗
+                </div>
+                <div className="flex flex-col text-right">
+                  <span className="text-[10px] text-zinc-400 font-bold">زيارة موقع الراعي</span>
+                  <span className="text-xs text-white font-black truncate max-w-[150px]">
+                    {currentAdClickThrough ? (() => {
+                      try {
+                        return new URL(currentAdClickThrough).hostname;
+                      } catch (err) {
+                        return "تفاصل أكثر";
+                      }
+                    })() : "تفاصل أكثر"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Right Skip / Countdown Controller */}
+              <div className="flex flex-col items-end gap-2 text-right">
+                {adCountdown > 0 ? (
+                  <div className="bg-black/80 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-white/5 font-black text-right text-xs">
+                    <span className="text-zinc-400">يمكنك تخطي الإعلان بعد </span>
+                    <span className="text-yellow-500 font-mono text-sm">{adCountdown}</span>
+                    <span className="text-zinc-400"> ثوانٍ</span>
+                  </div>
+                ) : (
+                  <button
+                    id="ad-skip-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSkipAd(e);
+                    }}
+                    data-tv-focusable="true"
+                    className="pointer-events-auto px-5 py-3 bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700 text-black font-black text-xs sm:text-sm rounded-2xl shadow-[0_10px_30px_rgba(245,158,11,0.3)] transition-all transform active:scale-95 focus:outline-none focus:ring-4 focus:ring-yellow-500 flex items-center gap-2 border border-yellow-400/40 tv-focusable"
+                  >
+                    <span>تخطي الإعلان</span>
+                    <ChevronLeft className="w-4 h-4 animate-bounce-x" />
+                  </button>
+                )}
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* EPISODE LIST OVERLAY */}
-      <AnimatePresence>
-        {showEpisodeMenu && (
-          <>
-             {/* Backdrop for the drawer */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.6 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowEpisodeMenu(false)}
-              className="absolute inset-0 bg-black/85 z-[340] cursor-pointer"
-            />
-            <motion.div
-              onClick={(e) => e.stopPropagation()}
-              initial={{ opacity: 0, x: 100 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 100 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="absolute inset-y-0 right-0 w-80 max-w-[80vw] h-full bg-[#07070a]/99 border-l border-white/10 z-[350] shadow-[0_0_50px_rgba(0,0,0,0.8)] flex flex-col p-6 pr-[calc(1.5rem+env(safe-area-inset-right))] overflow-hidden"
+      {!resolvedVideoUrl ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 gap-4">
+          <div className="w-14 h-14 border-4 border-primary border-t-transparent rounded-full animate-spin shadow-lg shadow-primary/20" />
+          <p className="text-zinc-400 text-sm font-bold tracking-widest text-center px-4">جاري تجهيز سيرفرات المشغل المباشر...</p>
+        </div>
+      ) : playerjsLoaded ? (
+        // Dynamic custom PlayerJS renderer container
+        <div className="relative w-full h-full">
+          <SafariNotification />
+          <div id="pjs-player" className="w-full h-full bg-black" />
+          
+          {/* Transparent bar for floating episode and maximize triggers on PlayerJS */}
+          <div className="absolute top-4 right-4 z-40 flex items-center gap-2 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)]">
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowEpisodeMenu(!showEpisodeMenu); }}
+              className="flex items-center gap-2 bg-black/85 px-3 py-2 rounded-xl border border-white/10 hover:bg-black text-white hover:text-primary transition-all text-[10px] font-black uppercase tracking-wider shadow-2xl"
             >
-              <div className="flex items-center justify-between border-b border-white/5 pb-4 mb-4">
-                <div className="flex flex-col text-right">
-                  <h3 className="text-xs font-black text-primary uppercase tracking-wider">قائمة الحلقات</h3>
-                  <span className="text-[9px] text-zinc-500 font-bold">بث فوري سريع</span>
-                </div>
-                <button 
-                  onClick={() => setShowEpisodeMenu(false)}
-                  className="text-[10px] font-black text-zinc-400 hover:text-white bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl cursor-pointer"
-                >
-                  إغلاق
-                </button>
+              <List className="w-4 h-4 text-primary" />
+              الحلقات
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); toggleBrowserFullscreen(); }}
+              className="p-2 bg-black/85 rounded-xl border border-white/10 hover:bg-black text-white hover:text-primary transition-all shadow-2xl"
+            >
+              {isMaximized ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      ) : (
+        // High fidelity native fallback player
+        <>
+          <SafariNotification />
+           {isLoading && (
+            <div className="absolute inset-0 z-[200] flex flex-col items-center justify-center bg-[#07070a] gap-4 select-none">
+              <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin shadow-lg shadow-primary/20" />
+              <div className="flex flex-col items-center gap-1.5 text-center px-6 max-w-sm font-sans">
+                <p className="text-white text-sm font-black tracking-widest uppercase">جاري تشغيل الحلقة</p>
+                <p className="text-zinc-400 text-[10px] font-bold">يرجى الانتظار لتجهيز البث الآمن...</p>
+                
+                {isOffline && (
+                  isLocalOfflineVideo ? (
+                    <span className="mt-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-4 py-2 rounded-full text-[10px] font-black animate-pulse text-center">
+                       🍿 تشغيل أوفلاين: بإمكانك إطفاء الواي فاي الآن والمشاهدة بدون استهلاك الباقة!
+                    </span>
+                  ) : (
+                    <span className="mt-2 bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded-full text-[9px] font-black animate-pulse">
+                       ⚠️ أنت غير متصل بالإنترنت حالياً
+                    </span>
+                  )
+                )}
               </div>
+            </div>
+          )}
 
-              <div className="flex-1 overflow-y-auto space-y-6 custom-scrollbar pr-1 pb-10">
-                {/* SERVER SELECTOR */}
-                <div>
-                  <h3 className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-3 px-1">سيرفرات المشاهدة</h3>
-                  <div className="grid grid-cols-1 gap-2">
-                    {servers.map((srv, idx) => (
-                      <button 
-                        key={idx} 
-                        onClick={() => onSelectServer(srv.url)} 
-                        className={cn(
-                          "w-full text-right p-3 rounded-xl text-xs font-bold transition-all border",
-                          srv.url === videoUrl 
-                            ? "bg-primary border-primary text-white" 
-                            : "bg-zinc-900/40 border-white/5 text-zinc-300 hover:bg-zinc-800"
-                        )}
-                      >
-                        {srv.name}
-                      </button>
-                    ))}
+          {isIframeFallback ? (
+            <iframe
+              src={resolvedVideoUrl}
+              className="w-full h-full border-0 animate-fade-in"
+              allowFullScreen
+              allow="autoplay; encrypted-media; picture-in-picture"
+              referrerPolicy="no-referrer-when-downgrade"
+              style={{
+                width: '100%',
+                height: '100%',
+                backgroundColor: 'black',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 10,
+              }}
+            />
+          ) : (
+            <ShadowVideo
+              videoRef={videoRef}
+              isPlaying={isPlaying}
+              isMuted={isMuted}
+              onTimeUpdate={handleTimeUpdate}
+              onLoadedMetadata={handleLoadedMetadata}
+              onError={handleVideoError}
+              onWaiting={() => {}}
+              onPlaying={() => { setIsLoading(false); }}
+              onSeeking={() => {}}
+              onSeeked={() => {}}
+              onStalled={() => {}}
+              onCanPlay={handleCanPlay}
+              onCanPlayThrough={() => setIsBuffering(false)}
+              className="w-full h-full"
+            />
+          )}
+
+          {!isLoading && (
+            <>
+              {/* Buffering/Offline Indicator */}
+              {isOffline && (
+                isLocalOfflineVideo ? (
+                  showOfflineNotification && (
+                    <div className="absolute top-4 inset-x-4 z-40 flex items-center justify-center pointer-events-none animate-fade-in">
+                      <div className="bg-[#051e14]/95 backdrop-blur-md border border-emerald-500/30 px-5 py-3 rounded-2xl shadow-2xl text-emerald-400 text-[11px] sm:text-xs font-black text-center flex items-center gap-2.5 animate-bounce max-w-[90%] mx-auto relative overflow-hidden">
+                        <span className="w-2 h-2 rounded-full bg-emerald-450 animate-ping shrink-0" />
+                        <span>🍿 بإمكانك إطفاء الواي فاي الآن ومتابعة المشاهدة بدون إنترنت وبدون استهلاك الباقة! ⚡</span>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <div className="absolute inset-0 z-30 flex flex-col items-center justify-center pointer-events-none bg-black/60 backdrop-blur-md px-6 text-center animate-fade-in">
+                    <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4 shadow-lg shadow-primary/20"></div>
+                    <p className="text-white text-sm font-semibold mb-1">
+                      تحقق من الاتصال بالإنترنت... 🌐
+                    </p>
+                    <p className="text-zinc-400 text-xs max-w-xs leading-relaxed">
+                      إذا قمت بتحميل هذه الحلقة مسبقاً، يرجى تفعيل وضع الأوفلاين.
+                    </p>
                   </div>
-                </div>
+                )
+              )}
 
-                {/* EPISODES */}
-                <div>
-                  <h3 className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-3 px-1">الحلقات</h3>
-                  <HorizontalEpisodeList 
-                    episodes={episodes}
-                    currentIndex={episodeIndex}
-                    seriesImage={seriesImage}
-                    seriesId={seriesId}
-                    onSelect={(ep, idx) => onSelectEpisode(ep, idx)}
-                  />
+              <div 
+                onClick={handlePlayerClick}
+                className={cn(
+                  "absolute inset-0 z-[100] select-none cursor-pointer flex items-center justify-center font-sans",
+                  isIframeFallback ? "pointer-events-none" : "pointer-events-auto"
+                )} />
+
+              {/* Central Play/Pause Circular Button Overlay */}
+              <AnimatePresence>
+                {(showControls || !isPlaying) && !isIframeFallback && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    className="absolute inset-0 z-[120] flex items-center justify-center pointer-events-none"
+                  >
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePlayPause(e);
+                      }}
+                      data-tv-focusable="true"
+                      id="center-play-pause"
+                      className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-black/80 hover:scale-110 shadow-2xl pointer-events-auto"
+                    >
+                      {isPlaying ? (
+                        <Pause className="w-5 h-5 md:w-6 md:h-6 text-white fill-white" />
+                      ) : (
+                        <Play className="w-5 h-5 md:w-6 md:h-6 text-white fill-white ml-0.5" />
+                      )}
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Floating navigation icons for Embeds */}
+              {isIframeFallback && (
+                <div className="absolute top-4 right-4 z-[1000] flex items-center gap-2 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)]">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowEpisodeMenu(!showEpisodeMenu); }}
+                    className="flex items-center gap-2 bg-black/85 px-3 py-2 rounded-xl border border-white/10 text-white text-[10px] font-black uppercase tracking-wider shadow-2xl pointer-events-auto"
+                  >
+                    <List className="w-4 h-4 text-primary" />
+                    الحلقات
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleBrowserFullscreen(); }}
+                    className="p-2 bg-black/85 rounded-xl border border-white/10 text-white shadow-2xl pointer-events-auto"
+                  >
+                    {isMaximized ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                  </button>
                 </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+              )}
+
+              {!isIframeFallback && controlsLayout}
+
+              {/* RESUME PROGRESS NOTIFICATION TOAST */}
+              <AnimatePresence>
+                {showResumeNotification && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 15, x: "-50%" }}
+                    animate={{ opacity: 1, y: 0, x: "-50%" }}
+                    exit={{ opacity: 0, y: -15, x: "-50%" }}
+                    className="absolute bottom-24 sm:bottom-28 left-1/2 z-[1500] bg-black/85 backdrop-blur-md rounded-2xl border border-primary/30 text-white px-5 py-3 shadow-[0_4px_30px_rgba(229,9,20,0.4)] flex items-center gap-3 font-semibold pointer-events-none select-none text-center max-w-sm w-[90%]"
+                  >
+                    <span className="text-xl animate-pulse">⏰</span>
+                    <div className="flex flex-col text-right">
+                      <span className="text-xs font-black text-primary">تم استئناف المشاهدة تلقائياً</span>
+                      <span className="text-[11px] text-zinc-300 font-bold">{resumeTimeText}</span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* SPEED MENU OVERLAY */}
+              <AnimatePresence>
+                {showSpeedMenu && (
+                  <>
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 0.4 }}
+                      exit={{ opacity: 0 }}
+                      onClick={() => setShowSpeedMenu(false)}
+                      className="absolute inset-0 bg-black/60 z-[340] cursor-pointer"
+                    />
+                    <motion.div
+                      id="speed-menu"
+                      initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                      className={cn(
+                        "absolute bottom-24 left-1/2 -translate-x-1/2 z-[350] bg-zinc-900/98 border border-white/10 rounded-2xl p-2 flex flex-col gap-1 min-w-[160px] shadow-2xl",
+                        !isLowEnd && "backdrop-blur-xl"
+                      )}
+                    >
+                      {[0.5, 0.75, 1, 1.25, 1.5, 2].map((rate) => (
+                        <button
+                          key={rate}
+                          onClick={() => handleSpeedChange(rate)}
+                          data-tv-focusable="true"
+                          className={cn(
+                            "w-full text-right px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-between gap-3",
+                            playbackRate === rate ? "bg-primary text-white" : "text-zinc-400 hover:bg-white/5"
+                          )}
+                        >
+                          <span dir="ltr">{rate}x</span>
+                          {playbackRate === rate && <CheckCircle2 className="w-3 h-3" />}
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+
+              {/* EPISODE LIST OVERLAY */}
+              <AnimatePresence>
+                {showEpisodeMenu && !isLocalOfflineVideo && (
+                  <div className="absolute inset-0 z-[1000]">
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 0.8 }}
+                      exit={{ opacity: 0 }}
+                      onClick={() => setShowEpisodeMenu(false)}
+                      className="absolute inset-0 bg-black/80 backdrop-blur-md cursor-pointer"
+                    />
+                    <motion.div
+                      id="episode-drawer"
+                      onClick={(e) => e.stopPropagation()}
+                      initial={{ opacity: 0, x: 100 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 100 }}
+                      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                      className="absolute inset-y-0 right-0 w-80 max-w-[85vw] h-full bg-[#07070a]/99 border-l border-white/10 shadow-[0_0_100px_rgba(0,0,0,0.95)] flex flex-col p-6 pr-[calc(1.5rem+env(safe-area-inset-right))] overflow-hidden"
+                    >
+                      <div className="flex items-center justify-between border-b border-white/5 pb-4 mb-4">
+                        <div className="flex flex-col text-right">
+                          <h3 className="text-xs font-black text-primary uppercase tracking-wider">قائمة الحلقات</h3>
+                          <span className="text-[9px] text-zinc-500 font-bold">بث فوري سريع</span>
+                        </div>
+                        <button 
+                          onClick={() => setShowEpisodeMenu(false)}
+                          data-tv-focusable="true"
+                          className="text-[10px] font-black text-zinc-400 hover:text-white bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl cursor-pointer"
+                        >
+                          إغلاق
+                        </button>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto space-y-6 custom-scrollbar pr-1 pb-10">
+                        {/* SERVER SELECTOR */}
+                        <div>
+                          <h3 className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-3 px-1">سيرفرات المشاهدة</h3>
+                          <div className="grid grid-cols-1 gap-2">
+                            {servers.map((srv, idx) => (
+                              <button 
+                                key={idx} 
+                                onClick={() => onSelectServer(srv.url)} 
+                                data-tv-focusable="true"
+                                className={cn(
+                                  "w-full text-right p-3 rounded-xl text-xs font-bold transition-all border",
+                                  (activeServerUrl ? srv.url === activeServerUrl : srv.url === resolvedVideoUrl)
+                                    ? "bg-primary border-primary text-white" 
+                                    : "bg-zinc-900/40 border-white/5 text-zinc-300 hover:bg-zinc-800"
+                                )}
+                              >
+                                {srv.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* EPISODES */}
+                        <div>
+                          <h3 className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-3 px-1">الحلقات</h3>
+                          <HorizontalEpisodeList 
+                            episodes={episodes}
+                            currentIndex={episodeIndex}
+                            seriesImage={seriesImage}
+                            seriesId={seriesId}
+                            onSelect={(ep, idx) => {
+                              setIsIframeFallback(false);
+                              setIsLoading(true);
+                              onSelectEpisode(ep, idx);
+                              setShowEpisodeMenu(false);
+                              resetControlsTimeout(true);
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 });

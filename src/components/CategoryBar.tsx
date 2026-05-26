@@ -8,7 +8,7 @@ interface CategoryBarProps {
 
 const CATEGORIES = ['الكل', 'تركي', 'خليجي', 'عربي', 'رمضان', 'أفلام', 'أنمي', 'آسيوي وكوري', 'أجنبي', 'فارسي'];
 
-export default function CategoryBar({ selected, onSelect }: CategoryBarProps) {
+export default React.memo(function CategoryBar({ selected, onSelect }: CategoryBarProps) {
   const displayCategories = CATEGORIES.includes(selected) 
     ? CATEGORIES 
     : [selected, ...CATEGORIES];
@@ -31,4 +31,4 @@ export default function CategoryBar({ selected, onSelect }: CategoryBarProps) {
       ))}
     </div>
   );
-}
+});

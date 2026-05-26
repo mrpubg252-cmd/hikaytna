@@ -15,15 +15,28 @@ interface HorizontalEpisodeListProps {
 function formatEpisodeTitle(title: string, index: number): string {
   if (!title) return `الحلقة ${index + 1}`;
   let clean = title.trim();
-  
-  // Clean prefixes for visual elegance
-  clean = clean.replace(/^(ep|episode|ep\#|ep\.|halka|الحلقة)\s*/gi, '');
-  
-  const parsed = parseInt(clean);
-  if (!isNaN(parsed)) {
-    return `الحلقة ${parsed}`;
+
+  // If there's any integer number in the string, let's use it as the clean episode number
+  const numberMatch = clean.match(/\d+/);
+  if (numberMatch) {
+    const num = parseInt(numberMatch[0], 10);
+    
+    // Clean description to see if there is genuine Arabic text that is not duplicate ep info
+    let cleanDesc = clean
+      .replace(/(?:ep|episode|ep\#|ep\.|halka|الحلقة|حلقة|حلق)\s*#?\d+/gi, '')
+      .replace(/\d+/g, '')
+      .replace(/حلق[هة]/g, '')
+      .replace(/[-|_]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    if (cleanDesc && cleanDesc.length > 2) {
+      return `الحلقة ${num} - ${cleanDesc}`;
+    }
+    
+    return `الحلقة ${num}`;
   }
-  
+
   return title.includes('الحلقة') ? title : `الحلقة ${title}`;
 }
 
@@ -105,11 +118,13 @@ export default function HorizontalEpisodeList({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="ابحث برقم الحلقة... (مثال: 5)"
+          data-tv-focusable="true"
           className="w-full bg-zinc-900/60 border border-white/5 rounded-full py-2 pl-3 pr-9 text-[10px] text-white outline-none focus:border-primary/50 placeholder-zinc-500 font-bold transition-all"
         />
         {searchQuery && (
           <button 
             onClick={() => setSearchQuery('')}
+            data-tv-focusable="true"
             className="absolute left-3 top-1/2 -translate-y-1/2 text-[9px] text-zinc-400 hover:text-white bg-white/5 px-1.5 py-0.5 rounded"
           >
             إلغاء
@@ -130,6 +145,7 @@ export default function HorizontalEpisodeList({
                 key={idx}
                 type="button"
                 onClick={() => setSelectedPageIndex(idx)}
+                data-tv-focusable="true"
                 className={cn(
                   "px-2 py-1 text-[9px] font-black rounded-lg border transition-all shrink-0 cursor-pointer active:scale-95",
                   isTabActive
@@ -153,15 +169,26 @@ export default function HorizontalEpisodeList({
           const isWatched = progressService.isWatched(seriesId, originalIndex);
           const isActive = currentIndex === originalIndex;
           const displayTitle = formatEpisodeTitle(ep.title, originalIndex);
+          const isFinalEpisode = 
+            /الأخي?رة/i.test(ep.title) || 
+            /الاخي?ره/i.test(ep.title) ||
+            /النهائية/i.test(ep.title) ||
+            /النهائيه/i.test(ep.title);
 
           return (
             <button
               key={originalIndex}
               data-active={isActive}
+              tabIndex={0}
               type="button"
               onClick={() => onSelect(ep, originalIndex)}
+              onFocus={(e) => {
+                // Ensure the focused item is visible in the scroll container on TV/Remote navigation
+                e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              }}
+              data-tv-focusable="true"
               className={cn(
-                "group text-right relative bg-[#09090c]/80 hover:bg-zinc-900 border rounded-xl p-2 transition-all duration-200 flex items-center gap-2.5 w-full outline-none cursor-pointer",
+                "group text-right relative bg-[#09090c]/80 hover:bg-zinc-900 border rounded-xl p-2 transition-all duration-200 flex items-center gap-2.5 w-full outline-none cursor-pointer focus:ring-2 focus:ring-primary focus:border-primary focus:bg-primary/10",
                 isActive
                   ? "border-primary bg-primary/5 shadow-md shadow-primary/5 ring-1 ring-primary/20"
                   : "border-white/5 hover:border-white/10 active:scale-[0.99]"
@@ -175,6 +202,19 @@ export default function HorizontalEpisodeList({
                     src={seriesImage}
                     alt={displayTitle}
                     className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-500"
+                    onError={(e) => {
+                      const currentSrc = e.currentTarget.src;
+                      if (currentSrc.includes('/api/v1/image-proxy?url=')) {
+                        try {
+                          const urlPart = currentSrc.split('url=')[1];
+                          if (urlPart) {
+                            e.currentTarget.src = decodeURIComponent(urlPart);
+                            return;
+                          }
+                        } catch(err) {}
+                      }
+                      e.currentTarget.src = 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png';
+                    }}
                   />
                 ) : (
                   <div className="w-full h-full bg-gradient-to-tr from-zinc-950 to-zinc-900" />
@@ -198,7 +238,7 @@ export default function HorizontalEpisodeList({
                   {displayTitle}
                 </span>
 
-                <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="flex items-center flex-wrap gap-1.5 mt-0.5">
                   {isWatched && (
                     <span className="text-emerald-400 text-[8px] font-black flex items-center gap-0.5">
                       <CheckCircle2 className="w-2.5 h-2.5" />
@@ -214,6 +254,11 @@ export default function HorizontalEpisodeList({
                   {isActive && (
                     <span className="text-primary text-[8px] font-extrabold animate-pulse">
                       يتم تشغيلها الآن ✨
+                    </span>
+                  )}
+                  {isFinalEpisode && (
+                    <span className="inline-flex items-center text-[7px] text-[#ffca28] font-black bg-[#ffca28]/10 px-1 rounded-md border border-[#ffca28]/20 shadow-sm animate-pulse">
+                      👑 الأخيرة
                     </span>
                   )}
                 </div>

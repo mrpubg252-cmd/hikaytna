@@ -34,6 +34,8 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
   ]);
   const [inputVal, setInputVal] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [showWaitWarning, setShowWaitWarning] = useState(false);
+  const requestActiveRef = useRef(false);
   const [seriesList, setSeriesList] = useState<Series[]>([]);
   const [loadingConfig, setLoadingConfig] = useState(true);
   
@@ -72,6 +74,14 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
     setMessages(prev => [...prev, userMsg]);
     setInputVal('');
     setIsTyping(true);
+    requestActiveRef.current = true;
+    
+    const waitTimer = setTimeout(() => {
+      if (requestActiveRef.current) {
+        setShowWaitWarning(true);
+        setTimeout(() => setShowWaitWarning(false), 5000);
+      }
+    }, 5000);
 
     try {
       // Build history payload
@@ -91,14 +101,13 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: textToSend,
+          message: `${textToSend} (ملاحظة الذكاء الاصطناعي: أنت حكيم، خبير مسلسلات ذكي وودود جداً. أجب بذكاء واختصار باسم 'حكيم'. إذا رأيت سؤالاً عن مسلسل، اقترح عليه أو ناقشه بذكاء حول الدراما.)`,
           history: historyPayload,
           seriesList: simplifiedSeries
         })
       });
 
       const data = await res.json();
-      setIsTyping(false);
 
       if (data.status) {
         const botMsg: Message = {
@@ -127,7 +136,6 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
         throw new Error(data.error || 'فشل الاتصال بالذكاء الاصطناعي');
       }
     } catch (err: any) {
-      setIsTyping(false);
       setMessages(prev => [
         ...prev,
         {
@@ -137,6 +145,11 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
           timestamp: new Date()
         }
       ]);
+    } finally {
+      requestActiveRef.current = false;
+      clearTimeout(waitTimer);
+      setIsTyping(false);
+      setShowWaitWarning(false);
     }
   };
 
@@ -258,6 +271,22 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
         </button>
       </div>
 
+      {/* Warning Banner */}
+      <AnimatePresence>
+        {showWaitWarning && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="px-4 pt-4 pb-0 z-40"
+          >
+            <div className="bg-amber-500/10 border border-amber-500/20 text-amber-500 p-2.5 rounded-xl text-[10px] text-center font-bold">
+              حكيم عليه ضغط الان يرجى الانتضار حتى يرد عليك حكيم
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Message List Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
         {messages.map((m) => (
@@ -297,6 +326,19 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
                             alt={ser.title} 
                             className="w-full h-full object-cover group-hover/navcard:scale-105 transition-transform duration-300"
                             referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              const currentSrc = e.currentTarget.src;
+                              if (currentSrc.includes('/api/v1/image-proxy?url=')) {
+                                try {
+                                  const urlPart = currentSrc.split('url=')[1];
+                                  if (urlPart) {
+                                    e.currentTarget.src = decodeURIComponent(urlPart);
+                                    return;
+                                  }
+                                } catch(err) {}
+                              }
+                              e.currentTarget.src = 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png';
+                            }}
                           />
                           <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/navcard:opacity-100 transition-opacity">
                             <Play className="w-3.5 h-3.5 text-white fill-current" />

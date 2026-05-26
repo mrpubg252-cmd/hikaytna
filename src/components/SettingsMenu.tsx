@@ -4,37 +4,16 @@ import {
   Palette, Shield, Info, Smartphone, Eye, Sparkles, Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useDevice } from '../context/DeviceAndNavigationContext';
 
 export default function SettingsMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   const [reduceMotion, setReduceMotion] = useState(localStorage.getItem('reduceMotion') === 'true');
   const [mobileMode, setMobileMode] = useState(localStorage.getItem('mobileMode') === 'true');
-  const [displayMode, setDisplayMode] = useState(localStorage.getItem('displayMode') || 'auto');
+  const { displayMode, setDisplayMode } = useDevice();
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const root = window.document.documentElement;
-    let zoomValue = '1';
-    switch (displayMode) {
-      case 'mobile':
-        zoomValue = '0.92';
-        break;
-      case 'ipad':
-        zoomValue = '1.02';
-        break;
-      case 'sony':
-        zoomValue = '1.14';
-        break;
-      case 'tv':
-        zoomValue = '1.24';
-        break;
-      default:
-        zoomValue = '1';
-    }
-    root.style.zoom = zoomValue;
-    localStorage.setItem('displayMode', displayMode);
-  }, [displayMode]);
 
   useEffect(() => {
     const root = window.document.documentElement;

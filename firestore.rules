@@ -73,5 +73,30 @@ service cloud.firestore {
         // Must check that the User points actually incremented
         && getAfter(/databases/$(database)/documents/users/$(incoming().referrerId)).data.points == get(/databases/$(database)/documents/users/$(incoming().referrerId)).data.points + 1;
     }
+
+    // Shorts Rules
+    match /shorts/{shortId} {
+        allow read, create, update, delete: if true;
+    }
+
+    // Chats Rules
+    match /chats/{chatId} {
+        allow read: if isSignedIn() && request.auth.uid in resource.data.participants;
+        allow create: if isSignedIn() && request.auth.uid in incoming().participants;
+        allow update: if isSignedIn() && request.auth.uid in existing().participants;
+    }
+
+    // Presence Rules
+    match /presence/{userId} {
+        allow read: if isSignedIn();
+        allow write: if isOwner(userId) && incoming().userId == userId;
+    }
+
+    // Support Tickets Rules
+    match /supportTickets/{ticketId} {
+        allow read: if isSignedIn() && (isOwner(resource.data.userId));
+        allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+        allow update: if isOwner(existing().userId) && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'issue']);
+    }
   }
 }

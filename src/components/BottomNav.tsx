@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, MessageSquare, User } from 'lucide-react';
+import { Home, MessageSquare, User, Film } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
@@ -45,6 +45,7 @@ export default function BottomNav() {
 
   const tabs = [
     { id: 'chat', icon: MessageSquare, path: '/chat', label: 'الدردشة' },
+    { id: 'shorts', icon: Film, path: '/shorts', label: 'الشورتس' },
     { id: 'home', icon: Home, path: '/', label: 'الرئيسية' },
     { 
       id: 'profile', 

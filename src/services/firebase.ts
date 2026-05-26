@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, get } from 'firebase/database';
+import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCQpOf-eNn6Le8b5wsdiDuPabBV_scBD68",
@@ -11,6 +12,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
+export const firestore = getFirestore(app);
 
 export interface Episode {
   title: string;

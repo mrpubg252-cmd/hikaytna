@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getDatabase } from 'firebase/database';
-import { ref, push, set, onValue, remove, get, Database } from 'firebase/database';
+import { getDatabase, ref, push, set, onValue, remove, get, Database, query, limitToLast } from 'firebase/database';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, Shield, Play } from 'lucide-react';
+import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { decryptValue } from '../lib/security';
 import { useAuth } from '../context/AuthContext';
@@ -22,6 +21,7 @@ declare global {
 
 interface ChatMessage {
   id: string;
+  userId: string;
   userName: string;
   userAvatar: string; // id of avatar in AVATARS
   text?: string;
@@ -195,6 +195,7 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
   const chatEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [displayLimit, setDisplayLimit] = useState(5);
   const [inputText, setInputText] = useState('');
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [dbError, setDbError] = useState<string>('');
@@ -204,6 +205,7 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
   const [onlineCount, setOnlineCount] = useState<number>(1);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [isAiReplying, setIsAiReplying] = useState(false);
+  const [showWaitWarning, setShowWaitWarning] = useState(false);
   
   // Pending scene share
   const [pendingScene, setPendingScene] = useState<PendingScene | null>(null);
@@ -401,8 +403,10 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     const safeSeriesId = (seriesId || 'default').replace(/[\.\$\#\[\]\/\s]/g, '_');
     const messagesRef = ref(db, `chats/${safeSeriesId}`);
     
-    // Subscribe to real-time events on database
-    const unsubscribe = onValue(messagesRef, (snapshot) => {
+    // Create query to only download/sync the last displayLimit messages to prevent lag and run ultra-smoothly!
+    const chatQuery = query(messagesRef, limitToLast(displayLimit));
+
+    const unsubscribe = onValue(chatQuery, (snapshot) => {
       const data = snapshot.val();
       if (!data) {
         setMessages([]);
@@ -418,6 +422,7 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
         if (now - timestamp <= 5 * 24 * 60 * 60 * 1000) {
           loadedMessages.push({
             id: key,
+            userId: val.userId || 'unknown',
             userName: val.userName || 'مشاهد غامض',
             userAvatar: val.userAvatar || 'boy1',
             text: val.text || '',
@@ -441,14 +446,63 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     return () => {
       unsubscribe();
     };
-  }, [seriesId, isDbReady]);
+  }, [seriesId, isDbReady, displayLimit]);
 
-  // Scroll to bottom on new messages inside the container only (maintains general page scroll at top)
+  // Track series changes and message additions to grow limit organically only on new posts
+  const prevSeriesIdRef = useRef<string | null>(null);
+  const lastMsgIdRef = useRef<string | null>(null);
+  const lastMessageId = messages[messages.length - 1]?.id;
+
+  // Reset displayLimit to 5 when changing series
+  useEffect(() => {
+    setDisplayLimit(5);
+  }, [seriesId]);
+
+  useEffect(() => {
+    if (prevSeriesIdRef.current !== seriesId) {
+      prevSeriesIdRef.current = seriesId;
+      lastMsgIdRef.current = lastMessageId || null;
+      return;
+    }
+
+    if (lastMessageId && lastMsgIdRef.current && lastMessageId !== lastMsgIdRef.current) {
+      // A new message has indeed arrived in real-time!
+      // We increment displayLimit so that we don't truncate the older messages in view
+      setDisplayLimit(prev => prev + 1);
+    }
+    
+    lastMsgIdRef.current = lastMessageId || null;
+  }, [lastMessageId, seriesId]);
+
+  // Scroll to bottom only when a new message is appended (lastMessageId changes) or initially loaded
   useEffect(() => {
     if (messagesContainerRef.current) {
       messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
     }
-  }, [messages, isRegistered]);
+  }, [lastMessageId, isRegistered]);
+
+  // Handles automatic dynamic loading when scrolling up near the top of the chat
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    if (target.scrollTop <= 10) {
+      // If we've loaded as many messages as the display limit, there are likely more in Firebase!
+      if (messages.length === displayLimit) {
+        const previousScrollHeight = target.scrollHeight;
+        const previousScrollTop = target.scrollTop;
+        
+        // Load 10 more messages from Firebase
+        setDisplayLimit(prev => prev + 10);
+        
+        // Smoothly adjust scroll position so user doesn't lose track
+        requestAnimationFrame(() => {
+          if (messagesContainerRef.current) {
+            const change = messagesContainerRef.current.scrollHeight - previousScrollHeight;
+            messagesContainerRef.current.scrollTop = previousScrollTop + change;
+          }
+        });
+      }
+    }
+  };
 
   const purgeExpiredDocs = async (safeId: string) => {
     if (!db) return;
@@ -486,6 +540,13 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     if (!cleanQuery) return;
 
     setIsAiReplying(true);
+    const waitTimer = setTimeout(() => {
+        if (isAiReplying) {
+          setShowWaitWarning(true);
+          setTimeout(() => setShowWaitWarning(false), 5000);
+        }
+    }, 5000);
+
     try {
       // 1. Fetch simplified series list for AI context
       let simplifiedSeries: any[] = [];
@@ -526,6 +587,8 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
       console.error("Failed to process AI chat response:", err);
     } finally {
       setIsAiReplying(false);
+      clearTimeout(waitTimer);
+      setShowWaitWarning(false);
     }
   };
 
@@ -562,6 +625,7 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     const newMsgRef = push(messagesRef);
     
     const msgData: any = {
+      userId: localStorage.getItem('guest_chat_pid') || 'guest_temp',
       userName,
       userAvatar,
       text: txt || (pendingScene ? `شوفوا هاذ اللقطة عند الدقيقة ${pendingScene.timeStr} 🔥` : ''),
@@ -776,9 +840,9 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
   const selectedAvatarObj = AVATARS.find(a => a.id === userAvatar);
 
   return (
-    <div className="w-full bg-[#0d0d10]/95 backdrop-blur-xl sm:rounded-3xl rounded-none border-0 sm:border border-white/5 overflow-hidden flex flex-col h-full shadow-2xl relative font-sans">
+    <div className="w-full bg-[#0d0d10] sm:rounded-3xl rounded-none border-0 sm:border border-white/5 overflow-hidden flex flex-col h-full shadow-2xl relative font-sans">
       {/* Header */}
-      <div className="bg-[#121215]/80 backdrop-blur-md border-b border-white/5 p-3 flex items-center justify-between z-10">
+      <div className="bg-[#121215] border-b border-white/5 p-3 flex items-center justify-between z-10">
         <div className="flex items-center gap-2">
           {onClose && (
             <button 
@@ -797,6 +861,12 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
         </div>
 
         <div className="flex items-center gap-1.5 text-zinc-500">
+          <button 
+            className="p-1.5 hover:bg-white/10 rounded-full transition-all text-zinc-500 hover:text-red-400 group"
+            onClick={() => { /* Trigger report action - link to NoticeAndSupportBubble if possible | For now just alert */ alert('سيتم فتح نظام البلاغات قريباً'); }}
+          >
+            <ShieldAlert className="w-4 h-4" />
+          </button>
           <Users className="w-3.5 h-3.5" />
           <span className="text-[10px] font-bold">{onlineCount}</span>
         </div>
@@ -870,9 +940,26 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
           )}
         </AnimatePresence>
 
+        {/* Warning Banner */}
+        <AnimatePresence>
+          {showWaitWarning && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="px-4 pt-4 pb-0 z-40"
+            >
+              <div className="bg-amber-500/10 border border-amber-500/20 text-amber-500 p-2.5 rounded-xl text-[10px] text-center font-bold">
+                حكيم عليه ضغط الان يرجى الانتضار حتى يرد عليك حكيم
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Message List */}
         <div 
           ref={messagesContainerRef}
+          onScroll={handleScroll}
           className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar relative"
         >
           {messages.length === 0 && (
@@ -881,9 +968,36 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
               <p className="text-xs font-bold">كن أول من يكتب في الشات!</p>
             </div>
           )}
+
+          {/* Premium Loader for previous messages if there are remaining messages */}
+          {messages.length > 0 && messages.length === displayLimit && (
+            <div className="flex justify-center py-2">
+              <button 
+                onClick={() => {
+                  if (messagesContainerRef.current) {
+                    const previousScrollHeight = messagesContainerRef.current.scrollHeight;
+                    const previousScrollTop = messagesContainerRef.current.scrollTop;
+                    // Increase by 15 messages on click
+                    setDisplayLimit(prev => prev + 15);
+                    requestAnimationFrame(() => {
+                      if (messagesContainerRef.current) {
+                        const change = messagesContainerRef.current.scrollHeight - previousScrollHeight;
+                        messagesContainerRef.current.scrollTop = previousScrollTop + change;
+                      }
+                    });
+                  }
+                }}
+                className="text-[11px] font-black text-amber-500/80 hover:text-amber-400 transition-colors bg-white/5 hover:bg-white/10 px-4 py-1.5 rounded-full flex items-center gap-1.5 border border-white/5 shadow"
+              >
+                <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-ping" />
+                عرض الرسائل السابقة 🍿
+              </button>
+            </div>
+          )}
+
           {messages.map((msg) => {
             const msgAvatarObj = AVATARS.find(a => a.id === msg.userAvatar);
-            const isMe = msg.userName === userName;
+            const isMe = msg.userId === localStorage.getItem('guest_chat_pid');
             return (
               <motion.div 
                 key={msg.id}
@@ -911,26 +1025,37 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
                     )}
                     onClick={() => setSelectedMsgId(selectedMsgId === msg.id ? null : msg.id)}
                   >
+                    {/* Always visible Reply button */}
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); setReplyTo(msg); }}
+                        className="absolute -left-7 top-1 text-zinc-400 hover:text-white transition-colors"
+                      >
+                        <Reply className="w-4 h-4" />
+                      </button>
+                    
                     {msg.replyTo && (
                       <div className={cn(
-                        "mb-2 p-2 rounded-xl border-r-2 text-[10px] opacity-70 italic",
-                        isMe ? "bg-black/10 border-black/20" : "bg-black/20 border-white/20 text-zinc-300"
+                        "mb-2 p-2 rounded-xl border-r-4 text-[11px] bg-black/40 border-primary text-white font-medium flex flex-col gap-0.5",
                       )}>
-                        <span className="font-black block mb-0.5">{msg.replyTo.userName}</span>
-                        {msg.replyTo.text}
+                        <span className="font-black text-primary text-[10px] uppercase">رداً على {msg.replyTo.userName}</span>
+                        <span className="text-zinc-200 truncate">{msg.replyTo.text}</span>
                       </div>
                     )}
-                    {msg.text}
+                    <div className="text-[13px]">{msg.text}</div>
                     {msg.edited && <span className="text-[8px] opacity-50 mr-1">(تم التعديل)</span>}
                       {msg.sceneTime !== undefined && (
                       <button 
                         onClick={(e) => { e.stopPropagation(); onSeekTo?.(msg.sceneTime!); }} 
                         className={cn(
                           "mt-3 block w-full overflow-hidden rounded-2xl border transition-all group/card",
+                          (msg.text && msg.text.length > 50) ? "aspect-[16/9]" : "aspect-video",
                           isMe ? "bg-black/20 border-white/5 hover:border-white/20" : "bg-black/30 border-white/5 hover:border-primary/40"
                         )}
                       >
-                        <div className="relative aspect-video w-full bg-zinc-950 flex items-center justify-center overflow-hidden">
+                        <div className={cn(
+                          "relative w-full bg-zinc-950 flex items-center justify-center overflow-hidden",
+                           (msg.text && msg.text.length > 50) ? "h-full" : "aspect-video"
+                        )}>
                           <img src={msg.sceneImage || '/placeholder-series.jpg'} referrerPolicy="no-referrer" alt="scene" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover/card:scale-105 transition-transform duration-700" />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent z-10" />
                           <div className="absolute inset-0 flex items-center justify-center z-20">
@@ -955,40 +1080,25 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
                       </button>
                     )}
 
-                    {/* Quick Menu Overlay */}
-                    <AnimatePresence>
-                      {selectedMsgId === msg.id && (
-                        <motion.div 
-                          initial={{ opacity: 0, scale: 0.8, y: 10 }}
-                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.8, y: 10 }}
-                          className={cn(
-                            "absolute z-50 flex items-center gap-1 bg-[#1a1a23] border border-white/10 p-1.5 rounded-2xl shadow-2xl top-full mt-2",
-                            isMe ? "right-0" : "left-0"
-                          )}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button onClick={() => { setReplyTo(msg); setSelectedMsgId(null); }} className="p-2 hover:bg-white/5 rounded-xl text-zinc-400 hover:text-primary transition-colors flex items-center gap-2 px-3">
-                            <Reply className="w-3.5 h-3.5" />
-                            <span className="text-[10px] font-black">رد</span>
-                          </button>
-                          {isMe && (
-                            <>
-                              <div className="w-[1px] h-4 bg-white/10" />
-                              <button onClick={() => { startEdit(msg); setSelectedMsgId(null); }} className="p-2 hover:bg-white/5 rounded-xl text-zinc-400 hover:text-blue-400 transition-colors flex items-center gap-2 px-3">
-                                <Wand2 className="w-3.5 h-3.5" />
-                                <span className="text-[10px] font-black">تعديل</span>
-                              </button>
-                              <div className="w-[1px] h-4 bg-white/10" />
-                              <button onClick={() => { deleteMessage(msg.id); setSelectedMsgId(null); }} className="p-2 hover:bg-white/5 rounded-xl text-zinc-400 hover:text-rose-500 transition-colors flex items-center gap-2 px-3">
-                                <X className="w-3.5 h-3.5" />
-                                <span className="text-[10px] font-black">حذف</span>
-                              </button>
-                            </>
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                    {/* Quick Menu Below Message */}
+                    <div className="flex items-center gap-2 mt-1 px-1">
+                       <button onClick={() => { setReplyTo(msg); }} className="text-[10px] font-black text-zinc-500 hover:text-primary transition-colors">
+                          رد
+                       </button>
+                       {isMe && (
+                         <>
+                           <span className="text-zinc-700">•</span>
+                           <button onClick={() => { startEdit(msg); }} className="text-[10px] font-black text-zinc-500 hover:text-blue-400 transition-colors">
+                             تعديل
+                           </button>
+                           <span className="text-zinc-700">•</span>
+                           <button onClick={() => { deleteMessage(msg.id); }} className="text-[10px] font-black text-zinc-500 hover:text-rose-500 transition-colors">
+                             حذف
+                           </button>
+                         </>
+                       )}
+                    </div>
+
                   </div>
                 </div>
               </motion.div>
