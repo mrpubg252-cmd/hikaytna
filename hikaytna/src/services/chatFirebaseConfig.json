@@ -1,0 +1,7 @@
+{
+  "apiKey": "AIzaSyD7-kL247_yH0C4zXW-6eP3L3W0W7E2W1E",
+  "authDomain": "chat-app-12345.firebaseapp.com",
+  "projectId": "chat-app-12345",
+  "databaseURL": "https://chat-app-12345-default-rtdb.firebaseio.com",
+  "storageBucket": "chat-app-12345.firebasestorage.app"
+}

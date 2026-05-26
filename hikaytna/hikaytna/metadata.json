@@ -1,0 +1,6 @@
+{
+  "name": "حكايتنا - عالم الدراما",
+  "description": "تطبيق متطور لمشاهدة المسلسلات العربية والتركية مع تحديثات يومية وسيرفرات متعددة.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
