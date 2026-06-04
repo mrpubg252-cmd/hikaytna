@@ -265,10 +265,10 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
       });
     }
 
-    // ALWAYS use non-deprecated "gemini-3.5-flash" unless there is a custom model set by the admin
+    // ALWAYS use non-deprecated "gemini-2.0-flash" unless there is a custom model set by the admin
     const targetModel = (USER_CUSTOM_AI_CONFIG?.type === 'gemini' && USER_CUSTOM_AI_CONFIG.model) 
       ? USER_CUSTOM_AI_CONFIG.model 
-      : "gemini-3.5-flash";
+      : "gemini-2.0-flash";
 
     // Silently route request to Gemini
     const response = await client.models.generateContent({
