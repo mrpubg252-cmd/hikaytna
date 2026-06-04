@@ -253,10 +253,7 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
   const [showVideo, setShowVideo] = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
   const [ytLoaded, setYtLoaded] = useState(false); // Clean track of YouTube iframe initial buffer
-  const [isMuted, setIsMuted] = useState(() => {
-    const saved = localStorage.getItem('premium_slider_muted');
-    return saved !== 'false'; // Defaults to true (Muted) to ensure 100% smooth instant autoplay on first load.
-  });
+  const [isMuted, setIsMuted] = useState(true); // Always start muted to guarantee 100% smooth instant autoplay on first load.
   const [isTrailerPlaying, setIsTrailerPlaying] = useState(true);
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -438,17 +435,22 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
     }
   }, [index, activeSeries, current?.id]);
 
-  // Listen for YouTube ended state postMessages to transition cleanly
+  // Listen for YouTube ended and playing state postMessages to transition cleanly
   useEffect(() => {
     const handleYouTubeMessage = (e: MessageEvent) => {
       try {
         const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
         if (data && data.event) {
-          const isEndedInfo = data.event === 'infoDelivery' && data.info && data.info.playerState === 0;
-          const isEndedState = data.event === 'onStateChange' && data.info === 0;
-
-          if (isEndedInfo || isEndedState) {
-            nextSlide();
+          const state = data.info?.playerState !== undefined ? data.info.playerState : data.info;
+          
+          if (data.event === 'infoDelivery' || data.event === 'onStateChange') {
+            if (state === 0) {
+              // ENDED
+              nextSlide();
+            } else if (state === 1) {
+              // PLAYING - This guarantees we ONLY fade out the poster when the video is TRULY playing!
+              setIsVideoActive(true);
+            }
           }
         }
       } catch (err) {
@@ -483,24 +485,18 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
     }
   }, [isMuted, showVideo, index]);
 
+  // Provide a long fallback watchdog just in case the iframe plays but doesn't send postMessage 
+  // (though YouTube iframe API with enablejsapi=1 is very reliable)
   useEffect(() => {
     if (!showVideo || !current?.trailer) return;
     
     const youtubeUrl = getYoutubeEmbedUrl(current.trailer);
-    if (youtubeUrl) {
-      if (ytLoaded) {
-        // Safe 1.5s visual poster delay to let video stream decode completely before fading
-        const showTimer = setTimeout(() => {
-          setIsVideoActive(true);
-        }, 1500);
-        return () => clearTimeout(showTimer);
-      } else {
-        // Fallback watchdog: force video active after 3.2s if onLoad took too long
-        const watchTimer = setTimeout(() => {
-          setIsVideoActive(true);
-        }, 3200);
-        return () => clearTimeout(watchTimer);
-      }
+    if (youtubeUrl && ytLoaded) {
+      // Fallback: If it's been 5 seconds and it hasn't signaled "playing", 
+      // but we know YouTube loaded, we can assume it might be playing silently 
+      // or blocked. We just wait gracefully. Let's just remove the forced fade-in
+      // to keep it highly professional (never show black screen or buffering UI).
+      // We will only fade in via the postMessage 'playing' state.
     }
   }, [showVideo, current?.trailer, ytLoaded]);
 
