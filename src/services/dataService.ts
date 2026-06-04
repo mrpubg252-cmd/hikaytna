@@ -112,23 +112,38 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
   firebaseData.forEach((s) => {
     if (!s) return;
     const norm = getNormalizedTitle(s.title);
-    if (norm) {
-      const existing = mergedMap.get(norm);
-      if (existing) {
-        mergedMap.set(norm, {
-          ...existing,
-          ...s,
-          id: s.id || existing.id || norm,
-          image: s.image && s.image.trim() !== "" ? s.image : existing.image,
-          category: s.category && s.category.trim() !== "" ? s.category : existing.category,
-          episodes: s.episodes && s.episodes.length > 0 ? s.episodes : existing.episodes,
-          trailer: s.trailer && s.trailer.trim() !== "" ? s.trailer : existing.trailer,
-        });
-      } else {
-        mergedMap.set(norm, { ...s, id: s.id || norm });
-      }
+    
+    let existingKey = null;
+    if (norm && mergedMap.has(norm)) {
+      existingKey = norm;
+    } else if (s.id && mergedMap.has(s.id)) {
+      existingKey = s.id;
     } else if (s.id) {
-      mergedMap.set(s.id, s);
+      for (const [k, v] of mergedMap.entries()) {
+        if (v.id === s.id) {
+          existingKey = k;
+          break;
+        }
+      }
+    }
+
+    const existing = existingKey ? mergedMap.get(existingKey) : null;
+
+    if (existing) {
+      mergedMap.set(existingKey!, {
+        ...existing,
+        ...s,
+        id: s.id || existing.id,
+        title: s.title && s.title.trim() !== "" ? s.title : existing.title,
+        image: s.image && s.image.trim() !== "" ? s.image : existing.image,
+        category: s.category && s.category.trim() !== "" ? s.category : existing.category,
+        episodes: s.episodes && s.episodes.length > 0 ? s.episodes : existing.episodes,
+        trailer: s.trailer && s.trailer.trim() !== "" ? s.trailer : existing.trailer,
+      });
+    } else {
+      if (s.title && s.title.trim() !== "") {
+        mergedMap.set(norm || s.id, { ...s, id: s.id || norm });
+      }
     }
   });
 
@@ -269,15 +284,36 @@ export async function fetchCategoryPage(
     return all.slice(start, start + 50);
   }
 
-  const rawApiData = await fetchCategoryPageFromAPI(categoryName, pageIndex, signal);
+  const [rawApiData, firebaseData] = await Promise.all([
+    fetchCategoryPageFromAPI(categoryName, pageIndex, signal),
+    fetchAllFromFirebase()
+  ]);
 
   if (rawApiData.length === 0) return [];
 
+  // Extract firebase overlays to a quick map
+  const fbOverrides = new Map<string, any>();
+  firebaseData.forEach(s => {
+    if (s.id) fbOverrides.set(s.id, s);
+    // Try to map by normalized title as well
+    if (s.title) {
+       const norm = s.title.toLowerCase().trim().replace(/^(المسلسل التركي|المسلسل الكوري|المسلسل المكسيكي|المسلسل الاسيوي|المسلسل|الفيلم|البرنامج|مسلسل|برنامج|فيلم)\s+/g, "").replace(/^ال/g, "").replace(/ـ/g, "").replace(/\s+/g, "");
+       if (norm) fbOverrides.set(norm, s);
+    }
+  });
+
   // Format the returned data using the same fixImageUrl
-  const processedSeries = rawApiData.map((s) => ({
-    ...s,
-    image: fixImageUrl(s.image, s.title),
-  }));
+  const processedSeries = rawApiData.map((s) => {
+    const norm = s.title ? s.title.toLowerCase().trim().replace(/^(المسلسل التركي|المسلسل الكوري|المسلسل المكسيكي|المسلسل الاسيوي|المسلسل|الفيلم|البرنامج|مسلسل|برنامج|فيلم)\s+/g, "").replace(/^ال/g, "").replace(/ـ/g, "").replace(/\s+/g, "") : '';
+    const override = fbOverrides.get(s.id) || (norm ? fbOverrides.get(norm) : null);
+    
+    return {
+      ...s,
+      id: override?.id || s.id,
+      trailer: override?.trailer || s.trailer,
+      image: fixImageUrl(override?.image || s.image, s.title),
+    };
+  });
 
   // Apply centralized priority sort and exclusions for this page
   const newSeries = applyPrioritySort(processedSeries);
@@ -286,13 +322,16 @@ export async function fetchCategoryPage(
   if (!cachedSeriesList) {
     cachedSeriesList = newSeries;
   } else {
-    // Add only new ones
-    const existingIds = new Set(cachedSeriesList.map((s) => s.id));
-    const toAdd = newSeries.filter((s) => !existingIds.has(s.id));
-    cachedSeriesList = [...cachedSeriesList, ...toAdd];
+    // Merge deeply into cache (overlaying existing IDs to ensure trailer updates propagate locally)
+    const existingIds = new Map(cachedSeriesList.map((s, i) => [s.id, i]));
+    newSeries.forEach(s => {
+      if (existingIds.has(s.id)) {
+        cachedSeriesList![existingIds.get(s.id)!] = s;
+      } else {
+        cachedSeriesList!.push(s);
+      }
+    });
   }
 
-  // We can return just the newly fetched block, or all cached!
-  // It's usually better to just return the new block for infinite scroll appending
   return newSeries;
 }

@@ -104,11 +104,11 @@ export default function HomeScreen() {
     const handleSync = () => {
       if (!isMounted) return;
       const allCached = getAllCachedSeries();
-      setGlobalCache(allCached);
+      setGlobalCache([...allCached]);
       
       const categoryData = getCachedSeriesByCategory(selectedCategory);
       if (categoryData.length > 0) {
-        setAllSeriesRaw(categoryData);
+        setAllSeriesRaw([...categoryData]);
       }
     };
 

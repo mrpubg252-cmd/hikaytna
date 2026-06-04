@@ -44,10 +44,10 @@ export async function fetchAllFromFirebase() {
   if (!data) return [];
   
   return Object.entries(data)
-    .filter(([key, value]: [string, any]) => value && value.title && value.image) // Filter out skeleton/zombie views-only data entries that cause blank cards
+    .filter(([key, value]: [string, any]) => value && (value.title || value.trailer || value.episodes)) 
     .map(([key, value]: [string, any]) => ({
       id: key,
-      title: value.title || key,
+      title: value.title || '',
       image: value.image || '',
       category: value.category || '',
       rating: value.rating || 0,

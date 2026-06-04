@@ -223,7 +223,7 @@ const SliderShadowVideo: React.FC<SliderShadowVideoProps> = ({
   return <div ref={hostRef} className="w-full h-full" />;
 };
 
-const getYoutubeEmbedUrl = (url: string, muted: boolean) => {
+const getYoutubeEmbedUrl = (url: string) => {
   if (!url) return '';
   const lowerUrl = url.toLowerCase();
   if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) {
@@ -234,8 +234,9 @@ const getYoutubeEmbedUrl = (url: string, muted: boolean) => {
       videoId = match[2];
     }
     if (videoId) {
-      const muteParam = muted ? 'mute=1' : 'mute=0';
-      return `https://www.youtube.com/embed/${videoId}?autoplay=1&${muteParam}&controls=0&showinfo=0&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1&enablejsapi=1`;
+      // Clean, premium always-muted-on-start to bypass strict browser interaction autoplay blocks.
+      // Sound state is perfectly controlled dynamically in real-time via the YouTube iframe postMessage API without reloading.
+      return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1&enablejsapi=1`;
     }
   }
   return '';
@@ -254,7 +255,7 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
   const [ytLoaded, setYtLoaded] = useState(false); // Clean track of YouTube iframe initial buffer
   const [isMuted, setIsMuted] = useState(() => {
     const saved = localStorage.getItem('premium_slider_muted');
-    return saved === 'true'; // Defaults to false (sound ON) if null or not true
+    return saved !== 'false'; // Defaults to true (Muted) to ensure 100% smooth instant autoplay on first load.
   });
   const [isTrailerPlaying, setIsTrailerPlaying] = useState(true);
   const navigate = useNavigate();
@@ -485,7 +486,7 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
   useEffect(() => {
     if (!showVideo || !current?.trailer) return;
     
-    const youtubeUrl = getYoutubeEmbedUrl(current.trailer, isMuted);
+    const youtubeUrl = getYoutubeEmbedUrl(current.trailer);
     if (youtubeUrl) {
       if (ytLoaded) {
         // Safe 1.5s visual poster delay to let video stream decode completely before fading
@@ -521,7 +522,7 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
 
   if (activeSeries.length === 0 || !current) return null;
 
-  const youtubeUrl = getYoutubeEmbedUrl(current?.trailer || '', isMuted);
+  const youtubeUrl = getYoutubeEmbedUrl(current?.trailer || '');
   const isDirect = current?.trailer ? (
     current.trailer.toLowerCase().includes('.mp4') ||
     current.trailer.toLowerCase().includes('.m3u8') ||
@@ -560,6 +561,18 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
                   src={youtubeUrl}
                   onLoad={() => {
                     setYtLoaded(true);
+                    // Dynamically apply current audio preference (mute/unMute) directly
+                    // without regenerating source URL and avoids restarting the trailer
+                    const iframe = iframeRef.current;
+                    if (iframe) {
+                      try {
+                        const message = JSON.stringify({
+                          event: 'command',
+                          func: isMuted ? 'mute' : 'unMute'
+                        });
+                        iframe.contentWindow?.postMessage(message, '*');
+                      } catch (err) {}
+                    }
                   }}
                   className="w-full h-full object-cover scale-[1.35] pointer-events-none border-0"
                   allow="autoplay; encrypted-media; picture-in-picture"
