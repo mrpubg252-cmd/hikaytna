@@ -62,7 +62,7 @@ async function getRemoteConfig() {
 
 // Start with bootstrap keys as fallback (Stable Working Token)
 let API_KEYS: string[] = [
-  "AQ.Ab8RN6LuoIRrBX0LERCLIBIk1OXcz52VfoxJj4gszphbrbEoog"
+  "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY"
 ];
 const WORKING_KEY_CACHE = new Map<number, number>();
 const KEY_COOLDOWNS = new Map<string, number>();

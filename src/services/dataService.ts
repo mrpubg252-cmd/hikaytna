@@ -1,7 +1,8 @@
 import { fetchAllFromAPI, applyPrioritySort } from "./api";
-import { fetchAllFromFirebase, Series } from "./firebase";
+import { fetchAllFromFirebase, Series, db } from "./firebase";
 import { fetchCategoryPageFromAPI } from "./api";
 import { getApiUrl } from "../lib/apiConfig";
+import { ref, onValue } from "firebase/database";
 
 function isSimilarTitle(a: string, b: string) {
   if (!a || !b) return false;
@@ -214,6 +215,42 @@ export async function fetchAllSeries(forceRefresh = false): Promise<Series[]> {
   triggerBackgroundFetch();
   
   return fastInitialData;
+}
+
+// Subscribe to real-time updates from Firebase Series for metadata overlays (like Trailers added by Admin!)
+if (typeof window !== "undefined") {
+  try {
+    const seriesRef = ref(db, 'series');
+    onValue(seriesRef, (snapshot) => {
+      const fbData = snapshot.val();
+      if (!fbData) return;
+      
+      let dirty = false;
+      if (cachedSeriesList) {
+        Object.keys(fbData).forEach(key => {
+          const val = fbData[key];
+          if (val && val.trailer) {
+            // Check if we need to update cache
+            const targetIdx = cachedSeriesList!.findIndex(s => s.id === key);
+            if (targetIdx !== -1 && cachedSeriesList![targetIdx].trailer !== val.trailer) {
+              cachedSeriesList![targetIdx] = { ...cachedSeriesList![targetIdx], trailer: val.trailer };
+              dirty = true;
+            }
+          }
+        });
+        
+        if (dirty) {
+           try {
+             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+               data: cachedSeriesList,
+               timestamp: lastFetchTime
+             }));
+           } catch (e) {}
+           window.dispatchEvent(new CustomEvent("series-data-updated", { detail: cachedSeriesList }));
+        }
+      }
+    });
+  } catch (err) {}
 }
 
 export function getAllCachedSeries(): Series[] {

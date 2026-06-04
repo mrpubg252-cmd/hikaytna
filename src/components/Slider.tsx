@@ -485,20 +485,38 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
     }
   }, [isMuted, showVideo, index]);
 
-  // Provide a long fallback watchdog just in case the iframe plays but doesn't send postMessage 
-  // (though YouTube iframe API with enablejsapi=1 is very reliable)
+  // Provide a fallback watchdog and iOS-specific unblock interaction
   useEffect(() => {
     if (!showVideo || !current?.trailer) return;
     
-    const youtubeUrl = getYoutubeEmbedUrl(current.trailer);
-    if (youtubeUrl && ytLoaded) {
-      // Fallback: If it's been 5 seconds and it hasn't signaled "playing", 
-      // but we know YouTube loaded, we can assume it might be playing silently 
-      // or blocked. We just wait gracefully. Let's just remove the forced fade-in
-      // to keep it highly professional (never show black screen or buffering UI).
-      // We will only fade in via the postMessage 'playing' state.
-    }
-  }, [showVideo, current?.trailer, ytLoaded]);
+    // We will use a reliable but forgiving timer. If 3.5 seconds pass and YouTube still hasn't fired the standard
+    // playing event (perhaps due to iOS blocking autoplay until interacting), we force the UI to fade to the iframe
+    // so the user can easily tap the video to manually start it, instead of being stuck with the image forever.
+    const watchTimer = setTimeout(() => {
+      // Force it to visible.
+      setIsVideoActive(true);
+    }, 3800);
+    
+    // Create a global touch listener on the window to send a strong 'playVideo' command as soon as the user touches their phone screen.
+    // This perfectly bypasses iOS autoplay blocks organically!
+    const forcePlayOnTouch = () => {
+      const iframe = iframeRef.current;
+      if (iframe && isMuted) {
+        try {
+          iframe.contentWindow?.postMessage(JSON.stringify({ event: 'command', func: 'playVideo' }), '*');
+        } catch (e) {}
+      }
+    };
+    
+    window.addEventListener('touchstart', forcePlayOnTouch, { passive: true, once: true });
+    window.addEventListener('scroll', forcePlayOnTouch, { passive: true, once: true });
+    
+    return () => {
+      clearTimeout(watchTimer);
+      window.removeEventListener('touchstart', forcePlayOnTouch);
+      window.removeEventListener('scroll', forcePlayOnTouch);
+    };
+  }, [showVideo, current?.trailer]);
 
   // Clean up HTML5 video elements & release GPU/RAM instantly upon component unmounting
   useEffect(() => {
