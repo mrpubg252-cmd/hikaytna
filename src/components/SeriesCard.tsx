@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Play } from 'lucide-react';
 import { Series } from '../services/firebase';
 import { hasNewEpisode } from '../lib/episodeHistory';
+import { getTMDBPoster, getTMDBPosterSync } from '../lib/tmdbHealing';
 
 interface SeriesCardProps {
   item: Series;
@@ -24,7 +25,43 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
     }
     onPress();
   }, [_hasNew, clicked, item, onPress]);
+
+  const [currentSrc, setCurrentSrc] = React.useState<string>(() => {
+    // 1. Check synchronous cache first for zero-latency presentation
+    const cached = getTMDBPosterSync(item.title, item.category);
+    if (cached) return cached;
+    
+    // 2. Return original image or transparent loading state
+    return item.image || "";
+  });
   const [imageLoaded, setImageLoaded] = React.useState(false);
+
+  // Pre-emptive healing if the image parameter is empty or a generic placeholder
+  React.useEffect(() => {
+    const cached = getTMDBPosterSync(item.title, item.category);
+    if (cached) {
+      setCurrentSrc(cached);
+      return;
+    }
+
+    const isPlaceholder = !item.image || 
+      item.image.includes('images.unsplash.com') || 
+      item.image.includes('default_image') || 
+      item.image.includes('thumbnail.jpg') || 
+      item.image.includes('logo.png') ||
+      item.image.includes('alooytv') ||
+      item.image.includes('video_thumb');
+
+    if (isPlaceholder) {
+      getTMDBPoster(item.title, item.category).then((healedUrl) => {
+        if (healedUrl) {
+          setCurrentSrc(healedUrl);
+        }
+      });
+    } else {
+      setCurrentSrc(item.image);
+    }
+  }, [item.title, item.image, item.category]);
 
   const displayRating = React.useMemo(() => {
     if (item.rating && item.rating > 0) {
@@ -56,33 +93,27 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
       onClick={handlePress}
     >
       <img 
-        src={item.image} 
+        src={currentSrc} 
         alt={item.title} 
         loading="lazy"
         decoding="async"
         referrerPolicy="no-referrer"
         className={`w-full h-full object-cover transition-opacity duration-500 will-change-transform ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
         onLoad={() => setImageLoaded(true)}
-        onError={(e) => {
-          const currentSrc = e.currentTarget.src;
-          if (currentSrc.includes('images.weserv.nl')) {
-             return;
+        onError={() => {
+          // Reactively fetch fallback poster path from TMDB on rendering errors
+          if (currentSrc && currentSrc.includes('image.tmdb.org')) {
+            // Already a TMDB url that failed, prevent infinite loops
+            return;
           }
-          if (currentSrc.includes('url=')) {
-            try {
-              const urlPart = currentSrc.split('url=')[1];
-              if (urlPart) {
-                const originalUrl = decodeURIComponent(urlPart);
-                e.currentTarget.src = `https://images.weserv.nl/?url=${encodeURIComponent(originalUrl)}`;
-                setImageLoaded(true);
-                return;
-              }
-            } catch(err) {}
-          }
-          if (item.image && !item.image.includes('images.weserv.nl')) {
-             e.currentTarget.src = `https://images.weserv.nl/?url=${encodeURIComponent(item.image)}`;
-             setImageLoaded(true);
-          }
+          getTMDBPoster(item.title, item.category).then((healedUrl) => {
+            if (healedUrl) {
+              setCurrentSrc(healedUrl);
+            } else {
+              // Final generic background fallbacks
+              setCurrentSrc("https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
+            }
+          });
         }}
       />
 

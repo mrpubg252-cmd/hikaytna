@@ -13,6 +13,66 @@ import { fetchEpisodesFromAPI, fetchPlayUrlFromAPI } from '../services/api';
 import BottomNav from '../components/BottomNav';
 import SeriesChat from '../components/SeriesChat';
 import ShortCard from '../components/ShortCard';
+import { getTMDBPoster, getTMDBPosterSync } from '../lib/tmdbHealing';
+
+interface ShortsOptionImageProps {
+  title: string;
+  image?: string;
+  thumbnail?: string;
+  category?: string;
+}
+
+const ShortsOptionImage: React.FC<ShortsOptionImageProps> = ({ title, image, thumbnail, category }) => {
+  const baseImg = image || thumbnail || "";
+  const [src, setSrc] = useState<string>(() => {
+    const cached = getTMDBPosterSync(title, category);
+    if (cached) return cached;
+    return baseImg;
+  });
+
+  useEffect(() => {
+    const cached = getTMDBPosterSync(title, category);
+    if (cached) {
+      setSrc(cached);
+      return;
+    }
+
+    const isPlaceholder = !baseImg || 
+      baseImg.includes('images.unsplash.com') || 
+      baseImg.includes('default_image') || 
+      baseImg.includes('thumbnail.jpg') || 
+      baseImg.includes('logo.png') ||
+      baseImg.includes('alooytv') ||
+      baseImg.includes('video_thumb');
+
+    if (isPlaceholder) {
+      getTMDBPoster(title, category).then((healed) => {
+        if (healed) setSrc(healed);
+      });
+    } else {
+      setSrc(baseImg);
+    }
+  }, [title, baseImg, category]);
+
+  return (
+    <img 
+      src={src || `https://images.unsplash.com/photo-1598899134739-24c46f58b8c0?q=80&w=200&auto=format&fit=crop`}
+      className="w-full h-full object-cover"
+      alt={title}
+      loading="lazy"
+      onError={() => {
+        if (src && src.includes('image.tmdb.org')) return;
+        getTMDBPoster(title, category).then((healed) => {
+          if (healed) {
+            setSrc(healed);
+          } else {
+            setSrc('https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png');
+          }
+        });
+      }}
+    />
+  );
+};
 
 interface ShortComment {
   id: string;
@@ -1733,24 +1793,10 @@ export default function ShortsScreen() {
                         <div className={`relative aspect-[3/4] rounded-xl overflow-hidden border-2 transition-colors ${
                           pubSeriesName === opt.title ? 'border-primary shadow-lg shadow-primary/30' : 'border-white/5'
                         }`}>
-                          <img 
-                            src={opt.image || opt.thumbnail || `https://images.unsplash.com/photo-1598899134739-24c46f58b8c0?q=80&w=200&auto=format&fit=crop`}
-                            className="w-full h-full object-cover"
-                            alt={opt.title}
-                            loading="lazy"
-                            onError={(e) => {
-                              const currentSrc = e.currentTarget.src;
-                              if (currentSrc.includes('/api/v1/image-proxy?url=')) {
-                                try {
-                                  const urlPart = currentSrc.split('url=')[1];
-                                  if (urlPart) {
-                                    e.currentTarget.src = decodeURIComponent(urlPart);
-                                    return;
-                                  }
-                                } catch(err) {}
-                              }
-                              e.currentTarget.src = 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png';
-                            }}
+                          <ShortsOptionImage category={opt.category} 
+                            title={opt.title} 
+                            image={opt.image} 
+                            thumbnail={opt.thumbnail} 
                           />
                           {pubSeriesName === opt.title && (
                             <div className="absolute inset-0 bg-primary/10 flex items-center justify-center">

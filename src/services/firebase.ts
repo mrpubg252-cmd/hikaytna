@@ -43,13 +43,15 @@ export async function fetchAllFromFirebase() {
   const data = snapshot.val();
   if (!data) return [];
   
-  return Object.entries(data).map(([key, value]: [string, any]) => ({
-    id: key,
-    title: value.title || key,
-    image: value.image || '',
-    category: value.category || '',
-    rating: value.rating || 0,
-    episodes: Array.isArray(value.episodes) ? value.episodes : Object.values(value.episodes || {}),
-    trailer: value.trailer || ''
-  })) as Series[];
+  return Object.entries(data)
+    .filter(([key, value]: [string, any]) => value && value.title && value.image) // Filter out skeleton/zombie views-only data entries that cause blank cards
+    .map(([key, value]: [string, any]) => ({
+      id: key,
+      title: value.title || key,
+      image: value.image || '',
+      category: value.category || '',
+      rating: value.rating || 0,
+      episodes: Array.isArray(value.episodes) ? value.episodes : Object.values(value.episodes || {}),
+      trailer: value.trailer || ''
+    })) as Series[];
 }

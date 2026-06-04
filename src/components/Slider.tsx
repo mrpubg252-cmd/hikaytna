@@ -5,6 +5,116 @@ import { useNavigate } from 'react-router-dom';
 import { Series, db } from '../services/firebase';
 import { ref, set } from 'firebase/database';
 import { sliderSelections, syncSliderSelections } from '../services/api';
+import { getTMDBPoster, getTMDBPosterSync } from '../lib/tmdbHealing';
+import { updateCachedSeriesTrailer } from '../services/dataService';
+
+interface SliderBackgroundImageProps {
+  series: Series;
+  isVideoActive: boolean;
+}
+
+const SliderBackgroundImage: React.FC<SliderBackgroundImageProps> = ({ series, isVideoActive }) => {
+  const [src, setSrc] = useState<string>(() => {
+    const cached = getTMDBPosterSync(series.title, series.category);
+    if (cached) return cached;
+    return series.image || "";
+  });
+
+  useEffect(() => {
+    const cached = getTMDBPosterSync(series.title, series.category);
+    if (cached) {
+      setSrc(cached);
+      return;
+    }
+
+    const isPlaceholder = !series.image || 
+      series.image.includes('images.unsplash.com') || 
+      series.image.includes('default_image') || 
+      series.image.includes('thumbnail.jpg') || 
+      series.image.includes('logo.png') ||
+      series.image.includes('alooytv') ||
+      series.image.includes('video_thumb');
+
+    if (isPlaceholder) {
+      getTMDBPoster(series.title, series.category).then((healed) => {
+        if (healed) setSrc(healed);
+      });
+    } else {
+      setSrc(series.image);
+    }
+  }, [series]);
+
+  return (
+    <motion.img 
+      src={src} 
+      alt={series.title}
+      loading="eager"
+      decoding="async"
+      animate={{ opacity: isVideoActive ? 0.2 : 1 }}
+      transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+      referrerPolicy="no-referrer"
+      className="w-full h-full object-cover will-change-opacity"
+      onError={() => {
+        if (src && src.includes('image.tmdb.org')) return;
+        getTMDBPoster(series.title, series.category).then((healed) => {
+          if (healed) setSrc(healed);
+          else setSrc('https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png');
+        });
+      }}
+    />
+  );
+};
+
+interface SliderMiniImageProps {
+  series: Series;
+}
+
+const SliderMiniImage: React.FC<SliderMiniImageProps> = ({ series }) => {
+  const [src, setSrc] = useState<string>(() => {
+    const cached = getTMDBPosterSync(series.title, series.category);
+    if (cached) return cached;
+    return series.image || "";
+  });
+
+  useEffect(() => {
+    const cached = getTMDBPosterSync(series.title, series.category);
+    if (cached) {
+      setSrc(cached);
+      return;
+    }
+
+    const isPlaceholder = !series.image || 
+      series.image.includes('images.unsplash.com') || 
+      series.image.includes('default_image') || 
+      series.image.includes('thumbnail.jpg') || 
+      series.image.includes('logo.png') ||
+      series.image.includes('alooytv') ||
+      series.image.includes('video_thumb');
+
+    if (isPlaceholder) {
+      getTMDBPoster(series.title, series.category).then((healed) => {
+        if (healed) setSrc(healed);
+      });
+    } else {
+      setSrc(series.image);
+    }
+  }, [series]);
+
+  return (
+    <img
+      src={src}
+      alt=""
+      className="w-10 h-10 object-cover rounded-lg border border-zinc-800"
+      referrerPolicy="no-referrer"
+      onError={() => {
+        if (src && src.includes('image.tmdb.org')) return;
+        getTMDBPoster(series.title, series.category).then((healed) => {
+          if (healed) setSrc(healed);
+        });
+      }}
+    />
+  );
+};
 
 interface SliderShadowVideoProps {
   src: string;
@@ -113,7 +223,7 @@ const SliderShadowVideo: React.FC<SliderShadowVideoProps> = ({
   return <div ref={hostRef} className="w-full h-full" />;
 };
 
-const getYoutubeEmbedUrl = (url: string) => {
+const getYoutubeEmbedUrl = (url: string, muted: boolean) => {
   if (!url) return '';
   const lowerUrl = url.toLowerCase();
   if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) {
@@ -124,7 +234,8 @@ const getYoutubeEmbedUrl = (url: string) => {
       videoId = match[2];
     }
     if (videoId) {
-      return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${videoId}&showinfo=0&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1&enablejsapi=1`;
+      const muteParam = muted ? 'mute=1' : 'mute=0';
+      return `https://www.youtube.com/embed/${videoId}?autoplay=1&${muteParam}&controls=0&showinfo=0&rel=0&modestbranding=1&iv_load_policy=3&playsinline=1&enablejsapi=1`;
     }
   }
   return '';
@@ -141,7 +252,10 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
   const [showVideo, setShowVideo] = useState(false);
   const [isVideoActive, setIsVideoActive] = useState(false);
   const [ytLoaded, setYtLoaded] = useState(false); // Clean track of YouTube iframe initial buffer
-  const [isMuted, setIsMuted] = useState(true); // Default to muted to guarantee instant compatible autoplay on all mobile/desktop browsers
+  const [isMuted, setIsMuted] = useState(() => {
+    const saved = localStorage.getItem('premium_slider_muted');
+    return saved === 'true'; // Defaults to false (sound ON) if null or not true
+  });
   const [isTrailerPlaying, setIsTrailerPlaying] = useState(true);
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -150,6 +264,30 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   const [managerSearch, setManagerSearch] = useState('');
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  const [editingTrailerId, setEditingTrailerId] = useState<string | null>(null);
+  const [trailerInputUrl, setTrailerInputUrl] = useState('');
+  const [savingTrailerId, setSavingTrailerId] = useState<string | null>(null);
+
+  const handleUpdateTrailerSubmit = async (seriesId: string) => {
+    if (!seriesId) return;
+    setSavingTrailerId(seriesId);
+    try {
+      const trimmedUrl = trailerInputUrl.trim();
+      const trailerRef = ref(db, `series/${seriesId}/trailer`);
+      await set(trailerRef, trimmedUrl);
+      
+      // Update local memory and localStorage state so it plays instantly and re-renders
+      updateCachedSeriesTrailer(seriesId, trimmedUrl);
+      
+      setEditingTrailerId(null);
+      setTrailerInputUrl('');
+    } catch (err) {
+      console.error("Failed to save trailer to Firebase realtime database:", err);
+    } finally {
+      setSavingTrailerId(null);
+    }
+  };
 
   // List of all series with sliderSelected state overlayed
   const managerSeriesList = useMemo(() => {
@@ -199,6 +337,20 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
         await set(sliderItemRef, selectData);
       } catch (fbErr: any) {
         console.warn("RTDB Slider sync restricted (using backend local persistence):", fbErr.message);
+      }
+
+      // 3. Write securely to local Firestore (Applet's own database ID for instant delivery!)
+      try {
+        const { doc, setDoc, deleteDoc } = await import("firebase/firestore");
+        const { db: firestoreDb } = await import("../lib/firebase");
+        const sliderDocRef = doc(firestoreDb, "slider_selections", seriesItem.id);
+        if (selectData) {
+          await setDoc(sliderDocRef, selectData);
+        } else {
+          await deleteDoc(sliderDocRef);
+        }
+      } catch (fsErr: any) {
+        console.warn("Firestore Slider sync restricted:", fsErr.message);
       }
     } catch (err: any) {
       console.error("Failed to update slider selections:", err);
@@ -251,6 +403,7 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
   const handleSliderClick = () => {
     const newMuted = !isMuted;
     setIsMuted(newMuted);
+    localStorage.setItem('premium_slider_muted', String(newMuted));
 
     const video = videoRef.current;
     if (video) {
@@ -269,10 +422,10 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
     if (current?.trailer) {
       setShowVideo(true);
 
-      // Safety Watchdog: Auto-advance after 30 seconds so it never hangs
+      // Safety Watchdog: Auto-advance after 5 minutes so it never hangs if anything goes completely wrong
       const watchdog = setTimeout(() => {
         nextSlide();
-      }, 30000);
+      }, 300000);
 
       return () => {
         clearTimeout(watchdog);
@@ -283,6 +436,30 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
       return () => clearTimeout(timer);
     }
   }, [index, activeSeries, current?.id]);
+
+  // Listen for YouTube ended state postMessages to transition cleanly
+  useEffect(() => {
+    const handleYouTubeMessage = (e: MessageEvent) => {
+      try {
+        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        if (data && data.event) {
+          const isEndedInfo = data.event === 'infoDelivery' && data.info && data.info.playerState === 0;
+          const isEndedState = data.event === 'onStateChange' && data.info === 0;
+
+          if (isEndedInfo || isEndedState) {
+            nextSlide();
+          }
+        }
+      } catch (err) {
+        // Safe catch for other window messages
+      }
+    };
+
+    window.addEventListener('message', handleYouTubeMessage);
+    return () => {
+      window.removeEventListener('message', handleYouTubeMessage);
+    };
+  }, [index, activeSeries]);
 
   // Synchronize dynamic user volume interaction back to both the direct HTML5 video element AND the YouTube iframe API
   useEffect(() => {
@@ -308,7 +485,7 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
   useEffect(() => {
     if (!showVideo || !current?.trailer) return;
     
-    const youtubeUrl = getYoutubeEmbedUrl(current.trailer);
+    const youtubeUrl = getYoutubeEmbedUrl(current.trailer, isMuted);
     if (youtubeUrl) {
       if (ytLoaded) {
         // Safe 1.5s visual poster delay to let video stream decode completely before fading
@@ -344,7 +521,7 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
 
   if (activeSeries.length === 0 || !current) return null;
 
-  const youtubeUrl = getYoutubeEmbedUrl(current?.trailer || '');
+  const youtubeUrl = getYoutubeEmbedUrl(current?.trailer || '', isMuted);
   const isDirect = current?.trailer ? (
     current.trailer.toLowerCase().includes('.mp4') ||
     current.trailer.toLowerCase().includes('.m3u8') ||
@@ -367,29 +544,7 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
           className="absolute inset-0 will-change-opacity"
         >
           {/* Background Image - Always there, but fades out when video starts */}
-          <motion.img 
-            src={current.image} 
-            alt={current.title}
-            loading="eager"
-            decoding="async"
-            animate={{ opacity: isVideoActive ? 0.2 : 1 }}
-            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-            referrerPolicy="no-referrer"
-            className="w-full h-full object-cover will-change-opacity"
-            onError={(e) => {
-              const currentSrc = e.currentTarget.src;
-              if (currentSrc.includes('/api/v1/image-proxy?url=')) {
-                try {
-                  const urlPart = currentSrc.split('url=')[1];
-                  if (urlPart) {
-                    e.currentTarget.src = decodeURIComponent(urlPart);
-                    return;
-                  }
-                } catch(err) {}
-              }
-              e.currentTarget.src = 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png';
-            }}
-          />
+          <SliderBackgroundImage series={current} isVideoActive={isVideoActive} />
 
           {/* Video Trailer */}
           {showVideo && current?.trailer && (
@@ -442,21 +597,7 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
           {showVideo && (
             <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
               <AnimatePresence>
-                {isMuted ? (
-                  // Muted Sticker Banner - optimized for ultra-smooth 60 FPS on weak processors & Smart TVs
-                  <motion.div 
-                    initial={{ scale: 0.9, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.9, opacity: 0 }}
-                    className="bg-zinc-950/98 border border-white/10 px-5 py-3.5 rounded-2xl flex flex-col items-center gap-2 shadow-2xl animate-pulse text-center max-w-xs sm:max-w-sm"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary border border-primary/30">
-                      <VolumeX className="w-5 h-5 animate-bounce" />
-                    </div>
-                    <span className="text-white text-xs font-black">التريلر بدون صوت 🔇</span>
-                    <span className="text-zinc-400 text-[10px] font-bold">اضغط في أي مكان على الشاشة للتشغيل بالصوت 🔊</span>
-                  </motion.div>
-                ) : !isTrailerPlaying ? (
+                {!isTrailerPlaying && (
                   // Unmuted but Paused feedback
                   <motion.div 
                     initial={{ scale: 0.8, opacity: 0 }}
@@ -465,16 +606,6 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
                     className="w-14 h-14 bg-zinc-950/98 border border-white/10 rounded-full flex items-center justify-center text-white shadow-xl"
                   >
                     <Play className="w-6 h-6 text-primary fill-primary ml-1" />
-                  </motion.div>
-                ) : (
-                  // Temporary unmuted state flash indicator (fades out in 1s)
-                  <motion.div 
-                    initial={{ scale: 1.1, opacity: 0.8 }}
-                    animate={{ scale: 1, opacity: 0 }}
-                    transition={{ duration: 1 }}
-                    className="w-14 h-14 bg-zinc-950/98 border border-white/10 rounded-full flex items-center justify-center text-white shadow-xl"
-                  >
-                    <Volume2 className="w-6 h-6 text-primary" />
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -549,6 +680,42 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
           />
         ))}
       </div>
+
+      {/* High-End Netflix-style Sound Toggle Button */}
+      {showVideo && current?.trailer && (
+        <div className="absolute bottom-20 left-4 sm:left-12 z-30 pointer-events-auto">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const newMuted = !isMuted;
+              setIsMuted(newMuted);
+              localStorage.setItem('premium_slider_muted', String(newMuted));
+              const video = videoRef.current;
+              if (video) {
+                video.muted = newMuted;
+                if (video.paused) {
+                  video.play().catch(() => {});
+                }
+              }
+            }}
+            className="flex items-center gap-2 px-3.5 py-2.5 sm:px-4 sm:py-3 bg-zinc-950/70 hover:bg-zinc-950 border border-white/10 hover:border-primary/50 text-white rounded-full transition-all duration-300 transform active:scale-95 cursor-pointer backdrop-blur-md shadow-2xl"
+          >
+            {isMuted ? (
+              <>
+                <span className="text-[10px] font-black tracking-wide text-zinc-300">تشغيل الصوت</span>
+                <VolumeX className="w-3.5 h-3.5 text-zinc-400" />
+              </>
+            ) : (
+              <>
+                <span className="text-[10px] font-black tracking-wide text-primary">طمس الصوت</span>
+                <div className="relative flex items-center justify-center">
+                  <Volume2 className="w-3.5 h-3.5 text-primary" />
+                </div>
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Dynamic Admin Settings Button */}
       {isAdmin && (
@@ -642,48 +809,105 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
                 ) : (
                   managerSeriesList.slice(0, 100).map((s: Series) => {
                     const isSelected = sliderSelections[s.id]?.selected === true;
+                    const isEditingTrailer = editingTrailerId === s.id;
                     return (
                       <div
                         key={s.id}
-                        className="flex items-center justify-between p-3 rounded-2xl bg-zinc-900/40 border border-zinc-900/50 hover:bg-zinc-900 transition-colors"
+                        className="flex flex-col gap-2 p-1.5 rounded-2xl bg-zinc-900/10 border border-zinc-900 overflow-hidden"
                       >
-                        {/* Selector checkbox */}
-                        <div className="flex items-center justify-center">
-                          <button
-                            onClick={() => handleToggleSliderSelect(s)}
-                            disabled={savingId === s.id}
-                            className={`flex items-center gap-1 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer disabled:opacity-50 ${
-                              isSelected
-                                ? 'bg-primary text-white shadow-[0_0_10px_rgba(229,9,20,0.3)] hover:bg-primary/90'
-                                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
-                            }`}
-                          >
-                            {savingId === s.id ? (
-                              <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            ) : isSelected ? (
-                              <>
-                                <Check className="w-3.5 h-3.5" />
-                                <span>محدد</span>
-                              </>
-                            ) : (
-                              <span>إضافة</span>
-                            )}
-                          </button>
+                        <div className="flex items-center justify-between p-2 pl-2 rounded-xl bg-zinc-900/40 hover:bg-zinc-900/60 transition-colors">
+                          {/* Selector & Trailer buttons */}
+                          <div className="flex items-center gap-2">
+                            {/* Toggle selection */}
+                            <button
+                              onClick={() => handleToggleSliderSelect(s)}
+                              disabled={savingId === s.id}
+                              className={`flex items-center gap-1 px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer disabled:opacity-50 ${
+                                isSelected
+                                  ? 'bg-primary text-white shadow-[0_0_10px_rgba(229,9,20,0.3)] hover:bg-primary/90'
+                                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                              }`}
+                            >
+                              {savingId === s.id ? (
+                                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              ) : isSelected ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>محدد</span>
+                                </>
+                              ) : (
+                                <span>إضافة</span>
+                              )}
+                            </button>
+
+                            {/* Edit Trailer Toggle */}
+                            <button
+                              onClick={() => {
+                                if (isEditingTrailer) {
+                                  setEditingTrailerId(null);
+                                } else {
+                                  setEditingTrailerId(s.id);
+                                  setTrailerInputUrl(s.trailer || "");
+                                }
+                              }}
+                              className={`flex items-center gap-1 px-3 py-2 rounded-xl text-[10px] sm:text-xs font-extrabold border transition-all cursor-pointer ${
+                                isEditingTrailer
+                                  ? 'bg-zinc-800 border-zinc-700 text-white'
+                                  : s.trailer
+                                    ? 'bg-yellow-500/15 border-yellow-500/30 text-yellow-500 animate-pulse'
+                                    : 'bg-zinc-950/40 border-white/5 text-zinc-400 hover:text-white hover:border-white/15'
+                              }`}
+                            >
+                              <Film className="w-3.5 h-3.5 shrink-0" />
+                              <span>{s.trailer ? "تعديل التريلر 🎬" : "أضف تريلر 🎬"}</span>
+                            </button>
+                          </div>
+
+                          {/* Series Details info */}
+                          <div className="flex items-center gap-2.5 text-right">
+                            <div>
+                              <h4 className="text-xs font-black text-white">{s.title}</h4>
+                              <span className="text-[10px] text-zinc-500 font-bold mt-1 block">{s.category}</span>
+                            </div>
+                            <SliderMiniImage series={s} />
+                          </div>
                         </div>
 
-                        {/* Series Details info */}
-                        <div className="flex items-center gap-3 text-right">
-                          <div>
-                            <h4 className="text-xs font-black text-white">{s.title}</h4>
-                            <span className="text-[10px] text-zinc-500 font-bold mt-1 block">{s.category}</span>
-                          </div>
-                          <img
-                            src={s.image}
-                            alt=""
-                            className="w-10 h-10 object-cover rounded-lg border border-zinc-800"
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
+                        {/* Collapsible edit content */}
+                        <AnimatePresence>
+                          {isEditingTrailer && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.3 }}
+                              className="px-2.5 pb-2 pt-0.5 border-t border-zinc-900/30 flex flex-col gap-2 text-right justify-end"
+                            >
+                              <span className="text-[10px] text-zinc-500 font-extrabold block">رابط تريلر المسلسل (يوتيوب أو رابط مباشر MP4/M3U8):</span>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleUpdateTrailerSubmit(s.id)}
+                                  disabled={savingTrailerId === s.id}
+                                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition duration-200 shadow-md flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 min-w-[70px]"
+                                >
+                                  {savingTrailerId === s.id ? (
+                                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                  ) : (
+                                    <span>حفظ 💾</span>
+                                  )}
+                                </button>
+                                <input
+                                  type="text"
+                                  dir="ltr"
+                                  value={trailerInputUrl}
+                                  onChange={(e) => setTrailerInputUrl(e.target.value)}
+                                  placeholder="https://www.youtube.com/watch?v=... أو رابط مباشر"
+                                  className="flex-1 bg-zinc-950 border border-zinc-800 text-white rounded-xl px-3.5 py-2.5 text-xs focus:outline-none focus:border-primary/50 text-left font-mono"
+                                />
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
                     );
                   })

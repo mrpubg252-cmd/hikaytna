@@ -205,6 +205,27 @@ export function getAllCachedSeries(): Series[] {
   return cachedSeriesList || [];
 }
 
+export function updateCachedSeriesTrailer(seriesId: string, trailerUrl: string) {
+  if (cachedSeriesList) {
+    cachedSeriesList = cachedSeriesList.map(s => {
+      if (s.id === seriesId) {
+        return { ...s, trailer: trailerUrl };
+      }
+      return s;
+    });
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+        data: cachedSeriesList,
+        timestamp: lastFetchTime
+      }));
+    } catch (e) {}
+    
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("series-data-updated", { detail: cachedSeriesList }));
+    }
+  }
+}
+
 export function getCachedSeriesByCategory(categoryName: string): Series[] {
   if (!cachedSeriesList || cachedSeriesList.length === 0) return [];
   if (categoryName === "الكل") return cachedSeriesList;

@@ -16,6 +16,7 @@ import { encryptValue } from '../lib/security';
 import SeriesChat from '../components/SeriesChat';
 import { offlineService } from '../services/offlineService';
 import { getApiUrl } from '../lib/apiConfig';
+import { getTMDBPosterSync } from '../lib/tmdbHealing';
 
 export default function WatchScreen() {
   const location = useLocation();
@@ -29,6 +30,10 @@ export default function WatchScreen() {
   }, [series, navigate]);
 
   if (!series) return null;
+
+  const resolvedSeriesImage = React.useMemo(() => {
+    return getTMDBPosterSync(series.title, series.category) || series.image || "";
+  }, [series]);
 
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [currentEpisode, setCurrentEpisode] = useState(0);
@@ -114,6 +119,20 @@ export default function WatchScreen() {
         await set(pinRef, pinData);
       } catch (fbErr: any) {
         console.warn("Firebase RTDB Pin sync restricted (deferred on backend):", fbErr.message);
+      }
+
+      // 3. Write securely to local Firestore (Applet's own database ID for instant delivery!)
+      try {
+        const { doc, setDoc, deleteDoc } = await import("firebase/firestore");
+        const { db: firestoreDb } = await import("../lib/firebase");
+        const pinDocRef = doc(firestoreDb, "category_pins", series.id);
+        if (pinData) {
+          await setDoc(pinDocRef, pinData);
+        } else {
+          await deleteDoc(pinDocRef);
+        }
+      } catch (fsErr: any) {
+        console.warn("Firestore Pin sync restricted:", fsErr.message);
       }
 
       if (isPinned) {
@@ -803,7 +822,7 @@ export default function WatchScreen() {
               videoUrl={videoUrl}
               activeServerUrl={activeServerUrl}
               seriesId={series.id}
-              seriesImage={series.image}
+              seriesImage={resolvedSeriesImage}
               episodeIndex={currentEpisode}
               episodes={episodes}
               servers={servers}
@@ -868,7 +887,7 @@ export default function WatchScreen() {
 
                 <p className="text-zinc-500 font-bold text-xs sm:text-sm mt-4 flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                  {episodes[currentEpisode]?.title ? `الإطلالة: الحلقة ${episodes[currentEpisode].title}` : `الحلقة ${currentEpisode + 1}`}
+                  {episodes[currentEpisode]?.title ? `الحلقة ${episodes[currentEpisode].title}` : `الحلقة ${currentEpisode + 1}`}
                 </p>
 
                 {isAdmin && (
@@ -976,7 +995,7 @@ export default function WatchScreen() {
                       <SeriesChat 
                         seriesId={series.id} 
                         seriesTitle={series.title} 
-                        seriesImage={series.image}
+                        seriesImage={resolvedSeriesImage}
                         currentPlaybackTime={playerTime}
                         onSeekTo={(t) => {
                           playerControlRef.current?.seekTo(t);
@@ -1126,7 +1145,7 @@ export default function WatchScreen() {
                 episodes={episodes}
                 currentIndex={currentEpisode}
                 seriesId={series.id}
-                seriesImage={series.image}
+                seriesImage={resolvedSeriesImage}
                 isMovie={episodes.length === 1 && (/فيلم|افلام/i.test(series.category || "") || /فيلم/i.test(series.title || ""))}
                 onSelect={(ep, idx) => playEpisode(ep, idx)}
               />
@@ -1268,7 +1287,7 @@ export default function WatchScreen() {
                 <SeriesChat 
                   seriesId={series.id} 
                   seriesTitle={series.title} 
-                  seriesImage={series.image}
+                  seriesImage={resolvedSeriesImage}
                   currentPlaybackTime={playerTime}
                   onSeekTo={(t) => {
                     playerControlRef.current?.seekTo(t);

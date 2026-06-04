@@ -4,6 +4,8 @@ import { ref, onValue } from "firebase/database";
 import { decryptValue } from "../lib/security";
 import { hasNewEpisode, getEpisodeUpdatedAt } from "../lib/episodeHistory";
 import { getApiUrl } from "../lib/apiConfig";
+import { collection, onSnapshot } from "firebase/firestore";
+import { db as firestoreDb } from "../lib/firebase";
 
 // Dynamic Admin Category Pins Map
 export let categoryPins: Record<string, any> = {};
@@ -15,6 +17,50 @@ const sortCache = new Map<string, any[]>();
 // Dynamic Admin Slider Selections Map
 export let sliderSelections: Record<string, any> = {};
 let serverSliderSelections: Record<string, any> = {};
+
+// Register Firestore Real-time Listeners
+try {
+  onSnapshot(collection(firestoreDb, "category_pins"), (snapshot) => {
+    const pins: Record<string, any> = {};
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data) {
+        pins[doc.id] = data;
+      }
+    });
+    // Firestore acts as the ultimate master source of truth, taking priority
+    categoryPins = { ...serverPins, ...categoryPins, ...pins };
+    sortCache.clear();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('category-pins-updated'));
+    }
+  }, (err) => {
+    console.warn("Firestore category_pins listener deferred:", err);
+  });
+} catch (e) {
+  console.warn("Could not register Firestore category_pins listener on startup:", e);
+}
+
+try {
+  onSnapshot(collection(firestoreDb, "slider_selections"), (snapshot) => {
+    const selections: Record<string, any> = {};
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data) {
+        selections[doc.id] = data;
+      }
+    });
+    // Firestore takes top priority for slider selections
+    sliderSelections = { ...serverSliderSelections, ...sliderSelections, ...selections };
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('slider-selections-updated'));
+    }
+  }, (err) => {
+    console.warn("Firestore slider_selections listener deferred:", err);
+  });
+} catch (e) {
+  console.warn("Could not register Firestore slider_selections list tracker on startup:", e);
+}
 
 export interface ApiCategory {
   name: string;

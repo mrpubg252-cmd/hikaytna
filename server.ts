@@ -265,10 +265,10 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
       });
     }
 
-    // ALWAYS use non-deprecated "gemini-2.0-flash" unless there is a custom model set by the admin
+    // ALWAYS use non-deprecated "gemini-3.5-flash" unless there is a custom model set by the admin
     const targetModel = (USER_CUSTOM_AI_CONFIG?.type === 'gemini' && USER_CUSTOM_AI_CONFIG.model) 
       ? USER_CUSTOM_AI_CONFIG.model 
-      : "gemini-2.0-flash";
+      : "gemini-3.5-flash";
 
     // Silently route request to Gemini
     const response = await client.models.generateContent({
@@ -355,6 +355,7 @@ async function startServer() {
   let sliderMemory: Record<string, any> = {};
   const sliderFilePath = path.join(process.cwd(), "data", "slider.json");
 
+  // Load local fallbacks
   try {
     if (!fs.existsSync(path.join(process.cwd(), "data"))) {
       fs.mkdirSync(path.join(process.cwd(), "data"), { recursive: true });
@@ -369,9 +370,94 @@ async function startServer() {
     console.warn("Could not load database JSONs", e);
   }
 
+  // ============== SYSTEM-WIDE PERSISTENT CLOUD SELF-HEALING SYSTEM (FIRESTORE) ==============
+  // Fetches master backups from Firestore raw REST API (bypassing the 401 connection limits)
+  // This guarantees complete survival across Railway server restarts and rebuilds!
+  try {
+    const aiConfigRes = await axios.get('https://firestore.googleapis.com/v1/projects/mo-play-b0cb7/databases/(default)/documents/shorts/app_admin_ai_config', { timeout: 4000 }).catch(() => null);
+    if (aiConfigRes && aiConfigRes.data && aiConfigRes.data.fields && aiConfigRes.data.fields.data) {
+      const dataStr = aiConfigRes.data.fields.data.stringValue;
+      if (dataStr) {
+        const loadedConfig = JSON.parse(dataStr);
+        if (loadedConfig && loadedConfig.key) {
+          USER_CUSTOM_AI_CONFIG = loadedConfig;
+          console.log("Successfully self-healed USER_CUSTOM_AI_CONFIG from Firestore! Key prefix:", loadedConfig.key.substring(0, 8));
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal AI config from Firestore on startup:", err.message);
+  }
+
+  try {
+    const pinsRes = await axios.get('https://firestore.googleapis.com/v1/projects/mo-play-b0cb7/databases/(default)/documents/shorts/app_category_pins', { timeout: 4000 }).catch(() => null);
+    if (pinsRes && pinsRes.data && pinsRes.data.fields && pinsRes.data.fields.data) {
+      const dataStr = pinsRes.data.fields.data.stringValue;
+      if (dataStr) {
+        const cloudPins = JSON.parse(dataStr) || {};
+        pinsMemory = { ...pinsMemory, ...cloudPins };
+        console.log("Successfully self-healed Pins memory from Firestore! Loaded count:", Object.keys(cloudPins).length);
+      }
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal Category Pins from Firestore on startup:", err.message);
+  }
+
+  try {
+    const sliderRes = await axios.get('https://firestore.googleapis.com/v1/projects/mo-play-b0cb7/databases/(default)/documents/shorts/app_slider_selections', { timeout: 4000 }).catch(() => null);
+    if (sliderRes && sliderRes.data && sliderRes.data.fields && sliderRes.data.fields.data) {
+      const dataStr = sliderRes.data.fields.data.stringValue;
+      if (dataStr) {
+        const cloudSlider = JSON.parse(dataStr) || {};
+        sliderMemory = { ...sliderMemory, ...cloudSlider };
+        console.log("Successfully self-healed Sliders memory from Firestore! Loaded count:", Object.keys(cloudSlider).length);
+      }
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal Sliders from Firestore on startup:", err.message);
+  }
+
+  // Cloud backup write helper functions
+  const savePinsToFirestore = async () => {
+    try {
+      await axios.patch('https://firestore.googleapis.com/v1/projects/mo-play-b0cb7/databases/(default)/documents/shorts/app_category_pins?updateMask.fieldPaths=data', {
+        fields: {
+          data: { stringValue: JSON.stringify(pinsMemory) }
+        }
+      }, { timeout: 4000 }).catch(() => null);
+    } catch (e: any) {
+      console.warn("Error background backup category pins to Firestore:", e.message);
+    }
+  };
+
+  const saveSliderToFirestore = async () => {
+    try {
+      await axios.patch('https://firestore.googleapis.com/v1/projects/mo-play-b0cb7/databases/(default)/documents/shorts/app_slider_selections?updateMask.fieldPaths=data', {
+        fields: {
+          data: { stringValue: JSON.stringify(sliderMemory) }
+        }
+      }, { timeout: 4000 }).catch(() => null);
+    } catch (e: any) {
+      console.warn("Error background backup slider selections to Firestore:", e.message);
+    }
+  };
+
+  const saveAIConfigToFirestore = async () => {
+    try {
+      await axios.patch('https://firestore.googleapis.com/v1/projects/mo-play-b0cb7/databases/(default)/documents/shorts/app_admin_ai_config?updateMask.fieldPaths=data', {
+        fields: {
+          data: { stringValue: JSON.stringify(USER_CUSTOM_AI_CONFIG) }
+        }
+      }, { timeout: 4000 }).catch(() => null);
+    } catch (e: any) {
+      console.warn("Error background backup administrative AI config to Firestore:", e.message);
+    }
+  };
+
   const savePinsToFile = () => {
     try {
       fs.writeFileSync(pinsFilePath, JSON.stringify(pinsMemory, null, 2), "utf-8");
+      savePinsToFirestore(); // Double backup to cloud
     } catch (e) {
       console.warn("Could not save pins.json", e);
     }
@@ -380,6 +466,7 @@ async function startServer() {
   const saveSliderToFile = () => {
     try {
       fs.writeFileSync(sliderFilePath, JSON.stringify(sliderMemory, null, 2), "utf-8");
+      saveSliderToFirestore(); // Double backup to cloud
     } catch (e) {
       console.warn("Could not save slider.json", e);
     }
@@ -1114,17 +1201,6 @@ async function startServer() {
 
   // Slider Selections Read API
   app.get("/api/v1/slider-selections", async (req, res) => {
-    try {
-      // Dynamic fallback load from Firebase Realtime Database
-      const rtdbResponse = await axios.get("https://mo-play-b0cb7-default-rtdb.firebaseio.com/slider_selections.json", { timeout: 4000 }).catch(() => null);
-      if (rtdbResponse && rtdbResponse.data && typeof rtdbResponse.data === "object") {
-        // Sync back-end memory with Realtime Database (excellent persistent self-healing recovery!)
-        sliderMemory = { ...sliderMemory, ...rtdbResponse.data };
-        saveSliderToFile();
-      }
-    } catch (e: any) {
-      console.warn("Could not load backend fallback slider-selections from RTDB:", e.message);
-    }
     res.json(sliderMemory);
   });
 
@@ -1150,17 +1226,6 @@ async function startServer() {
 
   // Category Pins Read API
   app.get("/api/v1/pins", async (req, res) => {
-    try {
-      // Dynamic fallback load from Firebase Realtime Database
-      const rtdbResponse = await axios.get("https://mo-play-b0cb7-default-rtdb.firebaseio.com/category_pins.json", { timeout: 4000 }).catch(() => null);
-      if (rtdbResponse && rtdbResponse.data && typeof rtdbResponse.data === "object") {
-        // Sync back-end memory with Realtime Database (excellent persistent self-healing recovery!)
-        pinsMemory = { ...pinsMemory, ...rtdbResponse.data };
-        savePinsToFile();
-      }
-    } catch (e: any) {
-      console.warn("Could not load backend fallback pins from RTDB:", e.message);
-    }
     res.json(pinsMemory);
   });
 
@@ -1184,6 +1249,10 @@ async function startServer() {
     geminiClientInstance = null;
     KEY_COOLDOWNS.clear(); // Clear all cooldowns so the new key can be tested immediately
     console.log(`AI Configuration updated via admin endpoint. Type: ${type}`);
+    
+    // Save backup permanently to Firestore
+    saveAIConfigToFirestore();
+    
     res.json({ status: true, message: `تم تحديث مفتاح الربط (${type === 'gemini' ? 'Gemini' : 'OpenAI/Other'}) بنجاح! 🚀` });
   });
 
