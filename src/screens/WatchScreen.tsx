@@ -7,16 +7,12 @@ import Header from '../components/Header';
 import { fetchEpisodesFromAPI, fetchPlayUrlFromAPI, fetchSeriesDetailsFromTMDB, fetchPersonCreditsFromTMDB } from '../services/api';
 import { fetchAllSeries } from '../services/dataService';
 import { Episode, Series } from '../services/firebase';
-import { db } from '../services/firebase';
-import { ref, set, onValue } from 'firebase/database';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { progressService } from '../services/progressService';
 import { encryptValue } from '../lib/security';
 import SeriesChat from '../components/SeriesChat';
 import { offlineService } from '../services/offlineService';
-import { getApiUrl } from '../lib/apiConfig';
-import { getTMDBPosterSync } from '../lib/tmdbHealing';
 
 export default function WatchScreen() {
   const location = useLocation();
@@ -30,10 +26,6 @@ export default function WatchScreen() {
   }, [series, navigate]);
 
   if (!series) return null;
-
-  const resolvedSeriesImage = React.useMemo(() => {
-    return getTMDBPosterSync(series.title, series.category) || series.image || "";
-  }, [series]);
 
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [currentEpisode, setCurrentEpisode] = useState(0);
@@ -53,100 +45,6 @@ export default function WatchScreen() {
   const [actorWorks, setActorWorks] = useState<Series[]>([]);
   const [loadingActorWorks, setLoadingActorWorks] = useState(false);
   const [allSiteSeries, setAllSiteSeries] = useState<Series[]>([]);
-
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [isPinned, setIsPinned] = useState(false);
-
-  useEffect(() => {
-    const adminAccess = localStorage.getItem('short_admin_access') === 'true' || localStorage.getItem('guest_chat_name') === 'المدير 🛡️';
-    setIsAdmin(adminAccess);
-
-    const checkPins = () => {
-      import('../services/api').then(({ categoryPins }) => {
-        const p = categoryPins[series.id];
-        setIsPinned(p && p.pinned === true);
-      });
-    };
-
-    checkPins();
-
-    const handleUpdate = () => checkPins();
-    window.addEventListener("category-pins-updated", handleUpdate);
-    
-    // Global subscription to the pin state of THIS series in RTDB (Visible to everyone!)
-    const pinRef = ref(db, `category_pins/${series.id}`);
-    const unsubscribe = onValue(pinRef, (snapshot) => {
-      const val = snapshot.val();
-      setIsPinned(val && val.pinned === true);
-    }, (err) => {
-      console.warn("RTDB individual series pin sync deferred:", err.message);
-      checkPins();
-    });
-
-    return () => {
-      window.removeEventListener("category-pins-updated", handleUpdate);
-      if (typeof unsubscribe === 'function') unsubscribe();
-    };
-  }, [series.id]);
-
-  const handleTogglePin = async () => {
-    try {
-      const pinData = isPinned ? null : {
-        pinned: true,
-        seriesId: series.id,
-        title: series.title,
-        category: series.category || '',
-        pinnedAt: Date.now()
-      };
-
-      // 1. Persist directly inside Node back-end memory/JSON (100% reliable)
-      const res = await fetch(`/api/v1/pins/${series.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pinData || { pinned: false })
-      });
-      const resData = await res.json();
-
-      // Refresh cache
-      if (resData && resData.pins) {
-        const { syncCategoryPins } = await import('../services/api');
-        await syncCategoryPins();
-      }
-
-      // 2. Safely sync to RTDB if we can, do not crash on auth blocks
-      try {
-        const pinRef = ref(db, `category_pins/${series.id}`);
-        await set(pinRef, pinData);
-      } catch (fbErr: any) {
-        console.warn("Firebase RTDB Pin sync restricted (deferred on backend):", fbErr.message);
-      }
-
-      // 3. Write securely to local Firestore (Applet's own database ID for instant delivery!)
-      try {
-        const { doc, setDoc, deleteDoc } = await import("firebase/firestore");
-        const { db: firestoreDb } = await import("../lib/firebase");
-        const pinDocRef = doc(firestoreDb, "category_pins", series.id);
-        if (pinData) {
-          await setDoc(pinDocRef, pinData);
-        } else {
-          await deleteDoc(pinDocRef);
-        }
-      } catch (fsErr: any) {
-        console.warn("Firestore Pin sync restricted:", fsErr.message);
-      }
-
-      if (isPinned) {
-        setIsPinned(false);
-        showToast('تم إلغاء تثبيت المسلسل من صدارة التصنيف بنجاح ✨', 'success');
-      } else {
-        setIsPinned(true);
-        showToast('تم تثبيت المسلسل في صدارة التصنيف بنجاح 👑📌', 'success');
-      }
-    } catch (e: any) {
-      console.error(e);
-      showToast('فشل تعديل تثبيت المسلسل. حاول مجدداً.', 'error');
-    }
-  };
 
   // Load TMDB Data
   useEffect(() => {
@@ -709,7 +607,7 @@ export default function WatchScreen() {
     } else {
       // Check if we can reach our own health endpoint to double-check "offline" status
       try {
-        const ping = await fetch(getApiUrl('/api/health')).catch(() => null);
+        const ping = await fetch('/api/health').catch(() => null);
         if (ping && ping.ok) {
           // We are actually online!
           setIsPlayingOffline(false);
@@ -822,7 +720,7 @@ export default function WatchScreen() {
               videoUrl={videoUrl}
               activeServerUrl={activeServerUrl}
               seriesId={series.id}
-              seriesImage={resolvedSeriesImage}
+              seriesImage={series.image}
               episodeIndex={currentEpisode}
               episodes={episodes}
               servers={servers}
@@ -887,47 +785,8 @@ export default function WatchScreen() {
 
                 <p className="text-zinc-500 font-bold text-xs sm:text-sm mt-4 flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                  {episodes[currentEpisode]?.title ? `الحلقة ${episodes[currentEpisode].title}` : `الحلقة ${currentEpisode + 1}`}
+                  {episodes[currentEpisode]?.title ? `الإطلالة: الحلقة ${episodes[currentEpisode].title}` : `الحلقة ${currentEpisode + 1}`}
                 </p>
-
-                {isAdmin && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-4 p-4 rounded-2xl bg-zinc-950/80 border border-yellow-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl backdrop-blur-md"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20 text-yellow-500 shrink-0">
-                        <Sparkles className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h3 className="text-white text-xs sm:text-sm font-extrabold">لوحة تحكم المدير المسؤولة 🛡️</h3>
-                        <p className="text-zinc-400 text-[10px] sm:text-xs">تثبيت هذا المسلسل في صدارة تصنيفه ({series.category || "الكل"})</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleTogglePin}
-                      className={cn(
-                        "px-4 py-2 rounded-xl text-[10px] sm:text-xs font-black italic uppercase transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer",
-                        isPinned 
-                          ? "bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30"
-                          : "bg-yellow-500 hover:bg-yellow-500/90 text-black border border-yellow-600/30 font-extrabold"
-                      )}
-                    >
-                      {isPinned ? (
-                        <>
-                          <X className="w-4 h-4" />
-                          إلغاء التثبيت 📌
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4" />
-                          تثبيت في الصدارة 👑
-                        </>
-                      )}
-                    </button>
-                  </motion.div>
-                )}
               </div>
 
               {/* Social Channels Call-To-Action (WhatsApp & Telegram) */}
@@ -995,7 +854,7 @@ export default function WatchScreen() {
                       <SeriesChat 
                         seriesId={series.id} 
                         seriesTitle={series.title} 
-                        seriesImage={resolvedSeriesImage}
+                        seriesImage={series.image}
                         currentPlaybackTime={playerTime}
                         onSeekTo={(t) => {
                           playerControlRef.current?.seekTo(t);
@@ -1145,7 +1004,7 @@ export default function WatchScreen() {
                 episodes={episodes}
                 currentIndex={currentEpisode}
                 seriesId={series.id}
-                seriesImage={resolvedSeriesImage}
+                seriesImage={series.image}
                 isMovie={episodes.length === 1 && (/فيلم|افلام/i.test(series.category || "") || /فيلم/i.test(series.title || ""))}
                 onSelect={(ep, idx) => playEpisode(ep, idx)}
               />
@@ -1287,7 +1146,7 @@ export default function WatchScreen() {
                 <SeriesChat 
                   seriesId={series.id} 
                   seriesTitle={series.title} 
-                  seriesImage={resolvedSeriesImage}
+                  seriesImage={series.image}
                   currentPlaybackTime={playerTime}
                   onSeekTo={(t) => {
                     playerControlRef.current?.seekTo(t);

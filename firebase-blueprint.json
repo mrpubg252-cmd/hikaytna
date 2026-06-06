@@ -69,32 +69,6 @@
         },
         "required": ["userId", "status"]
     },
-    "CategoryPin": {
-      "title": "Category Pin",
-      "description": "Information about a pinned series in its category.",
-      "type": "object",
-      "properties": {
-        "pinned": { "type": "boolean" },
-        "seriesId": { "type": "string" },
-        "title": { "type": "string" },
-        "category": { "type": "string" },
-        "pinnedAt": { "type": "integer" }
-      },
-      "required": ["pinned", "seriesId", "title"]
-    },
-    "SliderSelection": {
-      "title": "Slider Selection",
-      "description": "Information about a featured series in the slider.",
-      "type": "object",
-      "properties": {
-        "selected": { "type": "boolean" },
-        "seriesId": { "type": "string" },
-        "title": { "type": "string" },
-        "category": { "type": "string" },
-        "selectedAt": { "type": "integer" }
-      },
-      "required": ["selected", "seriesId", "title"]
-    },
     "SupportTicket": {
         "title": "Support Ticket",
         "description": "User support request.",
@@ -129,14 +103,6 @@
     "/presence/{userId}": {
         "schema": "Presence",
         "description": "User presence."
-    },
-    "/category_pins/{pinId}": {
-        "schema": "CategoryPin",
-        "description": "Pinned category items."
-    },
-    "/slider_selections/{selectionId}": {
-        "schema": "SliderSelection",
-        "description": "Featured slider items."
     },
     "/supportTickets/{ticketId}": {
         "schema": "SupportTicket",

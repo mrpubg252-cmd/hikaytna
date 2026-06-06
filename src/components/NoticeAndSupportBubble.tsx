@@ -4,7 +4,6 @@ import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, onValue, push, set } from 'firebase/database';
 import { decryptValue } from '../lib/security';
 import { db as fallbackDb } from '../services/firebase';
-import { getApiUrl } from '../lib/apiConfig';
 
 export interface Notice {
   id: string;
@@ -40,7 +39,7 @@ export default function NoticeAndSupportBubble() {
   useEffect(() => {
     async function initSecureDB() {
       try {
-        const res = await fetch(getApiUrl('/api/v1/config/firebase'));
+        const res = await fetch('/api/v1/config/firebase');
         const { data } = await res.json();
         
         // Decrypt the config

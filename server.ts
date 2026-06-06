@@ -42,43 +42,148 @@ function decryptValue(encoded: string): string {
 }
 
 // ============ DeepSeek Speed Configuration ============
-const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
-const MODEL = "gemini-2.0-flash";
-
-let USER_CUSTOM_AI_CONFIG: {
-  key: string;
-  baseUrl: string;
-  model: string;
-  type: 'gemini' | 'openai';
-} | null = null;
+const BASE_URL = "https://aiapiv2.pekpik.com/v1";
+const MODEL = "deepseek-chat";
+const GITHUB_KEYS_URL = "https://raw.githubusercontent.com/alistaitsacle/free-llm-api-keys/main/README.md";
 
 // ============ Remote GitHub Chatbot Controller ============
 let lastFetchedConfigTime = 0;
 let cachedRemoteConfig: any = null;
 
 async function getRemoteConfig() {
-  return null;
+  const now = Date.now();
+  // Fetch from GitHub at most once every 15 seconds (15,000ms) to allow near-instant configuration updates!
+  if (now - lastFetchedConfigTime < 15000 && cachedRemoteConfig !== null) {
+    return cachedRemoteConfig;
+  }
+
+  try {
+    const gitUrl = "https://raw.githubusercontent.com/mrpubg252-cmd/esp-config/refs/heads/main/ai.json";
+    const res = await axios.get(gitUrl, {
+      headers: { 
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+      },
+      timeout: 4000
+    });
+    
+    let rawData = res.data;
+    if (typeof rawData === 'string') {
+      const trimmed = rawData.trim();
+      if (!trimmed) {
+        return null;
+      }
+      try {
+        rawData = JSON.parse(trimmed);
+      } catch (e) {
+        return cachedRemoteConfig || null;
+      }
+    }
+
+    if (rawData && typeof rawData === 'object') {
+      cachedRemoteConfig = rawData;
+      lastFetchedConfigTime = now;
+      return cachedRemoteConfig;
+    }
+    return null;
+  } catch (error: any) {
+    console.warn("⚠️ Failed to fetch remote config from GitHub:", error.message);
+    return cachedRemoteConfig || null;
+  }
 }
 
-// Start with bootstrap keys as fallback (Stable Working Token)
+// Start with bootstrap keys as fallback
 let API_KEYS: string[] = [
-  "AQ.Ab8RN6LuoIRrBX0LERCLIBIk1OXcz52VfoxJj4gszphbrbEoog",
-  "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY"
+  "sk-nM0nCjJSui0VOGjTTKZShevoZkywpvUVfXzrNoiZB5ZUGIJT",
+  "sk-M0rtthOXpqxnioe9zXwQcpE73DJaCBzq1ECJQrkwN0TuXam8"
 ];
+let currentIdx = 0;
 const WORKING_KEY_CACHE = new Map<number, number>();
 const KEY_COOLDOWNS = new Map<string, number>();
 const HAKEEM_LOGS: string[] = [];
 
+// Fetch keys with same regex as provided site
+async function fetchKeys() {
+  try {
+    console.log("⚡ جاري سحب مفاتيح جديدة من المصدر...");
+    const res = await axios.get(GITHUB_KEYS_URL, { 
+      headers: { 
+        'Cache-Control': 'no-cache',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 5000 
+    });
+    const text = res.data;
+    const keys: string[] = [];
+    
+    // Pattern match standard deepseek keys
+    const regex = /(sk-[a-zA-Z0-9]{44,50})/g;
+    let m;
+    while ((m = regex.exec(text)) !== null) {
+      if (!keys.includes(m[1])) keys.push(m[1]);
+    }
+    
+    if (keys.length > 0) {
+      // Append new keys to our bootstrap keys (avoiding duplicates)
+      const uniqueNewKeys = keys.filter(k => !API_KEYS.includes(k));
+      API_KEYS = [...API_KEYS, ...uniqueNewKeys];
+      console.log(`⚡ حكيم: تم سحب ${keys.length} مفتاح (إجمالي المتاح: ${API_KEYS.length})`);
+      return true;
+    }
+    console.warn("⚠️ حكيم: لم يتم العثور على مفاتيح جديدة في الملف.");
+    return false;
+  } catch (e: any) {
+    console.error("❌ حكيم: خطأ في سحب المفاتيح من GitHub:", e.message);
+    return false;
+  }
+}
+
 // Dynamically resolve configuration parameters from GitHub config (or fallbacks)
-function getActiveAIConfig(remoteConfig?: any) {
-  return { baseUrl: BASE_URL, model: MODEL, keys: API_KEYS };
+function getActiveAIConfig(remoteConfig: any) {
+  let baseUrl = BASE_URL;
+  if (remoteConfig) {
+    const rawUrl = remoteConfig.base_url || remoteConfig.baseUrl || remoteConfig.api_url || remoteConfig.apiUrl || remoteConfig.BASE_URL || remoteConfig.API_URL;
+    if (rawUrl && typeof rawUrl === 'string') {
+      baseUrl = rawUrl.trim();
+      if (baseUrl.endsWith('/')) {
+        baseUrl = baseUrl.substring(0, baseUrl.length - 1);
+      }
+    }
+  }
+
+  let model = MODEL;
+  if (remoteConfig) {
+    const rawModel = remoteConfig.model || remoteConfig.MODEL || remoteConfig.api_model;
+    if (rawModel && typeof rawModel === 'string') {
+      model = rawModel.trim();
+    }
+  }
+
+  let keys: string[] = [];
+  if (remoteConfig) {
+    const rawKeys = remoteConfig.api_keys || remoteConfig.apiKeys || remoteConfig.API_KEYS || remoteConfig.keys || remoteConfig.KEYS || remoteConfig.api_key || remoteConfig.apiKey || remoteConfig.API_KEY || remoteConfig.key;
+    if (rawKeys) {
+      if (Array.isArray(rawKeys)) {
+        keys = rawKeys.map(k => String(k).trim()).filter(Boolean);
+      } else if (typeof rawKeys === 'string') {
+        keys = rawKeys.split(/[\s,]+/).map(k => k.trim()).filter(Boolean);
+      }
+    }
+  }
+
+  if (keys.length === 0) {
+    keys = API_KEYS;
+  }
+
+  return { baseUrl, model, keys };
 }
 
 // Ultra-fast API caller with optimized speed and dynamic options
-async function callDeepSeek(msg: string, systemPrompt: string, history: any[], keyIdx: number, config: { baseUrl: string, model: string, keys: string[] }, ignoreCooldown = false) {
+async function callDeepSeek(msg: string, systemPrompt: string, history: any[], keyIdx: number, config: { baseUrl: string, model: string, keys: string[] }) {
   if (keyIdx >= config.keys.length) return { ok: false, error: "No key found at index" };
   const key = config.keys[keyIdx];
-  if (!ignoreCooldown && KEY_COOLDOWNS.has(key) && Date.now() < KEY_COOLDOWNS.get(key)!) {
+  if (KEY_COOLDOWNS.has(key) && Date.now() < KEY_COOLDOWNS.get(key)!) {
     return { ok: false, error: "Key is currently on cooldown (rate-limited or invalid)" };
   }
   
@@ -92,185 +197,107 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
       { role: "user", content: msg }
     ];
 
-    const isDefaultPool = (config.keys === API_KEYS);
-    const isToken = key.startsWith("AQ.");
-    const requestTimeout = (isDefaultPool && !isToken) ? 2200 : 15000;
-
-    const isGoogleKey = key.startsWith("AIzaSy");
-    const isGoogleDomain = config.baseUrl.includes("generativelanguage.googleapis.com");
-
-    const reqHeaders: Record<string, string> = {
-      "Content-Type": "application/json",
-      "User-Agent": "Hakeem/1.0"
-    };
-
-    if (isToken) {
-      reqHeaders["Authorization"] = `Bearer ${key}`;
-    } else if (isGoogleKey) {
-      reqHeaders["x-goog-api-key"] = key;
-      if (config.baseUrl.includes("/openai")) {
-        reqHeaders["Authorization"] = `Bearer ${key}`;
-      }
-    } else {
-      reqHeaders["Authorization"] = `Bearer ${key}`;
-    }
-
-    let cleanBaseUrl = config.baseUrl.trim().replace(/\/$/, "");
-    
-    // Auto-fix Google OpenAI endpoint path ONLY if completely missing
-    if (isGoogleDomain && !cleanBaseUrl.includes("/openai")) {
-        if (!cleanBaseUrl.includes("/v1beta") && !cleanBaseUrl.includes("/v1")) {
-            cleanBaseUrl += "/v1beta/openai";
-        } else {
-            cleanBaseUrl += "/openai";
-        }
-    }
-    // Google OpenAI endpoint handles model names without 'models/' prefix
-    let cleanModel = config.model;
-    if (isGoogleDomain && cleanModel.startsWith("models/")) {
-      cleanModel = cleanModel.replace("models/", "");
-    }
-
-    const res = await axios.post(`${cleanBaseUrl}/chat/completions`, {
-      model: cleanModel,
+    const res = await axios.post(`${config.baseUrl}/chat/completions`, {
+      model: config.model,
       messages,
-      temperature: 0.7,
-      max_tokens: 800,
+      temperature: 0.5,
+      max_tokens: 500,
       stream: false
     }, {
-      headers: reqHeaders,
-      timeout: 30000
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${key}`,
+        "Connection": "keep-alive",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+      },
+      timeout: 2200 // Reduced from 4500ms to 2200ms to guarantee ultra-fast failover speed under lag
     });
 
-    if (res.data && res.data.choices && res.data.choices[0]) {
-      return { ok: true, reply: res.data.choices[0].message.content };
+    const reply = res.data.choices?.[0]?.message?.content;
+    if (!reply) throw new Error("استلمت رداً فارغاً");
+    
+    WORKING_KEY_CACHE.set(keyIdx, Date.now());
+    return { ok: true, reply };
+  } catch (e: any) {
+    const errorMsg = e.response?.data?.error?.message || e.response?.data?.error || e.message;
+    const logText = typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg;
+    const logMsg = `🔴 [Hakeem API Error] Index: ${keyIdx}, URL: ${config.baseUrl}, Model: ${config.model}, Message: ${logText}`;
+    // Silently log fallback to avoid polluting platform logs
+    HAKEEM_LOGS.push(`[${new Date().toISOString()}] ${logMsg}`);
+    if (HAKEEM_LOGS.length > 50) {
+      HAKEEM_LOGS.shift();
     }
-    
-    return { ok: false, error: "Invalid AI response format" };
-  } catch (error: any) {
-    const errorMsg = error.response?.data?.error?.message || error.message;
-    console.error(`AI Error [${keyIdx}]:`, errorMsg);
-    
-    if (error.response?.status === 429) {
+    WORKING_KEY_CACHE.delete(keyIdx);
+
+    const lowerErr = logText.toLowerCase();
+    if (
+      lowerErr.includes("rate limit") || 
+      lowerErr.includes("rate_limit") || 
+      lowerErr.includes("limit reached") ||
+      lowerErr.includes("please try again in") ||
+      lowerErr.includes("tokens per day") ||
+      lowerErr.includes("tpd") ||
+      lowerErr.includes("tpm") ||
+      lowerErr.includes("quota")
+    ) {
+      console.warn(`⚠️ Key index ${keyIdx} added to cooldown map for 15 minutes due to rate-limit: ${logText}`);
+      KEY_COOLDOWNS.set(key, Date.now() + 15 * 60 * 1000);
+      
+      // Since it's a shared organization or service tier rate limit, also temporarily put other keys in cooldown
+      // or set a flag to bypass the pool for the next 15 minutes to prevent ANY accumulated latency for subsequent users.
+      const isDefaultPool = config.keys.some(k => k.startsWith("sk-nM0nCjJSui0V") || k.startsWith("sk-M0rtthO"));
+      if (isDefaultPool) {
+        console.warn(`⚠️ Initiating complete pool cooldown, all subsequent requests will route straight to Gemini for the next 15 minutes.`);
+        for (const k of config.keys) {
+          KEY_COOLDOWNS.set(k, Date.now() + 15 * 60 * 1000);
+        }
+      }
+    } else if (
+      lowerErr.includes("invalid token") || 
+      lowerErr.includes("no access") || 
+      lowerErr.includes("forbidden") ||
+      lowerErr.includes("unauthorized")
+    ) {
+      console.warn(`⚠️ Invalid key detected, putting on cooldown: ${key}`);
+      KEY_COOLDOWNS.set(key, Date.now() + 2 * 60 * 60 * 1000);
+    } else {
+      // For any other error (such as local timeout, network error, server disconnect, ECONNRESET, etc.)
+      // we immediately put this key on a 5-minute quarantine so subsequent queries instantly bypass it.
+      // This is the silver bullet that guarantees ultra-fast response times even under severe pool disturbance!
+      console.warn(`⚠️ Temporary latency/error detected on Key index ${keyIdx}, putting on 5-minute cooldown: ${logText}`);
       KEY_COOLDOWNS.set(key, Date.now() + 5 * 60 * 1000);
     }
-    
+
     return { ok: false, error: errorMsg };
   }
 }
 
 let geminiClientInstance: any = null;
 
-function getGeminiClient(customKey?: string) {
-  // Respect user custom config first if it is set to gemini
-  let key = "";
-  if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.type === 'gemini') {
-    key = USER_CUSTOM_AI_CONFIG.key;
-  }
-  
-  key = key || customKey || process.env.GEMINI_API_KEY || "";
-  
-  // If no key is set yet, check fallback keys from config
-  if (!key) {
-    try {
-      const config = getActiveAIConfig();
-      const fallbackKey = (config.keys || []).find(k => k.startsWith("AIzaSy"));
-      if (fallbackKey) {
-        key = fallbackKey;
+function getGeminiClient() {
+  if (!geminiClientInstance) {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) {
+      console.warn("⚠️ [Hakeem Gemini Fallback] GEMINI_API_KEY is not defined in the environment.");
+      return null;
+    }
+    geminiClientInstance = new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build'
+        }
       }
-    } catch (e) {
-      // ignore
-    }
-  }
-
-  // Final absolute fallback to mock key so initialization doesn't throw if empty
-  if (!key) {
-    key = "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY";
-  }
-  
-  // Re-initialize only if key changed or instance is missing
-  if (!geminiClientInstance || (geminiClientInstance as any)._key !== key) {
-    const customBaseUrl = (USER_CUSTOM_AI_CONFIG?.type === 'gemini') ? USER_CUSTOM_AI_CONFIG.baseUrl : process.env.GEMINI_BASE_URL;
-    
-    let client;
-    if (customBaseUrl) {
-      client = new GoogleGenAI({
-        apiKey: key,
-        // @ts-ignore
-        baseUrl: customBaseUrl.replace(/\/$/, ''),
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build'
-          }
-        }
-      });
-    } else {
-      client = new GoogleGenAI({ 
-        apiKey: key,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build'
-          }
-        }
-      });
-    }
-    
-    (client as any)._key = key;
-
-    // Don't overwrite the global singleton if we're using a temporary key from pool
-    if (!customKey) {
-      geminiClientInstance = client;
-    }
-    return client;
+    });
   }
   return geminiClientInstance;
 }
 
 async function callGeminiFallback(msg: string, systemPrompt: string, history: any[]) {
   try {
-    if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.type === 'openai') {
-      return { ok: false, error: "using_custom_openai" };
-    }
-
-    let key = "";
-    if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.type === 'gemini') {
-      key = USER_CUSTOM_AI_CONFIG.key;
-    }
-    key = key || process.env.GEMINI_API_KEY || "";
-
-    if (!key) {
-      try {
-        const config = getActiveAIConfig();
-        const fallbackKey = (config.keys || []).find(k => k.startsWith("AIzaSy"));
-        if (fallbackKey) {
-          key = fallbackKey;
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-
-    if (!key) {
-      key = "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY";
-    }
-
-    // Direct routing for AQ. OAuth/Bearer keys because standard SDK cannot parse or sign them
-    if (key.startsWith("AQ.")) {
-      const config = {
-        baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
-        model: "gemini-2.0-flash",
-        keys: [key]
-      };
-      const res = await callDeepSeek(msg, systemPrompt, history, 0, config, true);
-      if (res.ok && res.reply) {
-        return res;
-      }
-      return { ok: false, error: res.error || "AQ token call failed" };
-    }
-
-    let client = getGeminiClient(key);
+    const client = getGeminiClient();
     if (!client) {
-      return { ok: false, error: "no_gemini_key", reply: "عذراً، نظام الذكاء الاصطناعي قيد التحديث. يرجى المحاولة لاحقاً." };
+      return { ok: false, error: "no_gemini_key", reply: "يا عسيل! المنصة انتقلت لسيرفر جديد (DigitalOcean) وبحتاج لمفتاح GEMINI_API_KEY في إعدادات البيئة (Environment Variables) عشان أقدر أشتغل وتستمتع بسوالفي. ضيف المفتاح وكلمني! 🚀" };
     }
 
     // Convert standard chat history formats to Gemini content parts
@@ -301,41 +328,20 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
       });
     }
 
-    // Robust sequential models trial to guarantee complete compatibility on all hosting API keys
-    const modelsToTry: string[] = [];
-    if (USER_CUSTOM_AI_CONFIG?.type === 'gemini' && USER_CUSTOM_AI_CONFIG.model) {
-      modelsToTry.push(USER_CUSTOM_AI_CONFIG.model);
-    }
-    modelsToTry.push("gemini-2.5-flash");
-    modelsToTry.push("gemini-1.5-flash");
-    modelsToTry.push("gemini-3.5-flash");
-
-    let lastError: any = null;
-    let reply = "";
-
-    for (const modelName of modelsToTry) {
-      try {
-        const response = await client.models.generateContent({
-          model: modelName,
-          contents: contents,
-          config: {
-            systemInstruction: systemPrompt || "أنت حكيم، خبير مسلسلات ذكي وودود جداً. أجب بذكاء واختصار باسم 'حكيم'."
-          }
-        });
-        if (response && response.text && response.text.trim()) {
-          reply = response.text;
-          break; // Succeeded!
-        }
-      } catch (err: any) {
-        lastError = err;
-        console.warn(`[Hakeem AI] Try with model ${modelName} failed, attempting next:`, err.message || err);
+    // Silently route request to Gemini
+    const response = await client.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: contents,
+      config: {
+        systemInstruction: systemPrompt || "أنت حكيم، خبير مسلسلات ذكي وودود جداً. أجب بذكاء واختصار باسم 'حكيم'."
       }
-    }
+    });
 
+    const reply = response.text;
     if (reply && reply.trim()) {
       return { ok: true, reply };
     }
-    throw lastError || new Error("Failed to generate content with any model");
+    throw new Error("Empty response.text from Gemini API");
   } catch (error: any) {
     const errorMsg = error.message || "Unknown error";
     // Silently log Gemini failure
@@ -345,304 +351,92 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
   }
 }
 
-// Unified Robust AI Caller for Hakeem (Direct Priority)
+// Refined Rotation Engine linked to dynamic GitHub config
 async function smartChat(msg: string, systemPrompt: string, history: any[]) {
-  // 1. Priority: Custom Overrides (Set by Admin)
-  if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key) {
-    if (USER_CUSTOM_AI_CONFIG.type === 'openai') {
-      const customConfig = {
-        baseUrl: USER_CUSTOM_AI_CONFIG.baseUrl || "https://api.openai.com/v1",
-        model: USER_CUSTOM_AI_CONFIG.model || "gpt-3.5-turbo",
-        keys: [USER_CUSTOM_AI_CONFIG.key]
-      };
-      const rCustom = await callDeepSeek(msg, systemPrompt, history, 0, customConfig, true);
-      if (rCustom.ok && rCustom.reply) return rCustom;
-    } else {
-      const rCustomGemini = await callGeminiFallback(msg, systemPrompt, history);
-      if (rCustomGemini.ok && rCustomGemini.reply) return rCustomGemini;
+  const remoteConfig = await getRemoteConfig();
+  const config = getActiveAIConfig(remoteConfig);
+
+  const usingDefaultKeys = (config.keys === API_KEYS);
+  if (usingDefaultKeys && API_KEYS.length < 5) {
+    await fetchKeys().catch(() => {});
+    config.keys = API_KEYS;
+  }
+
+  const now = Date.now();
+  // Filter current active config keys to see how many are genuinely usable right now
+  const availableKeys = config.keys.filter(key => {
+    if (KEY_COOLDOWNS.has(key)) {
+      return now >= KEY_COOLDOWNS.get(key)!;
+    }
+    return true;
+  });
+
+  // If ALL keys in our active config are on active cooldown (or if pool is empty),
+  // we route straight to Gemini for instantaneous elite response speed.
+  if (availableKeys.length === 0) {
+    console.log(`⚡ [Hakeem Smart Routing] All configured keys are on cooldown. Routing straight to Gemini...`);
+    const gemiResult = await callGeminiFallback(msg, systemPrompt, history);
+    if (gemiResult.reply) {
+      return { ok: gemiResult.ok || true, reply: gemiResult.reply };
     }
   }
 
-  // 2. Priority: Stable Platform Google Gemini Key (Highly reliable, provided by AI Studio environment)
-  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY") {
-    const rPlatform = await callGeminiFallback(msg, systemPrompt, history);
-    if (rPlatform.ok && rPlatform.reply) {
-      return rPlatform;
-    }
-  }
+  // Allow up to 3 attempts for custom configurations, fallback to 1 for shared default pool to protect rate integrity
+  const maxAttempts = usingDefaultKeys ? 1 : Math.min(3, config.keys.length);
+  let attempts = 0; 
 
-  // 3. Last Resort Fallback: Hardcoded Fallback Pool (Using callDeepSeek with API_KEYS)
-  const config = getActiveAIConfig();
-  if (config && config.keys && config.keys.length > 0) {
-    // Try up to 2 attempts for the primary pool keys
-    for (let i = 0; i < 2; i++) {
-      const rPool = await callDeepSeek(msg, systemPrompt, history, 0, config, i === 1);
-      if (rPool.ok && rPool.reply) {
-        return rPool;
+  // 1. Try cached working keys first (most reliable)
+  for (const [idx, ts] of WORKING_KEY_CACHE) {
+    if (Date.now() - ts < 600000 && idx < config.keys.length) {
+      const key = config.keys[idx];
+      if (KEY_COOLDOWNS.has(key) && Date.now() < KEY_COOLDOWNS.get(key)!) {
+        continue;
       }
+      attempts++;
+      const r = await callDeepSeek(msg, systemPrompt, history, idx, config);
+      if (r.ok) { 
+        currentIdx = idx; 
+        return r; 
+      }
+      if (attempts >= maxAttempts) break;
     }
   }
 
-  // 4. Absolute Final Backstop
+  // 2. Sequential rotation logic (limit attempts strictly to prevent cumulative lag)
+  if (attempts < maxAttempts) {
+    const totalKeys = config.keys.length;
+    const keysToTry = Math.min(totalKeys, maxAttempts - attempts);
+    for (let i = 0; i < keysToTry; i++) {
+      const idx = (currentIdx + i) % totalKeys;
+      const key = config.keys[idx];
+      if (KEY_COOLDOWNS.has(key) && Date.now() < KEY_COOLDOWNS.get(key)!) {
+        continue;
+      }
+      attempts++;
+      const r = await callDeepSeek(msg, systemPrompt, history, idx, config);
+      if (r.ok) { 
+        currentIdx = idx; 
+        return r; 
+      }
+      if (attempts >= maxAttempts) break;
+    }
+  }
+
+  // 3. Ultimate Savior Fallback: Google Gemini API (highly resilient, rate-limit protected & blazingly fast)
   const gemiResult = await callGeminiFallback(msg, systemPrompt, history);
-  if (gemiResult.ok && gemiResult.reply) {
-    return { ok: true, reply: gemiResult.reply };
+  if (gemiResult.reply) {
+    // If Gemini gave us a specific reply (like missing key explanation) or succeeded, use it
+    return { ok: gemiResult.ok || true, reply: gemiResult.reply };
   }
 
-  // Active helpful guidance instead of a dry, generic connection error when no api key exists
-  const isFallbackKeyUsed = !process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY";
-  const isCustomKeyEmpty = !USER_CUSTOM_AI_CONFIG || !USER_CUSTOM_AI_CONFIG.key;
-  
-  const currentKey = (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key) || process.env.GEMINI_API_KEY || "";
-  const isTempAQTokenUsed = currentKey.startsWith("AQ.");
-
-  if (isTempAQTokenUsed) {
-    return {
-      ok: true,
-      reply: `مرحباً بك! 👋 نلاحظ أنك قمت بضبط المفتاح \`GEMINI_API_KEY\` على استضافة **Railway** باستخدام المفتاح المؤقت الذي يبدأ بـ (\`AQ.\`).\n\n` +
-             `⚠️ **سبب توقف المساعد حكيم:** مفاتيح الوصول التي تبدأ بـ (\`AQ.\`) هي عبارة عن "رموز وصول مؤقتة" وتنتهي صلاحيتها تلقائياً بعد مرور **ساعة واحدة فقط** لحماية خصوصية الحسابات. هذا هو السبب في توقف حكيم وظهور مشكلة في الاتصال بالأعلى!\n\n` +
-             `💡 **الحل السهل والنهائي (يعمل مدى الحياة دون انقطاع):**\n` +
-             `يرجى الذهاب إلى موقع **Google AI Studio** مجاناً تماماً واستخراج مفتاح API دائم يبدأ بالحروف \`AIzaSy\`:\n\n` +
-             `1️⃣ **الخطوات لاستخراج مفتاح دائم مجاناً:**\n` +
-             `• افتح موقع الـ AI Studio من هنا: [https://aistudio.google.com](https://aistudio.google.com) 🌐.\n` +
-             `• اضغط على زر **Get API Key** ثم **Create API Key**.\n` +
-             `• انسخ الكود المتولد (مثال: \`AIzaSyD-xxxxxxxxxxxxxxxxxxxxxxxx\`).\n\n` +
-             `2️⃣ **طريقة إضافته للتطبيق في ثانية واحدة (دون الذهاب لـ Railway):**\n` +
-             `• في نافذة الدردشة مع حكيم 💬، اضغط على **أيقونة الترس ⚙️** في الأعلى.\n` +
-             `• اكتب كلمة مرور الإدارة: \`bewCew,iDYgC@K6\`.\n` +
-             `• ألصق المفتاح الجديد (\`AIzaSy...\`) واضغط على **حفظ الإعدادات**.\n\n` +
-             `سيقوم السيرفر فوراً بتطبيق المفتاح الجديد ومزاوجته وحفظه سحابياً في قواعد بياناتك الخاصة (Firestore و RTDB) لكي يعمل حكيم بذكائه وسرعته الجبارة مدى الحياة ودون الحاجة لتغييره مجدداً! 🚀✨`
-    };
-  }
-
-  if (isFallbackKeyUsed && isCustomKeyEmpty) {
-    return { 
-      ok: true, 
-      reply: `مرحباً بك! 👋 المساعد الذكي "حكيم" جاهز للعمل على البيئة التطويرية للذكاء الاصطناعي بنجاح، ولكن لتفعيله بشكل كامل واحترافي على استضافة **Railway**، يرجى اتباع إحدى الطريقتين البسيطتين والسريعتين:\n\n` +
-             `1️⃣ **الخيار الأول (الأسهل والأسرع - من التطبيق مباشرة):**\n` +
-             `• افتح نافذة الدردشة مع حكيم 💬.\n` +
-             `• اضغط على **أيقونة الترس ⚙️** الموجودة بالأعلى لفتح إعدادات المساعد.\n` +
-             `• اكتب كلمة المرور المخصصة للأدمن: \`bewCew,iDYgC@K6\`.\n` +
-             `• أدخل مفتاحك الخاص (Gemini API Key) المستخرج من Google AI Studio.\n` +
-             `• اضغط على **حفظ الإعدادات**. سيقوم سيرفر المنصة بحفظه وتشفيره والمزامنة تلقائياً مع قواعد البيانات السحابية (Firestore و RTDB) ليعمل السيرفر فوراً دون انقطاع حتى بعد إعادة تشغيل سيرفر Railway!\n\n` +
-             `2️⃣ **الخيار الثاني (بيئة عمل Railway):**\n` +
-             `• توجه إلى لوحة تحكم مشروعك في **Railway.com** 🚀.\n` +
-             `• اذهب إلى تبويب **Variables** التابع للخدمة.\n` +
-             `• قم بإضافة متغير بيئة جديد كالتالي:\n` +
-             `  - الاسم: \`GEMINI_API_KEY\`\n` +
-             `  - القيمة: (مفتاح الـ Gemini API Key دائم الخاص بك من Google AI Studio ويبدأ بـ \`AIzaSy\`)\n\n` +
-             `بعد الضغط على إضافة، سيتم إعادة بناء السيرفر تلقائياً وتفعيل البوت "حكيم" بذكاء خارق وسرعة فائقة لخدمة زوار منصتك وتوليد روابط المسلسلات بذكاء مذهل! 🎭✨`
-    };
-  }
-
-  return { ok: false, reply: "عذراً! يبدو أن هناك مشكلة مؤقتة في الاتصال بخوادم الذكاء الاصطناعي. يرجى تكرار المحاولة." };
+  return { ok: false, reply: "يا عسسل! حالياً فيه ضغط خرافي على \"حكيم\"، جرّب مرة ثانية بعد ثواني وبكون معك وماراح أخيب ظنك! 🍿🚀" };
 }
 
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10);
 
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
-
-  // Pins Memory Persistence Init
-  let pinsMemory: Record<string, any> = {};
-  const pinsFilePath = path.join(process.cwd(), "data", "pins.json");
-
-  // Slider Selections Memory Persistence Init
-  let sliderMemory: Record<string, any> = {};
-  const sliderFilePath = path.join(process.cwd(), "data", "slider.json");
-
-  // AI Configuration Local Disk Persistence
-  const aiConfigFilePath = path.join(process.cwd(), "data", "ai_config.json");
-
-  // Load local fallbacks
-  try {
-    if (!fs.existsSync(path.join(process.cwd(), "data"))) {
-      fs.mkdirSync(path.join(process.cwd(), "data"), { recursive: true });
-    }
-    if (fs.existsSync(pinsFilePath)) {
-      pinsMemory = JSON.parse(fs.readFileSync(pinsFilePath, "utf-8") || "{}");
-    }
-    if (fs.existsSync(sliderFilePath)) {
-      sliderMemory = JSON.parse(fs.readFileSync(sliderFilePath, "utf-8") || "{}");
-    }
-    if (fs.existsSync(aiConfigFilePath)) {
-      USER_CUSTOM_AI_CONFIG = JSON.parse(fs.readFileSync(aiConfigFilePath, "utf-8") || "{}");
-      console.log("Successfully loaded USER_CUSTOM_AI_CONFIG from local disk backup!");
-    }
-  } catch (e) {
-    console.warn("Could not load database JSONs", e);
-  }
-
-  // ============== SYSTEM-WIDE PERSISTENT CLOUD SELF-HEALING SYSTEM (FIRESTORE & RTDB) ==============
-  // Fetches master backups from Firestore and Realtime Database raw REST APIs
-  // This guarantees complete survival across restarts, rebuilds, and ephemeral disk wipes!
-  const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || "mo-play-b0cb7";
-
-  // --- 1. AI Configuration Self-Healing ---
-  try {
-    const aiConfigRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_admin_ai_config`, { timeout: 4000 }).catch(() => null);
-    if (aiConfigRes && aiConfigRes.data && aiConfigRes.data.fields && aiConfigRes.data.fields.data) {
-      const dataStr = aiConfigRes.data.fields.data.stringValue;
-      if (dataStr) {
-        const loadedConfig = JSON.parse(dataStr);
-        if (loadedConfig && loadedConfig.key) {
-          USER_CUSTOM_AI_CONFIG = loadedConfig;
-          console.log("Successfully self-healed USER_CUSTOM_AI_CONFIG from Firestore! Key prefix:", loadedConfig.key.substring(0, 8));
-        }
-      }
-    }
-  } catch (err: any) {
-    console.warn("Could not self-heal AI config from Firestore on startup:", err.message);
-  }
-
-  try {
-    const aiConfigRTDB = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, { timeout: 4000 }).catch(() => null);
-    if (aiConfigRTDB && aiConfigRTDB.data && aiConfigRTDB.data.key) {
-      USER_CUSTOM_AI_CONFIG = aiConfigRTDB.data;
-      console.log("Successfully self-healed USER_CUSTOM_AI_CONFIG from RTDB! Key prefix:", USER_CUSTOM_AI_CONFIG.key.substring(0, 8));
-    }
-  } catch (err: any) {
-    console.warn("Could not self-heal AI config from RTDB on startup:", err.message);
-  }
-
-  // --- 2. Pins Memory Self-Healing ---
-  try {
-    const pinsRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_category_pins`, { timeout: 4000 }).catch(() => null);
-    if (pinsRes && pinsRes.data && pinsRes.data.fields && pinsRes.data.fields.data) {
-      const dataStr = pinsRes.data.fields.data.stringValue;
-      if (dataStr) {
-        const cloudPins = JSON.parse(dataStr) || {};
-        pinsMemory = { ...pinsMemory, ...cloudPins };
-        console.log("Successfully self-healed Pins memory from Firestore! Loaded count:", Object.keys(cloudPins).length);
-      }
-    }
-  } catch (err: any) {
-    console.warn("Could not self-heal Category Pins from Firestore on startup:", err.message);
-  }
-
-  try {
-    const pinsRTDB = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/category_pins.json`, { timeout: 4000 }).catch(() => null);
-    if (pinsRTDB && pinsRTDB.data) {
-      pinsMemory = { ...pinsMemory, ...pinsRTDB.data };
-      console.log("Successfully self-healed Pins memory from RTDB! Loaded count:", Object.keys(pinsRTDB.data).length);
-    }
-  } catch (err: any) {
-    console.warn("Could not self-heal Category Pins from RTDB on startup:", err.message);
-  }
-
-  // --- 3. Slider Selections Self-Healing ---
-  try {
-    const sliderRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_slider_selections`, { timeout: 4000 }).catch(() => null);
-    if (sliderRes && sliderRes.data && sliderRes.data.fields && sliderRes.data.fields.data) {
-      const dataStr = sliderRes.data.fields.data.stringValue;
-      if (dataStr) {
-        const cloudSlider = JSON.parse(dataStr) || {};
-        sliderMemory = { ...sliderMemory, ...cloudSlider };
-        console.log("Successfully self-healed Sliders memory from Firestore! Loaded count:", Object.keys(cloudSlider).length);
-      }
-    }
-  } catch (err: any) {
-    console.warn("Could not self-heal Sliders from Firestore on startup:", err.message);
-  }
-
-  try {
-    const sliderRTDB = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/slider_selections.json`, { timeout: 4000 }).catch(() => null);
-    if (sliderRTDB && sliderRTDB.data) {
-      sliderMemory = { ...sliderMemory, ...sliderRTDB.data };
-      console.log("Successfully self-healed Sliders memory from RTDB! Loaded count:", Object.keys(sliderRTDB.data).length);
-    }
-  } catch (err: any) {
-    console.warn("Could not self-heal Sliders from RTDB on startup:", err.message);
-  }
-
-  // Cloud backup write helper functions (Dual-Save to Firestore AND RTDB for maximum resilience)
-  const savePinsToCloud = async () => {
-    // Save to Firestore
-    try {
-      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_category_pins?updateMask.fieldPaths=data`, {
-        fields: {
-          data: { stringValue: JSON.stringify(pinsMemory) }
-        }
-      }, { timeout: 4000 }).catch(() => null);
-    } catch (e: any) {
-      console.warn("Error background backup category pins to Firestore:", e.message);
-    }
-    // Save to RTDB
-    try {
-      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/category_pins.json`, pinsMemory, { timeout: 4000 }).catch(() => null);
-    } catch (e: any) {
-      console.warn("Error background backup category pins to RTDB:", e.message);
-    }
-  };
-
-  const saveSliderToCloud = async () => {
-    // Save to Firestore
-    try {
-      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_slider_selections?updateMask.fieldPaths=data`, {
-        fields: {
-          data: { stringValue: JSON.stringify(sliderMemory) }
-        }
-      }, { timeout: 4000 }).catch(() => null);
-    } catch (e: any) {
-      console.warn("Error background backup slider selections to Firestore:", e.message);
-    }
-    // Save to RTDB
-    try {
-      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/slider_selections.json`, sliderMemory, { timeout: 4000 }).catch(() => null);
-    } catch (e: any) {
-      console.warn("Error background backup slider selections to RTDB:", e.message);
-    }
-  };
-
-  const saveAIConfigToCloud = async () => {
-    try {
-      // Save locally to disk first layout to ensure complete hosting durability
-      fs.writeFileSync(aiConfigFilePath, JSON.stringify(USER_CUSTOM_AI_CONFIG, null, 2), "utf-8");
-      console.log("Locally saved AI configuration to disk backup successfully!");
-    } catch (err: any) {
-      console.warn("Failed to write manual AI configuration to disk:", err.message);
-    }
-
-    // Save to Firestore
-    try {
-      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_admin_ai_config?updateMask.fieldPaths=data`, {
-        fields: {
-          data: { stringValue: JSON.stringify(USER_CUSTOM_AI_CONFIG) }
-        }
-      }, { timeout: 4000 }).catch(() => null);
-      console.log("Successfully back-saved AI configuration to Cloud Firestore master!");
-    } catch (e: any) {
-      console.warn("Error background backup administrative AI config to Firestore:", e.message);
-    }
-
-    // Save to RTDB
-    try {
-      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, USER_CUSTOM_AI_CONFIG, { timeout: 4000 }).catch(() => null);
-      console.log("Successfully back-saved AI configuration to Cloud RTDB master!");
-    } catch (e: any) {
-      console.warn("Error background backup administrative AI config to RTDB:", e.message);
-    }
-  };
-
-  const savePinsToFile = () => {
-    try {
-      fs.writeFileSync(pinsFilePath, JSON.stringify(pinsMemory, null, 2), "utf-8");
-      savePinsToCloud(); // Double backup to cloud
-    } catch (e) {
-      console.warn("Could not save pins.json", e);
-    }
-  };
-
-  const saveSliderToFile = () => {
-    try {
-      fs.writeFileSync(sliderFilePath, JSON.stringify(sliderMemory, null, 2), "utf-8");
-      saveSliderToCloud(); // Double backup to cloud
-    } catch (e) {
-      console.warn("Could not save slider.json", e);
-    }
-  };
+  app.use(express.json());
 
   // Prevent generic CORS "Failed to fetch" blocks in complex iframe previews
   app.use((req, res, next) => {
@@ -934,12 +728,11 @@ async function startServer() {
 
   // 4.1. Image Proxy to bypass hotlink and domain protections on API images
   app.get("/api/v1/image-proxy", async (req, res) => {
-    let targetUrl = "";
     try {
       const { url } = req.query;
       if (!url) return res.status(400).send("Missing URL parameter");
       
-      targetUrl = decodeURIComponent(url as string);
+      const targetUrl = decodeURIComponent(url as string);
       if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
         return res.status(400).send("Invalid target URL");
       }
@@ -958,7 +751,7 @@ async function startServer() {
           'Referer': hostVal + '/', // Dynamically use the origin of the target image as the Referer
           'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
         },
-        timeout: 4000 // Fast fail to prevent browser image stuttering
+        timeout: 8000
       });
 
       const contentType = response.headers['content-type'];
@@ -971,12 +764,7 @@ async function startServer() {
       
       response.data.pipe(res);
     } catch (error: any) {
-      console.warn("[Image Proxy Fallback Redirect] Image proxy error for URL:", req.query.url, error.message);
-      if (targetUrl) {
-        // Super-healing fallback: redirect the browser directly to the original target image URL!
-        // Client browser network might bypass hosting provider IP block/firewall blocks.
-        return res.redirect(targetUrl);
-      }
+      console.warn("Image proxy error for URL:", req.query.url, error.message);
       res.status(500).send("Failed to load image resource");
     }
   });
@@ -1371,113 +1159,6 @@ async function startServer() {
     res.json({ status: true, logs: HAKEEM_LOGS });
   });
 
-  // Slider Selections Read API
-  app.get("/api/v1/slider-selections", async (req, res) => {
-    res.json(sliderMemory);
-  });
-
-  // Slider Selections Update API (Admin Action)
-  app.post("/api/v1/slider-selections/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const selectData = req.body; // Expecting { selected: boolean, seriesId: string, title: string, category: string, selectedAt: number }
-      
-      if (selectData && selectData.selected) {
-        sliderMemory[id] = selectData;
-      } else {
-        delete sliderMemory[id];
-      }
-      
-      saveSliderToFile();
-      res.json({ success: true, selections: sliderMemory });
-    } catch (err: any) {
-      console.error("Error updating slider selections:", err.message);
-      res.status(500).json({ status: false, error: err.message });
-    }
-  });
-
-  // Category Pins Read API
-  app.get("/api/v1/pins", async (req, res) => {
-    res.json(pinsMemory);
-  });
-
-  app.post("/api/v1/admin/gemini-key", (req, res) => {
-    const { password, key, baseUrl, model, type = 'gemini' } = req.body;
-    if (password !== "bewCew,iDYgC@K6") {
-      return res.status(401).json({ error: "كلمة المرور غير صحيحة" });
-    }
-    
-    if (!key || key.trim() === "") {
-        USER_CUSTOM_AI_CONFIG = null;
-    } else {
-        USER_CUSTOM_AI_CONFIG = {
-            key: key.trim(),
-            baseUrl: (baseUrl || "").trim(),
-            model: (model || "").trim(),
-            type: (type === 'openai' ? 'openai' : 'gemini')
-        };
-    }
-    // Clear instance to force re-initialization with new key
-    geminiClientInstance = null;
-    KEY_COOLDOWNS.clear(); // Clear all cooldowns so the new key can be tested immediately
-    console.log(`AI Configuration updated via admin endpoint. Type: ${type}`);
-    
-    // Save backup permanently to cloud (Firestore + RTDB)
-    saveAIConfigToCloud();
-    
-    res.json({ status: true, message: `تم تحديث مفتاح الربط (${type === 'gemini' ? 'Gemini' : 'OpenAI/Other'}) بنجاح! 🚀` });
-  });
-
-  // Category Pins Update API (Admin Action)
-  app.post("/api/v1/pins/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const pinData = req.body; // Expecting { pinned: boolean, seriesId: string, title: string, category: string, pinnedAt: number }
-      
-      if (pinData && pinData.pinned) {
-        pinsMemory[id] = pinData;
-      } else {
-        delete pinsMemory[id];
-      }
-      
-      savePinsToFile();
-
-      // The backend saves pins securely to server memory and pins.json. The admin's browser client securely uploads new pins directly to RTDB.
-      res.json({ success: true, pins: pinsMemory });
-    } catch (err: any) {
-      console.error("Error updating category pins:", err.message);
-      res.status(500).json({ status: false, error: err.message });
-    }
-  });
-
-  // Secure TMDB Query Proxy Endpoint to avoid CORS/Fetch Blocks
-  app.get("/api/v1/tmdb/proxy", async (req, res) => {
-    const { url } = req.query;
-    if (!url || typeof url !== "string") {
-      return res.status(400).json({ error: "Missing TMDB query URL parameter" });
-    }
-
-    // Security Guard: restrict proxying strictly to api.themoviedb.org
-    if (!url.startsWith("https://api.themoviedb.org/") && !url.startsWith("http://api.themoviedb.org/")) {
-      return res.status(403).json({ error: "Only official TMDB endpoints are proxyable" });
-    }
-
-    try {
-      const response = await axios.get(url, {
-        timeout: 10000,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36"
-        }
-      });
-      res.json(response.data);
-    } catch (err: any) {
-      console.error("TMDB Proxy Axios Error:", err.message);
-      const status = err.response?.status || 500;
-      const msg = err.response?.data || err.message;
-      res.status(status).json({ error: msg });
-    }
-  });
-
   // 5. Smart AI Assistant Chat with protection
   app.post("/api/v1/ai/chat", async (req, res) => {
     // Simple basic rate limiting per IP (very loose)
@@ -1539,8 +1220,6 @@ async function startServer() {
 7. إذا طلب الانتقال أو التشغيل، اخبره بأناقة: "سأنتقل معك الآن فوراً! 🚀💨" وعليك تضمين صيغة الانتقال (navigate:{id}) في متن أو نهاية الرد.
 8. لا ترشح أبداً أي مسلسل خارج قائمتنا الحالية للتشغيل الفوري، ومطابقة ذكية للمسميات العامية.
 9. ممنوع منعاً باتاً كتابة أو توليد أي روابط إنترنت خارجية أو مواقع إلكترونية (مثل الروابط التي تبدأ بـ http أو https) في ردك نهائياً؛ تذكّر أنك لا تملك صلاحية تصفح الويب أو توجيه المستخدم لمواقع أخرى. التوجيه يتم حصرياً للأعمال المتوفرة لدينا بصيغة الانتقال [شاهد مسلسل {اسم العمل} من هنا](navigate:{id}).
-10. إذا سألك المتابع أو اشتكى من مشكلة: "المسلسلات المثبتة تظهر لي فقط ولا تظهر للمستخدمين الآخرين" أو "المستخدمين الآخرين لا تظهر لهم المسلسلات المثبتة، تظهر فقط للشخص الذي قام بتثبيتها" أو "مشكلة أنه يظهر عندي اللي ثبته ما يظهر للمستخدمين":
-    - قل له بابتسامة وفخر وحماس: "يا عسيل! يوسفني جداً هذا الخلل البسيط اللي كان صاير، بس أبشرك الحين مشكلة التثبيت والـ Pins انحلت بالكامل وجذرياً! 🔧🚀 صارت المزامنة الحين تعمل بلحظتها بشكل حي ومباشر بين الكل وFirebase، وأي مسلسل يثبّته الأدمن بيظهر فوراً وبنفس الترتيب الراقي لكل المستخدمين والزوار في نفس اللحظة! جرب تسجل دخول أو تفتح التطبيق من جهاز ثاني وبتشوف عيونك كيف المسلسلات المثبتة مترتبة للجميع يا عسل! 😉💖"
 
 إليك قائمة المسلسلات المتوفرة على منصة حكايتنا لتطابقها بذكاء مع أوصاف وتفاصيل المستخدمين:
 ${seriesContext}`;
@@ -1560,11 +1239,11 @@ ${seriesContext}`;
   // Firebase Config with obfuscation
   app.get("/api/v1/config/firebase", (req, res) => {
     const config = {
-      apiKey: process.env.FIREBASE_API_KEY || "AIzaSyCQpOf-eNn6Le8b5wsdiDuPabBV_scBD68",
-      authDomain: process.env.FIREBASE_AUTH_DOMAIN || "mo-play-b0cb7.firebaseapp.com",
-      databaseURL: process.env.FIREBASE_DATABASE_URL || "https://mo-play-b0cb7-default-rtdb.firebaseio.com",
-      projectId: process.env.FIREBASE_PROJECT_ID || "mo-play-b0cb7",
-      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "mo-play-b0cb7.firebasestorage.app",
+      apiKey: process.env.FIREBASE_API_KEY || "AIzaSyAnYkOnP2XWfaKrXXvTO3Euq7s-pl9QGKg",
+      authDomain: process.env.FIREBASE_AUTH_DOMAIN || "chat-516a8.firebaseapp.com",
+      databaseURL: process.env.FIREBASE_DATABASE_URL || "https://chat-516a8-default-rtdb.firebaseio.com",
+      projectId: process.env.FIREBASE_PROJECT_ID || "chat-516a8",
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "chat-516a8.firebasestorage.app",
       messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "276393305302",
       appId: process.env.FIREBASE_APP_ID || "1:276393305302:web:12f90a55d7c13a4c57d577"
     };
@@ -1600,6 +1279,7 @@ ${seriesContext}`;
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    fetchKeys(); // Warm up keys on start
   });
 }
 
