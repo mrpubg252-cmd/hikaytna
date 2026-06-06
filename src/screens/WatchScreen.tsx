@@ -990,8 +990,23 @@ export default function WatchScreen() {
                     </div>
                   </button>
 
-                  {isChatExpanded ? (
+                   {isChatExpanded ? (
                     <div className="h-[400px] flex flex-col">
+                      <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-zinc-950/40 text-[10px] font-black shrink-0">
+                        <button
+                          onClick={() => {
+                            setIsChatExpanded(false);
+                            setIsChatOpen(true);
+                          }}
+                          className="text-primary hover:text-white transition flex items-center gap-1 bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg"
+                        >
+                          <svg className="w-3 h-3 text-primary animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                          </svg>
+                          توسيع الشات الجانبي 📱
+                        </button>
+                        <span className="text-zinc-500 font-sans uppercase tracking-wider">وضع الدردشة السريعة</span>
+                      </div>
                       <SeriesChat 
                         seriesId={series.id} 
                         seriesTitle={series.title} 

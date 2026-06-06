@@ -1,18 +1,25 @@
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, get } from 'firebase/database';
 import { getFirestore } from 'firebase/firestore';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCQpOf-eNn6Le8b5wsdiDuPabBV_scBD68",
-  authDomain: "mo-play-b0cb7.firebaseapp.com",
-  projectId: "mo-play-b0cb7",
-  databaseURL: "https://mo-play-b0cb7-default-rtdb.firebaseio.com",
-  storageBucket: "mo-play-b0cb7.firebasestorage.app",
+  apiKey: "AIzaSyD7-kL247_yH0C4zXW-6eP3L3W0W7E2W1E",
+  authDomain: "chat-app-12345.firebaseapp.com",
+  projectId: "chat-app-12345",
+  databaseURL: "https://chat-app-12345-default-rtdb.firebaseio.com",
+  storageBucket: "chat-app-12345.firebasestorage.app",
 };
 
 const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
 export const firestore = getFirestore(app);
+
+// Authenticate anonymously for secure permissions natively
+const auth = getAuth(app);
+signInAnonymously(auth).catch((err) => {
+  console.warn("Default Firebase anonymous auth error:", err);
+});
 
 export interface Episode {
   title: string;

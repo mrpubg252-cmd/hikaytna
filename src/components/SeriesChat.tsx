@@ -340,6 +340,34 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
 
   // Initialize DB Securely
   useEffect(() => {
+    // Priority feature: load mock data immediately to prevent an empty screen while Firebase configures/fails
+    const safeIdForMock = (seriesId || 'default').replace(/[\.\$\#\[\]\/\s]/g, '_');
+    import('../data/mockChats').then(({ MOCK_CHATS }) => {
+      const fallbackData = MOCK_CHATS[safeIdForMock];
+      if (fallbackData) {
+        setMessages(prev => {
+          if (prev.length > 0) return prev; // Do not overwrite if real data already loaded!
+          const now = Date.now();
+          const fallbackMessages: ChatMessage[] = [];
+          Object.entries(fallbackData).forEach(([key, val]: [string, any]) => {
+              fallbackMessages.push({
+                id: key,
+                userId: val.userId || 'unknown',
+                userName: val.userName || 'مشاهد غامض',
+                userAvatar: val.userAvatar || 'boy1',
+                text: val.text || '',
+                createdAt: val.createdAt || now,
+                replyTo: val.replyTo,
+                sceneTime: val.sceneTime,
+                sceneImage: val.sceneImage
+              });
+          });
+          fallbackMessages.sort((a, b) => a.createdAt - b.createdAt);
+          return fallbackMessages;
+        });
+      }
+    }).catch(() => {});
+
     async function initSecureDB() {
       if (db) {
         setIsDbReady(true);
@@ -356,12 +384,25 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
           Object.entries(data).map(([key, val]) => [key, decryptValue(val as string)])
         );
 
+        let app;
         if (!getApps().find(a => a.name === 'chatApp')) {
-          const app = initializeApp(config, 'chatApp');
+          app = initializeApp(config, 'chatApp');
           db = getDatabase(app);
         } else {
-          db = getDatabase(getApp('chatApp'));
+          app = getApp('chatApp');
+          db = getDatabase(app);
         }
+
+        // Authenticate anonymously for secure read/write permissions
+        try {
+          const { getAuth, signInAnonymously } = await import('firebase/auth');
+          const authObj = getAuth(app);
+          await signInAnonymously(authObj);
+          console.log("Authenticated anonymously with 'chatApp' successfully!");
+        } catch (authErr) {
+          console.warn("Anonymous sign-in failed during secure db initialization:", authErr);
+        }
+
         setIsDbReady(true);
       } catch (err) {
         console.warn("Failed to fetch dynamic firebase config. Using ultra-fallback mode for static hostings...");
@@ -378,12 +419,24 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
         };
         
         try {
+          let app;
           if (!getApps().find(a => a.name === 'chatApp')) {
-            const app = initializeApp(fallbackConfig, 'chatApp');
+            app = initializeApp(fallbackConfig, 'chatApp');
             db = getDatabase(app);
           } else {
-            db = getDatabase(getApp('chatApp'));
+            app = getApp('chatApp');
+            db = getDatabase(app);
           }
+
+          try {
+            const { getAuth, signInAnonymously } = await import('firebase/auth');
+            const authObj = getAuth(app);
+            await signInAnonymously(authObj);
+            console.log("Authenticated anonymously with 'chatApp' (fallback) successfully!");
+          } catch (authErr) {
+            console.warn("Anonymous sign-in on fallback block failed:", authErr);
+          }
+
           setIsDbReady(true);
         } catch (innerErr) {
           setDbError("فشل في تهيئة نظام الدردشة. تأكد من أنك قمت برفع كافة الملفات بشكل صحيح.");
@@ -434,7 +487,29 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     const unsubscribe = onValue(chatQuery, (snapshot) => {
       const data = snapshot.val();
       if (!data) {
-        setMessages([]);
+        import('../data/mockChats').then(({ MOCK_CHATS }) => {
+          const fallbackData = MOCK_CHATS[safeSeriesId];
+          if (fallbackData) {
+            const fallbackMessages: ChatMessage[] = [];
+            Object.entries(fallbackData).forEach(([key, val]: [string, any]) => {
+                fallbackMessages.push({
+                  id: key,
+                  userId: val.userId || 'unknown',
+                  userName: val.userName || 'مشاهد غامض',
+                  userAvatar: val.userAvatar || 'boy1',
+                  text: val.text || '',
+                  createdAt: val.createdAt || Date.now(),
+                  replyTo: val.replyTo,
+                  sceneTime: val.sceneTime,
+                  sceneImage: val.sceneImage
+                });
+            });
+            fallbackMessages.sort((a, b) => a.createdAt - b.createdAt);
+            setMessages(fallbackMessages);
+          } else {
+            setMessages([]);
+          }
+        }).catch(() => setMessages([]));
         return;
       }
 
@@ -463,9 +538,41 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
       loadedMessages.sort((a, b) => a.createdAt - b.createdAt);
       setMessages(loadedMessages);
       setDbError(''); // Clear error if reading is successful
-    }, (error) => {
+    }, async (error) => {
       console.error("Firebase Read Error:", error);
-      setDbError("عذراً، جاري انتسابك مع قواعد فايربيس. يرجى التأكد من تفعيل صلاحيات الكتابة والقراءة (Rules: .read=true, .write=true) في لوحة Firebase Realtime Database.");
+      
+      try {
+        const { MOCK_CHATS } = await import('../data/mockChats');
+        const fallbackData = MOCK_CHATS[safeSeriesId];
+        if (fallbackData) {
+            const now = Date.now();
+            const fallbackMessages: ChatMessage[] = [];
+            Object.entries(fallbackData).forEach(([key, val]: [string, any]) => {
+                const timestamp = val.createdAt || now;
+                fallbackMessages.push({
+                  id: key,
+                  userId: val.userId || 'unknown',
+                  userName: val.userName || 'مشاهد غامض',
+                  userAvatar: val.userAvatar || 'boy1',
+                  text: val.text || '',
+                  createdAt: timestamp,
+                  replyTo: val.replyTo,
+                  sceneTime: val.sceneTime,
+                  sceneImage: val.sceneImage
+                });
+            });
+            fallbackMessages.sort((a, b) => a.createdAt - b.createdAt);
+            setMessages(fallbackMessages);
+        }
+      } catch (e) {
+          console.error("Failed to load mock data:", e);
+      }
+
+      setDbError(`خطأ في الصلاحيات! لتشغيل الدردشة، يرجى التوجه للوحة Firebase (التي أضفت بياناتها):
+1. اذهب لقسم "Build" > "Authentication" وفعّل "Anonymous" (مجهول).
+2. اذهب لقسم "Realtime Database" لتحديث القواعد (Rules) واجعلها:
+{ "rules": { ".read": "auth != null", ".write": "auth != null" } }
+(تم عرض السجل المحفوظ مؤقتاً)`);
     });
 
     return () => {
@@ -605,12 +712,21 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
       if (aiText) {
         // Push Hakim's answer as a new message to the group chat
         const aiMsgRef = push(ref(db, `chats/${safeSeriesId}`));
-        await set(aiMsgRef, {
+        const msgData = {
           userName: `حكيم ✨ (مستشارك الذكي)`,
           userAvatar: `https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png`,
           text: aiText,
           createdAt: Date.now()
+        };
+
+        const newMsgWithId = { id: aiMsgRef.key || Date.now().toString(), ...msgData };
+        setMessages(prev => {
+          const updated = [...prev, newMsgWithId] as ChatMessage[];
+          updated.sort((a, b) => a.createdAt - b.createdAt);
+          return updated;
         });
+
+        set(aiMsgRef, msgData).catch(() => {});
       } else {
         throw new Error("Empty AI Response");
       }
@@ -621,12 +737,21 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
           const aiMsgRef = push(ref(db, `chats/${safeSeriesId}`));
           const errorText = `عذراً! حكيم يواجه مشكلة في الاتصال حالياً. يرجى التأكد من مفتاح API أو المحاولة لاحقاً! 🤖❤️`;
             
-          await set(aiMsgRef, {
+          const msgData = {
             userName: `حكيم ✨ (مستشارك الذكي)`,
             userAvatar: `https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png`,
             text: errorText,
             createdAt: Date.now()
+          };
+
+          const newMsgWithId = { id: aiMsgRef.key || Date.now().toString(), ...msgData };
+          setMessages(prev => {
+            const updated = [...prev, newMsgWithId] as ChatMessage[];
+            updated.sort((a, b) => a.createdAt - b.createdAt);
+            return updated;
           });
+
+          set(aiMsgRef, msgData).catch(() => {});
         } catch (dbErr) {
           console.error("Failed to push fallback error to firebase chat:", dbErr);
         }
@@ -656,11 +781,17 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     if (editingMsg) {
       try {
         const msgRef = ref(db, `chats/${safeSeriesId}/${editingMsg.id}`);
-        await set(msgRef, {
+        
+        // Optimistic UI for edit
+        setMessages(prev => prev.map(m => m.id === editingMsg.id ? { ...m, text: txt, edited: true } : m));
+        
+        // Fire and forget
+        set(msgRef, {
           ...editingMsg,
           text: txt,
           edited: true
-        });
+        }).catch(() => console.warn("Background RTDB edit delayed/failed"));
+        
         setEditingMsg(null);
         setInputText('');
         return;
@@ -696,8 +827,21 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     setReplyTo(null);
     setPendingScene(null);
 
+    // Optimistic UI: Update state immediately so it renders without waiting for network!
+    const newMsgWithId = {
+      id: newMsgRef.key || Date.now().toString(),
+      ...msgData
+    };
+    setMessages(prev => {
+      const updated = [...prev, newMsgWithId];
+      updated.sort((a, b) => a.createdAt - b.createdAt);
+      return updated;
+    });
+
     try {
-      await set(newMsgRef, msgData);
+      // Fire and forget network call
+      set(newMsgRef, msgData).catch(() => console.warn("Background RTDB write delayed/failed"));
+      
       // Quietly clean up old messages in background
       purgeExpiredDocs(safeSeriesId);
 
@@ -734,7 +878,10 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     if (!db) return;
     const safeSeriesId = (seriesId || 'default').replace(/[\.\$\#\[\]\/\s]/g, '_');
     try {
-      await remove(ref(db, `chats/${safeSeriesId}/${msgId}`));
+      // Optimistic delete
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+      
+      remove(ref(db, `chats/${safeSeriesId}/${msgId}`)).catch(() => console.warn("Background RTDB delete delayed/failed"));
     } catch (err) {
       console.error("Delete error:", err);
     }
@@ -848,12 +995,24 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
       const safeSeriesId = (seriesId || 'default').replace(/[\.\$\#\[\]\/\s]/g, '_');
       const messagesRef = ref(db, `chats/${safeSeriesId}`);
       const newMsgRef = push(messagesRef);
-      await set(newMsgRef, {
+      
+      const msgData: any = {
+        userId: localStorage.getItem('guest_chat_pid') || 'guest_temp',
         userName,
         userAvatar,
         text: exprText,
         createdAt: Date.now()
+      };
+
+      const newMsgWithId = { id: newMsgRef.key || Date.now().toString(), ...msgData };
+      setMessages(prev => {
+        const updated = [...prev, newMsgWithId];
+        updated.sort((a, b) => a.createdAt - b.createdAt);
+        return updated;
       });
+
+      // Fire and forget network call
+      set(newMsgRef, msgData).catch(() => console.warn("Background Firebase write delayed/failed"));
 
       // Quietly clean up old messages in background
       purgeExpiredDocs(safeSeriesId);
@@ -1046,7 +1205,15 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
           onScroll={handleScroll}
           className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar relative"
         >
-          {messages.length === 0 && (
+          {dbError && (
+            <div className="bg-red-500/10 border border-red-500/25 text-red-400 p-4 rounded-2xl text-[11px] text-center font-bold mb-4 animate-pulse">
+              ⚠️ {dbError}
+              <br />
+              <span className="text-[9px] text-zinc-400 block mt-1">يجري الآن محاولة الاتصال التلقائي عبر الـ SDK الآمنة...</span>
+            </div>
+          )}
+
+          {messages.length === 0 && !dbError && (
             <div className="h-full flex flex-col items-center justify-center text-zinc-500 gap-2 opacity-50">
               <MessageSquare className="w-8 h-8" />
               <p className="text-xs font-bold">كن أول من يكتب في الشات!</p>

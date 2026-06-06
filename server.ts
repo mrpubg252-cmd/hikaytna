@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -389,9 +390,9 @@ function getPekPikModelForKey(key: string): string {
 // Unified Robust AI Caller for Hakeem (Direct Priority)
 async function smartChat(msg: string, systemPrompt: string, history: any[]) {
   // 1. Direct environment variable mapping for custom PekPik/OpenAI keys
-  const envKey = (process.env.GEMINI_API_KEY || "").trim();
-  const envBaseUrl = (process.env.GEMINI_BASE_URL || process.env.CUSTOM_AI_BASE_URL || "").trim();
-  const envModel = (process.env.GEMINI_MODEL || process.env.CUSTOM_AI_MODEL || "").trim();
+  const envKey = (process.env.PEKPIK_API_KEY || process.env.CUSTOM_AI_KEY || process.env.GEMINI_API_KEY || "").trim();
+  const envBaseUrl = (process.env.PEKPIK_BASE_URL || process.env.GEMINI_BASE_URL || process.env.CUSTOM_AI_BASE_URL || "").trim();
+  const envModel = (process.env.PEKPIK_MODEL || process.env.GEMINI_MODEL || process.env.CUSTOM_AI_MODEL || "").trim();
   
   const isEnvPekPik = envKey.startsWith("sk-") || envBaseUrl.includes("pekpik") || envBaseUrl.includes("aiapiv2");
 
@@ -568,7 +569,7 @@ async function startServer() {
   // ============== SYSTEM-WIDE PERSISTENT CLOUD SELF-HEALING SYSTEM (FIRESTORE & RTDB) ==============
   // Fetches master backups from Firestore and Realtime Database raw REST APIs
   // This guarantees complete survival across restarts, rebuilds, and ephemeral disk wipes!
-  const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || "mo-play-b0cb7";
+  const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || "chat-app-12345";
 
   // --- 1. AI Configuration Self-Healing ---
   try {
@@ -1676,11 +1677,11 @@ ${seriesContext}`;
   // Firebase Config with obfuscation
   app.get("/api/v1/config/firebase", (req, res) => {
     const config = {
-      apiKey: process.env.FIREBASE_API_KEY || "AIzaSyCQpOf-eNn6Le8b5wsdiDuPabBV_scBD68",
-      authDomain: process.env.FIREBASE_AUTH_DOMAIN || "mo-play-b0cb7.firebaseapp.com",
-      databaseURL: process.env.FIREBASE_DATABASE_URL || "https://mo-play-b0cb7-default-rtdb.firebaseio.com",
-      projectId: process.env.FIREBASE_PROJECT_ID || "mo-play-b0cb7",
-      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "mo-play-b0cb7.firebasestorage.app",
+      apiKey: process.env.FIREBASE_API_KEY || "AIzaSyD7-kL247_yH0C4zXW-6eP3L3W0W7E2W1E",
+      authDomain: process.env.FIREBASE_AUTH_DOMAIN || "chat-app-12345.firebaseapp.com",
+      databaseURL: process.env.FIREBASE_DATABASE_URL || "https://chat-app-12345-default-rtdb.firebaseio.com",
+      projectId: process.env.FIREBASE_PROJECT_ID || "chat-app-12345",
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "chat-app-12345.firebasestorage.app",
       messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "276393305302",
       appId: process.env.FIREBASE_APP_ID || "1:276393305302:web:12f90a55d7c13a4c57d577"
     };
