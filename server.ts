@@ -77,10 +77,15 @@ function getActiveAIConfig(remoteConfig?: any) {
 // Ultra-fast API caller with optimized speed and dynamic options
 async function callDeepSeek(msg: string, systemPrompt: string, history: any[], keyIdx: number, config: { baseUrl: string, model: string, keys: string[] }, ignoreCooldown = false) {
   if (keyIdx >= config.keys.length) return { ok: false, error: "No key found at index" };
-  const key = config.keys[keyIdx];
+  const key = (config.keys[keyIdx] || "").trim();
+  if (!key) return { ok: false, error: "Empty key provided" };
+  
   if (!ignoreCooldown && KEY_COOLDOWNS.has(key) && Date.now() < KEY_COOLDOWNS.get(key)!) {
     return { ok: false, error: "Key is currently on cooldown (rate-limited or invalid)" };
   }
+  
+  const cleanBaseUrl = config.baseUrl.trim().replace(/\/$/, "");
+  const cleanModel = config.model.trim();
   
   try {
     const messages = [
@@ -94,10 +99,8 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
 
     const isDefaultPool = (config.keys === API_KEYS);
     const isToken = key.startsWith("AQ.");
-    const requestTimeout = (isDefaultPool && !isToken) ? 2200 : 15000;
-
     const isGoogleKey = key.startsWith("AIzaSy");
-    const isGoogleDomain = config.baseUrl.includes("generativelanguage.googleapis.com");
+    const isGoogleDomain = cleanBaseUrl.includes("generativelanguage.googleapis.com");
 
     const reqHeaders: Record<string, string> = {
       "Content-Type": "application/json",
@@ -108,31 +111,30 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
       reqHeaders["Authorization"] = `Bearer ${key}`;
     } else if (isGoogleKey) {
       reqHeaders["x-goog-api-key"] = key;
-      if (config.baseUrl.includes("/openai")) {
+      if (cleanBaseUrl.includes("/openai")) {
         reqHeaders["Authorization"] = `Bearer ${key}`;
       }
     } else {
       reqHeaders["Authorization"] = `Bearer ${key}`;
     }
 
-    let cleanBaseUrl = config.baseUrl.trim().replace(/\/$/, "");
-    
+    let finalBaseUrl = cleanBaseUrl;
     // Auto-fix Google OpenAI endpoint path ONLY if completely missing
-    if (isGoogleDomain && !cleanBaseUrl.includes("/openai")) {
-        if (!cleanBaseUrl.includes("/v1beta") && !cleanBaseUrl.includes("/v1")) {
-            cleanBaseUrl += "/v1beta/openai";
+    if (isGoogleDomain && !finalBaseUrl.includes("/openai")) {
+        if (!finalBaseUrl.includes("/v1beta") && !finalBaseUrl.includes("/v1")) {
+            finalBaseUrl += "/v1beta/openai";
         } else {
-            cleanBaseUrl += "/openai";
+            finalBaseUrl += "/openai";
         }
     }
-    // Google OpenAI endpoint handles model names without 'models/' prefix
-    let cleanModel = config.model;
-    if (isGoogleDomain && cleanModel.startsWith("models/")) {
-      cleanModel = cleanModel.replace("models/", "");
+    
+    let finalModel = cleanModel;
+    if (isGoogleDomain && finalModel.startsWith("models/")) {
+      finalModel = finalModel.replace("models/", "");
     }
 
-    const res = await axios.post(`${cleanBaseUrl}/chat/completions`, {
-      model: cleanModel,
+    const res = await axios.post(`${finalBaseUrl}/chat/completions`, {
+      model: finalModel,
       messages,
       temperature: 0.7,
       max_tokens: 800,
@@ -143,13 +145,35 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
     });
 
     if (res.data && res.data.choices && res.data.choices[0]) {
-      return { ok: true, reply: res.data.choices[0].message.content };
+      const replyText = res.data.choices[0].message.content;
+      HAKEEM_LOGS.push(`[${new Date().toISOString()}] ✅ Succeeded using key=${key.substring(0, 8)}... model=${finalModel} url=${finalBaseUrl}`);
+      if (HAKEEM_LOGS.length > 50) HAKEEM_LOGS.shift();
+      return { ok: true, reply: replyText };
     }
     
-    return { ok: false, error: "Invalid AI response format" };
+    const formatErr = "Invalid response format from gateway (no message choices returned)";
+    HAKEEM_LOGS.push(`[${new Date().toISOString()}] ❌ Format error: ${formatErr}`);
+    if (HAKEEM_LOGS.length > 50) HAKEEM_LOGS.shift();
+    return { ok: false, error: formatErr };
   } catch (error: any) {
-    const errorMsg = error.response?.data?.error?.message || error.message;
-    console.error(`AI Error [${keyIdx}]:`, errorMsg);
+    let errorMsg = error.message || "Unknown error";
+    if (error.response?.data) {
+      if (typeof error.response.data === 'string') {
+        errorMsg = error.response.data;
+      } else if (error.response.data.error) {
+        errorMsg = typeof error.response.data.error === 'string'
+          ? error.response.data.error
+          : (error.response.data.error.message || JSON.stringify(error.response.data.error));
+      } else if (error.response.data.message) {
+        errorMsg = error.response.data.message;
+      } else {
+        errorMsg = JSON.stringify(error.response.data);
+      }
+    }
+    
+    console.error(`AI Error for key=${key.substring(0, 8)}... :`, errorMsg);
+    HAKEEM_LOGS.push(`[${new Date().toISOString()}] ❌ callDeepSeek failed (key=${key.substring(0, 8)}..., model=${cleanModel}, url=${cleanBaseUrl}): ${errorMsg}`);
+    if (HAKEEM_LOGS.length > 50) HAKEEM_LOGS.shift();
     
     if (error.response?.status === 429) {
       KEY_COOLDOWNS.set(key, Date.now() + 5 * 60 * 1000);
@@ -350,7 +374,7 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
 
 function getPekPikModelForKey(key: string): string {
   const k = key || "";
-  if (k.includes("O3kEN") || k.includes("EkDJLX")) {
+  if (k.includes("O3kEN") || k.includes("EkDJLX") || k.includes("03kEN")) {
     return "gemini-2.5-flash";
   }
   if (k.includes("K8wYe") || k.includes("T1xzBx")) {
@@ -365,25 +389,53 @@ function getPekPikModelForKey(key: string): string {
 // Unified Robust AI Caller for Hakeem (Direct Priority)
 async function smartChat(msg: string, systemPrompt: string, history: any[]) {
   // 1. Direct environment variable mapping for custom PekPik/OpenAI keys
-  const envKey = process.env.GEMINI_API_KEY || "";
-  const envBaseUrl = process.env.GEMINI_BASE_URL || process.env.CUSTOM_AI_BASE_URL || "";
-  const envModel = process.env.GEMINI_MODEL || process.env.CUSTOM_AI_MODEL || "";
+  const envKey = (process.env.GEMINI_API_KEY || "").trim();
+  const envBaseUrl = (process.env.GEMINI_BASE_URL || process.env.CUSTOM_AI_BASE_URL || "").trim();
+  const envModel = (process.env.GEMINI_MODEL || process.env.CUSTOM_AI_MODEL || "").trim();
   
-  const isEnvPekPik = envKey.startsWith("sk-") || envBaseUrl.includes("pekpik.com");
+  const isEnvPekPik = envKey.startsWith("sk-") || envBaseUrl.includes("pekpik") || envBaseUrl.includes("aiapiv2");
 
   if (isEnvPekPik && envKey) {
     const customConfig = {
       baseUrl: envBaseUrl || "https://aiapiv2.pekpik.com/v1",
       model: envModel || getPekPikModelForKey(envKey),
-      keys: [envKey.trim()]
+      keys: [envKey]
     };
+    HAKEEM_LOGS.push(`[${new Date().toISOString()}] 🚀 Routing chat to PekPik environment: model=${customConfig.model} url=${customConfig.baseUrl}`);
+    if (HAKEEM_LOGS.length > 50) HAKEEM_LOGS.shift();
+    
     const rEnvCustom = await callDeepSeek(msg, systemPrompt, history, 0, customConfig, true);
     if (rEnvCustom.ok && rEnvCustom.reply) return rEnvCustom;
+
+    // PekPik Resilience Pool: If the primary key failed or had a typo, try the other bought keys sequentially
+    HAKEEM_LOGS.push(`[${new Date().toISOString()}] ⚠️ Primary PekPik key failed. Trying sequential resilience pool from items...`);
+    if (HAKEEM_LOGS.length > 50) HAKEEM_LOGS.shift();
+
+    const boughtKeys = [
+      { key: "sk-O3kEN936mtOOgGn79NHccA0SaHTaobDU2oyQB0EkDJLX1fNH", model: "gemini-2.5-flash" },
+      { key: "sk-03kEN936mtOOgGn79NHccA0SaHTaobDU2oyQB0EkDJLX1fNH", model: "gemini-2.5-flash" },
+      { key: "sk-K8wYetO3JUqPP5pUnjRO9jo1DqbXYjTnXNaT1xzBx5kA00xL", model: "openrouter/owl-alpha" },
+      { key: "sk-igD4x9w7xWyePiXcOlszsyRyMTUlzkisfEsagUChHgrayXbo", model: "qwen/qwen3.6-flash" }
+    ];
+
+    for (const bk of boughtKeys) {
+      if (bk.key.trim() === envKey.trim()) continue; // Skip if already tried
+      const poolConfig = {
+        baseUrl: envBaseUrl || "https://aiapiv2.pekpik.com/v1",
+        model: bk.model,
+        keys: [bk.key]
+      };
+      HAKEEM_LOGS.push(`[${new Date().toISOString()}] 🔄 Trying backup bought key prefix=${bk.key.substring(0, 8)}... model=${bk.model}`);
+      if (HAKEEM_LOGS.length > 50) HAKEEM_LOGS.shift();
+
+      const rBk = await callDeepSeek(msg, systemPrompt, history, 0, poolConfig, true);
+      if (rBk.ok && rBk.reply) return rBk;
+    }
   }
 
-  // 2. Priority: Custom Overrides (Set by Admin)
+  // 2. Priority: Custom Overrides (Set by Admin via UI)
   if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key) {
-    const isPekPik = USER_CUSTOM_AI_CONFIG.baseUrl?.includes("pekpik.com") || USER_CUSTOM_AI_CONFIG.key.startsWith("sk-");
+    const isPekPik = USER_CUSTOM_AI_CONFIG.baseUrl?.includes("pekpik") || USER_CUSTOM_AI_CONFIG.key.startsWith("sk-");
     const isCustomOpenAI = USER_CUSTOM_AI_CONFIG.type === 'openai' || isPekPik;
 
     if (isCustomOpenAI) {
@@ -408,22 +460,23 @@ async function smartChat(msg: string, systemPrompt: string, history: any[]) {
     }
   }
 
-  // 3. Last Resort Fallback: Hardcoded Fallback Pool (Using callDeepSeek with API_KEYS)
+  // 4. Fallback Pool of hardcoded backup keys
   const config = getActiveAIConfig();
   if (config && config.keys && config.keys.length > 0) {
-    // Try up to 2 attempts for the primary pool keys
     for (let i = 0; i < 2; i++) {
-      const rPool = await callDeepSeek(msg, systemPrompt, history, 0, config, i === 1);
-      if (rPool.ok && rPool.reply) {
-        return rPool;
-      }
+       const rPool = await callDeepSeek(msg, systemPrompt, history, 0, config, i === 1);
+       if (rPool.ok && rPool.reply) {
+         return rPool;
+       }
     }
   }
 
-  // 4. Absolute Final Backstop
-  const gemiResult = await callGeminiFallback(msg, systemPrompt, history);
-  if (gemiResult.ok && gemiResult.reply) {
-    return { ok: true, reply: gemiResult.reply };
+  // 5. Absolute Final Backstop
+  if (!isEnvPekPik) {
+    const gemiResult = await callGeminiFallback(msg, systemPrompt, history);
+    if (gemiResult.ok && gemiResult.reply) {
+      return { ok: true, reply: gemiResult.reply };
+    }
   }
 
   // Active helpful guidance instead of a dry, generic connection error when no api key exists
