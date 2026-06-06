@@ -348,17 +348,48 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
   }
 }
 
+function getPekPikModelForKey(key: string): string {
+  const k = key || "";
+  if (k.includes("O3kEN") || k.includes("EkDJLX")) {
+    return "gemini-2.5-flash";
+  }
+  if (k.includes("K8wYe") || k.includes("T1xzBx")) {
+    return "openrouter/owl-alpha";
+  }
+  if (k.includes("igD4x") || k.includes("UChHgr")) {
+    return "qwen/qwen3.6-flash";
+  }
+  return "gemini-2.5-flash"; // Default fallback
+}
+
 // Unified Robust AI Caller for Hakeem (Direct Priority)
 async function smartChat(msg: string, systemPrompt: string, history: any[]) {
-  // 1. Priority: Custom Overrides (Set by Admin)
+  // 1. Direct environment variable mapping for custom PekPik/OpenAI keys
+  const envKey = process.env.GEMINI_API_KEY || "";
+  const envBaseUrl = process.env.GEMINI_BASE_URL || process.env.CUSTOM_AI_BASE_URL || "";
+  const envModel = process.env.GEMINI_MODEL || process.env.CUSTOM_AI_MODEL || "";
+  
+  const isEnvPekPik = envKey.startsWith("sk-") || envBaseUrl.includes("pekpik.com");
+
+  if (isEnvPekPik && envKey) {
+    const customConfig = {
+      baseUrl: envBaseUrl || "https://aiapiv2.pekpik.com/v1",
+      model: envModel || getPekPikModelForKey(envKey),
+      keys: [envKey.trim()]
+    };
+    const rEnvCustom = await callDeepSeek(msg, systemPrompt, history, 0, customConfig, true);
+    if (rEnvCustom.ok && rEnvCustom.reply) return rEnvCustom;
+  }
+
+  // 2. Priority: Custom Overrides (Set by Admin)
   if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key) {
     const isPekPik = USER_CUSTOM_AI_CONFIG.baseUrl?.includes("pekpik.com") || USER_CUSTOM_AI_CONFIG.key.startsWith("sk-");
     const isCustomOpenAI = USER_CUSTOM_AI_CONFIG.type === 'openai' || isPekPik;
 
     if (isCustomOpenAI) {
       const customConfig = {
-        baseUrl: USER_CUSTOM_AI_CONFIG.baseUrl || "https://api.openai.com/v1",
-        model: USER_CUSTOM_AI_CONFIG.model || "gpt-3.5-turbo",
+        baseUrl: USER_CUSTOM_AI_CONFIG.baseUrl || "https://aiapiv2.pekpik.com/v1",
+        model: USER_CUSTOM_AI_CONFIG.model || getPekPikModelForKey(USER_CUSTOM_AI_CONFIG.key),
         keys: [USER_CUSTOM_AI_CONFIG.key]
       };
       const rCustom = await callDeepSeek(msg, systemPrompt, history, 0, customConfig, true);
@@ -369,8 +400,8 @@ async function smartChat(msg: string, systemPrompt: string, history: any[]) {
     }
   }
 
-  // 2. Priority: Stable Platform Google Gemini Key (Highly reliable, provided by AI Studio environment)
-  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY") {
+  // 3. Priority: Stable Platform Google Gemini Key (Highly reliable, provided by AI Studio environment)
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY" && !isEnvPekPik) {
     const rPlatform = await callGeminiFallback(msg, systemPrompt, history);
     if (rPlatform.ok && rPlatform.reply) {
       return rPlatform;
