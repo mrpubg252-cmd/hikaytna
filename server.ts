@@ -62,6 +62,7 @@ async function getRemoteConfig() {
 
 // Start with bootstrap keys as fallback (Stable Working Token)
 let API_KEYS: string[] = [
+  "AQ.Ab8RN6LuoIRrBX0LERCLIBIk1OXcz52VfoxJj4gszphbrbEoog",
   "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY"
 ];
 const WORKING_KEY_CACHE = new Map<number, number>();
@@ -265,25 +266,41 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
       });
     }
 
-    // ALWAYS use non-deprecated "gemini-3.5-flash" unless there is a custom model set by the admin
-    const targetModel = (USER_CUSTOM_AI_CONFIG?.type === 'gemini' && USER_CUSTOM_AI_CONFIG.model) 
-      ? USER_CUSTOM_AI_CONFIG.model 
-      : "gemini-3.5-flash";
+    // Robust sequential models trial to guarantee complete compatibility on all hosting API keys
+    const modelsToTry: string[] = [];
+    if (USER_CUSTOM_AI_CONFIG?.type === 'gemini' && USER_CUSTOM_AI_CONFIG.model) {
+      modelsToTry.push(USER_CUSTOM_AI_CONFIG.model);
+    }
+    modelsToTry.push("gemini-2.5-flash");
+    modelsToTry.push("gemini-1.5-flash");
+    modelsToTry.push("gemini-3.5-flash");
 
-    // Silently route request to Gemini
-    const response = await client.models.generateContent({
-      model: targetModel,
-      contents: contents,
-      config: {
-        systemInstruction: systemPrompt || "أنت حكيم، خبير مسلسلات ذكي وودود جداً. أجب بذكاء واختصار باسم 'حكيم'."
+    let lastError: any = null;
+    let reply = "";
+
+    for (const modelName of modelsToTry) {
+      try {
+        const response = await client.models.generateContent({
+          model: modelName,
+          contents: contents,
+          config: {
+            systemInstruction: systemPrompt || "أنت حكيم، خبير مسلسلات ذكي وودود جداً. أجب بذكاء واختصار باسم 'حكيم'."
+          }
+        });
+        if (response && response.text && response.text.trim()) {
+          reply = response.text;
+          break; // Succeeded!
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[Hakeem AI] Try with model ${modelName} failed, attempting next:`, err.message || err);
       }
-    });
+    }
 
-    const reply = response.text;
     if (reply && reply.trim()) {
       return { ok: true, reply };
     }
-    throw new Error("Empty response.text from Gemini API");
+    throw lastError || new Error("Failed to generate content with any model");
   } catch (error: any) {
     const errorMsg = error.message || "Unknown error";
     // Silently log Gemini failure
@@ -355,6 +372,9 @@ async function startServer() {
   let sliderMemory: Record<string, any> = {};
   const sliderFilePath = path.join(process.cwd(), "data", "slider.json");
 
+  // AI Configuration Local Disk Persistence
+  const aiConfigFilePath = path.join(process.cwd(), "data", "ai_config.json");
+
   // Load local fallbacks
   try {
     if (!fs.existsSync(path.join(process.cwd(), "data"))) {
@@ -366,15 +386,21 @@ async function startServer() {
     if (fs.existsSync(sliderFilePath)) {
       sliderMemory = JSON.parse(fs.readFileSync(sliderFilePath, "utf-8") || "{}");
     }
+    if (fs.existsSync(aiConfigFilePath)) {
+      USER_CUSTOM_AI_CONFIG = JSON.parse(fs.readFileSync(aiConfigFilePath, "utf-8") || "{}");
+      console.log("Successfully loaded USER_CUSTOM_AI_CONFIG from local disk backup!");
+    }
   } catch (e) {
     console.warn("Could not load database JSONs", e);
   }
 
   // ============== SYSTEM-WIDE PERSISTENT CLOUD SELF-HEALING SYSTEM (FIRESTORE) ==============
   // Fetches master backups from Firestore raw REST API (bypassing the 401 connection limits)
-  // This guarantees complete survival across Railway server restarts and rebuilds!
+  // This guarantees complete survival across restarts and rebuilds!
+  const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || "mo-play-b0cb7";
+
   try {
-    const aiConfigRes = await axios.get('https://firestore.googleapis.com/v1/projects/mo-play-b0cb7/databases/(default)/documents/shorts/app_admin_ai_config', { timeout: 4000 }).catch(() => null);
+    const aiConfigRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_admin_ai_config`, { timeout: 4000 }).catch(() => null);
     if (aiConfigRes && aiConfigRes.data && aiConfigRes.data.fields && aiConfigRes.data.fields.data) {
       const dataStr = aiConfigRes.data.fields.data.stringValue;
       if (dataStr) {
@@ -390,7 +416,7 @@ async function startServer() {
   }
 
   try {
-    const pinsRes = await axios.get('https://firestore.googleapis.com/v1/projects/mo-play-b0cb7/databases/(default)/documents/shorts/app_category_pins', { timeout: 4000 }).catch(() => null);
+    const pinsRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_category_pins`, { timeout: 4000 }).catch(() => null);
     if (pinsRes && pinsRes.data && pinsRes.data.fields && pinsRes.data.fields.data) {
       const dataStr = pinsRes.data.fields.data.stringValue;
       if (dataStr) {
@@ -404,7 +430,7 @@ async function startServer() {
   }
 
   try {
-    const sliderRes = await axios.get('https://firestore.googleapis.com/v1/projects/mo-play-b0cb7/databases/(default)/documents/shorts/app_slider_selections', { timeout: 4000 }).catch(() => null);
+    const sliderRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_slider_selections`, { timeout: 4000 }).catch(() => null);
     if (sliderRes && sliderRes.data && sliderRes.data.fields && sliderRes.data.fields.data) {
       const dataStr = sliderRes.data.fields.data.stringValue;
       if (dataStr) {
@@ -420,7 +446,7 @@ async function startServer() {
   // Cloud backup write helper functions
   const savePinsToFirestore = async () => {
     try {
-      await axios.patch('https://firestore.googleapis.com/v1/projects/mo-play-b0cb7/databases/(default)/documents/shorts/app_category_pins?updateMask.fieldPaths=data', {
+      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_category_pins?updateMask.fieldPaths=data`, {
         fields: {
           data: { stringValue: JSON.stringify(pinsMemory) }
         }
@@ -432,7 +458,7 @@ async function startServer() {
 
   const saveSliderToFirestore = async () => {
     try {
-      await axios.patch('https://firestore.googleapis.com/v1/projects/mo-play-b0cb7/databases/(default)/documents/shorts/app_slider_selections?updateMask.fieldPaths=data', {
+      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_slider_selections?updateMask.fieldPaths=data`, {
         fields: {
           data: { stringValue: JSON.stringify(sliderMemory) }
         }
@@ -444,7 +470,15 @@ async function startServer() {
 
   const saveAIConfigToFirestore = async () => {
     try {
-      await axios.patch('https://firestore.googleapis.com/v1/projects/mo-play-b0cb7/databases/(default)/documents/shorts/app_admin_ai_config?updateMask.fieldPaths=data', {
+      // Save locally to disk first layout to ensure complete hosting durability
+      fs.writeFileSync(aiConfigFilePath, JSON.stringify(USER_CUSTOM_AI_CONFIG, null, 2), "utf-8");
+      console.log("Locally saved AI configuration to disk backup successfully!");
+    } catch (err: any) {
+      console.warn("Failed to write manual AI configuration to disk:", err.message);
+    }
+
+    try {
+      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_admin_ai_config?updateMask.fieldPaths=data`, {
         fields: {
           data: { stringValue: JSON.stringify(USER_CUSTOM_AI_CONFIG) }
         }

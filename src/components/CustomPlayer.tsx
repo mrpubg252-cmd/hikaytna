@@ -372,6 +372,11 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   const [showOfflineNotification, setShowOfflineNotification] = useState(false);
   const [showRewindAnimation, setShowRewindAnimation] = useState(false);
   const [showForwardAnimation, setShowForwardAnimation] = useState(false);
+  const [isSpeedingUp, setIsSpeedingUp] = useState(false);
+  const originalSpeedRef = useRef<number>(1);
+  const longPressTimeoutRef = useRef<any>(null);
+  const singleClickTimeoutRef = useRef<any>(null);
+  const isTouchDeviceRef = useRef<boolean>(false);
   const [isHoveringControls, setIsHoveringControls] = useState(false);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const handleMouseEnterControls = () => {
@@ -1685,8 +1690,124 @@ const SafariNotification = () => {
     }
   };
 
+  // Start long press timer to speed up to 2.0x
+  const startLongPressTimer = (e: React.MouseEvent | React.TouchEvent) => {
+    if (isIframeFallback) return;
+
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+    }
+
+    if ('button' in e && e.button !== 0) return;
+
+    if ('touches' in e) {
+      isTouchDeviceRef.current = true;
+    }
+
+    longPressTimeoutRef.current = setTimeout(() => {
+      const video = videoRef.current;
+      if (video) {
+        originalSpeedRef.current = video.playbackRate || playbackRate;
+        video.playbackRate = 2.0;
+        setIsSpeedingUp(true);
+        if (navigator.vibrate) {
+          try { navigator.vibrate(25); } catch (err) {}
+        }
+      }
+    }, 450);
+  };
+
+  // End long press timer and restore original playback speed
+  const endLongPressTimer = (e: React.MouseEvent | React.TouchEvent) => {
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+
+    if (isSpeedingUp) {
+      const video = videoRef.current;
+      if (video) {
+        video.playbackRate = originalSpeedRef.current;
+      }
+      setIsSpeedingUp(false);
+      lastButtonClickTimeRef.current = Date.now();
+    }
+  };
+
+  // Touch screen specialized event handlers for flawless mobile UX (native speed & feel)
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    isTouchDeviceRef.current = true;
+    
+    const target = e.target as HTMLElement;
+    if (
+      target.closest('button') || 
+      target.closest('input') || 
+      target.closest('a') ||
+      target.closest('.custom-scrollbar') ||
+      target.closest('.no-toggle')
+    ) {
+      return;
+    }
+
+    startLongPressTimer(e);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    isTouchDeviceRef.current = true;
+
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+
+    const target = e.target as HTMLElement;
+    if (
+      target.closest('button') || 
+      target.closest('input') || 
+      target.closest('a') ||
+      target.closest('.custom-scrollbar') ||
+      target.closest('.no-toggle')
+    ) {
+      return;
+    }
+
+    if (isSpeedingUp) {
+      const video = videoRef.current;
+      if (video) {
+        video.playbackRate = originalSpeedRef.current;
+      }
+      setIsSpeedingUp(false);
+      lastButtonClickTimeRef.current = Date.now();
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+      return;
+    }
+
+    // Process tap/double-tap immediately from coordinates for responsive mobile skipping
+    const touch = e.changedTouches[0];
+    if (touch) {
+      handleInteraction(touch.clientX, touch.clientY, e.currentTarget);
+    }
+
+    if (e.cancelable) {
+      e.preventDefault(); // Stop synthesized click mouse events instantly
+    }
+  };
+
+  const handleTouchCancel = (e: React.TouchEvent<HTMLDivElement>) => {
+    endLongPressTimer(e);
+  };
+
   // Core gesture state machine
   const handleInteraction = (clientX: number, clientY: number, currentTarget: HTMLElement) => {
+    if (isSpeedingUp) return; // Ignore standard gestures during fast-forward mode
+
+    // Avoid immediate click execution if we just released a long press speed-up or button inside the player
+    if (Date.now() - lastButtonClickTimeRef.current < 500) {
+      return;
+    }
+
     const video = videoRef.current;
     if (!video && !isIframeFallback) return;
 
@@ -1699,28 +1820,34 @@ const SafariNotification = () => {
     const clickX = clientX - rect.left;
     const clickY = clientY - rect.top;
     const width = rect.width;
-    const height = rect.height;
     const clickPercent = clickX / width;
-    const clickPercentY = clickY / height;
-
-    // Define coordinates for the EXACT absolute center interaction (بالنص فقط لا فوق ولا تحت)
-    const isExactCenter = (clickPercent >= 0.35 && clickPercent <= 0.65) && (clickPercentY >= 0.35 && clickPercentY <= 0.65);
 
     const now = Date.now();
-    const DOUBLE_TAP_DELAY = 280;
+    const DOUBLE_TAP_DELAY = 310;
 
+    // Elite 3-zone system: Left 40% (Rewind), Middle 20% (Instant Play/Pause), Right 40% (Fast Forward)
     let zone: 'left' | 'right' | 'middle' = 'middle';
-    if (clickPercent < 0.3) {
+    if (clickPercent < 0.4) {
       zone = 'left';
-    } else if (clickPercent > 0.7) {
+    } else if (clickPercent > 0.6) {
       zone = 'right';
     }
 
-    const isDoubleTap = !isExactCenter && (zone === 'left' || zone === 'right') &&
-                        (zone === lastTapRef.current.side) &&
-                        (now - lastTapRef.current.time < DOUBLE_TAP_DELAY) &&
-                        (now - lastButtonClickTimeRef.current > 800);
+    if (zone === 'middle') {
+      // Middle tap is instantly processed on tap 1 (no delay) for immediate UX response!
+      if (clickTimeoutRef.current) {
+        clearTimeout(clickTimeoutRef.current);
+        clickTimeoutRef.current = null;
+      }
+      handlePlayPause();
+      return;
+    }
 
+    // Determine double tap state for left/right zones
+    const isDoubleTap = (zone === lastTapRef.current.side) &&
+                        (now - lastTapRef.current.time < DOUBLE_TAP_DELAY);
+
+    // Record tap details
     lastTapRef.current = { time: now, side: zone };
 
     if (isDoubleTap) {
@@ -1729,6 +1856,7 @@ const SafariNotification = () => {
         clickTimeoutRef.current = null;
       }
 
+      // Action double tap skip instantly
       if (zone === 'left') {
         skipTime(-10);
       } else {
@@ -1737,67 +1865,38 @@ const SafariNotification = () => {
       return;
     }
 
+    // First tap on side zones initiates single click timer to toggle player controls
     if (clickTimeoutRef.current) {
       clearTimeout(clickTimeoutRef.current);
-      clickTimeoutRef.current = null;
     }
 
-    const executeClick = () => {
+    clickTimeoutRef.current = setTimeout(() => {
       setShowSpeedMenu(false);
       setShowEpisodeMenu(false);
       toggleControls();
-    };
-
-    if (isExactCenter) {
-      // EXACT CENTER (بالنص فقط): Toggle play/pause and manage controls visibility
-      setShowSpeedMenu(false);
-      setShowEpisodeMenu(false);
-      if (isIframeFallback) {
-        setIsPlaying(prev => {
-          const nextVal = !prev;
-          if (!nextVal) {
-            setShowControls(true);
-          } else {
-            setShowControls(false);
-          }
-          return nextVal;
-        });
-      } else if (video) {
-        if (isPlaying) {
-          video.pause();
-          setIsPlaying(false);
-          setShowControls(true); // Show controls and play/pause button on pause
-          resetControlsTimeout(true);
-        } else {
-          video.play().catch(() => {});
-          setIsPlaying(true);
-          setShowControls(false); // Hide controls on play/resume
-        }
-      }
-    } else {
-      // Clicking anywhere outside the EXACT center (top, bottom, left/right margins) toggles controls
-      if (zone === 'middle') {
-        executeClick();
-      } else {
-        clickTimeoutRef.current = setTimeout(() => {
-          executeClick();
-          clickTimeoutRef.current = null;
-        }, DOUBLE_TAP_DELAY);
-      }
-    }
+      clickTimeoutRef.current = null;
+    }, DOUBLE_TAP_DELAY);
   };
 
   const handlePlayerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
 
-    // If it's a programmatic click (e.g., from TV Enter key when controls are hidden)
-    // The clientX and clientY will be perfectly 0
-    if (e.clientX === 0 && e.clientY === 0 && isTV) {
-      toggleControls();
+    // Ignore Mouse events on Touch screens to stay fully deterministic and clear
+    if (isTouchDeviceRef.current) {
       return;
     }
 
-    if (Date.now() - lastTouchTimeRef.current < 600) {
+    if (isSpeedingUp) {
+      return; // Ignore clicking right after speeding up
+    }
+
+    if (Date.now() - lastButtonClickTimeRef.current < 500) {
+      return;
+    }
+
+    // If it's a programmatic click (e.g., from TV Enter key when controls are hidden)
+    if (e.clientX === 0 && e.clientY === 0 && isTV) {
+      toggleControls();
       return;
     }
 
@@ -1813,28 +1912,6 @@ const SafariNotification = () => {
     }
 
     handleInteraction(e.clientX, e.clientY, e.currentTarget);
-  };
-
-  const handlePlayerTouch = (e: React.TouchEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-    if (
-      target.closest('button') || 
-      target.closest('input') || 
-      target.closest('a') ||
-      target.closest('.custom-scrollbar') ||
-      target.closest('.no-toggle')
-    ) {
-      return;
-    }
-
-    e.preventDefault();
-    e.stopPropagation();
-
-    lastTouchTimeRef.current = Date.now();
-    const touch = e.touches[0] || e.changedTouches[0];
-    if (touch) {
-      handleInteraction(touch.clientX, touch.clientY, e.currentTarget);
-    }
   };
 
   const handleVideoError = (e: any) => {
@@ -2264,6 +2341,42 @@ const SafariNotification = () => {
               <RotateCw className="w-3.5 h-3.5" />
             </button>
 
+            {/* Volume controls with Mute/Unmute Toggle & high-fidelity slider bar */}
+            <div className="flex items-center gap-1 group/volume relative ml-1 bg-white/5 border border-white/10 rounded-full px-1.5 py-0.5 sm:px-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsMuted(!isMuted);
+                  resetControlsTimeout();
+                }}
+                tabIndex={showControls ? 0 : -1}
+                data-tv-focusable={showControls ? "true" : "false"}
+                className="p-1 text-zinc-400 hover:text-white transition-colors hover:scale-110 active:scale-95 focus:ring-4 focus:ring-primary focus:outline-none rounded-full shrink-0"
+                title={isMuted ? "إلغاء كتم الصوت" : "كتم الصوت"}
+              >
+                {isMuted || volume === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+              </button>
+              
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={isMuted ? 0 : volume}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  setVolume(val);
+                  setIsMuted(val === 0);
+                  if (videoRef.current) {
+                    videoRef.current.volume = val;
+                    videoRef.current.muted = val === 0;
+                  }
+                  resetControlsTimeout();
+                }}
+                className="w-12 sm:w-16 h-1 bg-zinc-700/80 rounded-lg appearance-none cursor-pointer accent-primary outline-none"
+              />
+            </div>
+
 
           </div>
 
@@ -2599,11 +2712,83 @@ const SafariNotification = () => {
               )}
 
               <div 
+                onMouseDown={startLongPressTimer}
+                onMouseUp={endLongPressTimer}
+                onMouseLeave={endLongPressTimer}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchCancel}
                 onClick={handlePlayerClick}
                 className={cn(
-                  "absolute inset-0 z-[100] select-none cursor-pointer flex items-center justify-center font-sans",
+                  "absolute inset-0 z-[100] select-none cursor-pointer flex items-center justify-center font-sans overflow-hidden touch-none",
                   isIframeFallback ? "pointer-events-none" : "pointer-events-auto"
-                )} />
+                )}>
+                
+                {/* 2x Speed-up indicator banner */}
+                <AnimatePresence>
+                  {isSpeedingUp && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      className="absolute top-6 left-1/2 transform -translate-x-1/2 z-[130] flex items-center gap-1.5 px-4 py-2 rounded-full bg-black/80 backdrop-blur-md border border-primary/40 text-white shadow-2xl text-[10px] sm:text-xs font-black tracking-widest uppercase animate-pulse"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-primary animate-ping" />
+                      <span>سرعة مضاعفة 2.0x ⚡</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Double Tap Left (Rewind) Ripple Overlay */}
+                <AnimatePresence>
+                  {showRewindAnimation && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute left-0 top-0 bottom-0 w-1/2 bg-gradient-to-r from-black/40 to-transparent flex items-center justify-center pointer-events-none z-[110]"
+                    >
+                      <motion.div 
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: [1, 1.1, 1], opacity: 1 }}
+                        className="flex flex-col items-center gap-2 bg-black/50 p-4 rounded-full"
+                      >
+                        <div className="flex gap-0.5 select-none" dir="ltr">
+                          <motion.span animate={{ x: [-5, 5, -5] }} transition={{ repeat: Infinity, duration: 0.6 }} className="text-white text-xl font-bold">◀</motion.span>
+                          <motion.span animate={{ x: [-5, 5, -5] }} transition={{ repeat: Infinity, duration: 0.6, delay: 0.1 }} className="text-white text-xl font-bold">◀</motion.span>
+                          <motion.span animate={{ x: [-5, 5, -5] }} transition={{ repeat: Infinity, duration: 0.6, delay: 0.2 }} className="text-white text-xl font-bold">◀</motion.span>
+                        </div>
+                        <span className="text-[10px] sm:text-xs font-black tracking-wider text-white">10ث للخلف</span>
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Double Tap Right (Forward) Ripple Overlay */}
+                <AnimatePresence>
+                  {showForwardAnimation && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l from-black/40 to-transparent flex items-center justify-center pointer-events-none z-[110]"
+                    >
+                      <motion.div 
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: [1, 1.1, 1], opacity: 1 }}
+                        className="flex flex-col items-center gap-2 bg-black/50 p-4 rounded-full"
+                      >
+                        <div className="flex gap-0.5 select-none" dir="ltr">
+                          <motion.span animate={{ x: [5, -5, 5] }} transition={{ repeat: Infinity, duration: 0.6, delay: 0.2 }} className="text-white text-xl font-bold">▶</motion.span>
+                          <motion.span animate={{ x: [5, -5, 5] }} transition={{ repeat: Infinity, duration: 0.6, delay: 0.1 }} className="text-white text-xl font-bold">▶</motion.span>
+                          <motion.span animate={{ x: [5, -5, 5] }} transition={{ repeat: Infinity, duration: 0.6 }} className="text-white text-xl font-bold">▶</motion.span>
+                        </div>
+                        <span className="text-[10px] sm:text-xs font-black tracking-wider text-white">10ث للأمام</span>
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
 
               {/* Central Play/Pause Circular Button Overlay */}
               <AnimatePresence>
@@ -2722,18 +2907,22 @@ const SafariNotification = () => {
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                       onClick={() => setShowEpisodeMenu(false)}
-                      className="absolute inset-0 bg-black/60 backdrop-blur-xs cursor-pointer"
+                      className={cn(
+                        "absolute inset-0 bg-black/60 cursor-pointer",
+                        !isLowEnd && "backdrop-blur-xs"
+                      )}
                     />
 
                     {/* Bottom overlay panel - Compact stylish height (28%-32%) so it doesn't cover much of the player background feedback */}
                     <motion.div
                       id="episode-drawer"
                       onClick={(e) => e.stopPropagation()}
-                      initial={{ opacity: 0, y: 160 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 160 }}
-                      transition={{ type: 'spring', damping: 30, stiffness: 220 }}
-                      className="relative w-full h-[175px] sm:h-[185px] shrink-0 bg-gradient-to-t from-[#030305] via-[#07080f] to-[#0f1118]/95 border-t border-white/10 shadow-[0_-15px_40px_rgba(0,0,0,0.85)] flex flex-col px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] overflow-hidden rounded-t-[1.5rem] sm:rounded-t-[2rem]"
+                      initial={{ y: "100%" }}
+                      animate={{ y: 0 }}
+                      exit={{ y: "100%" }}
+                      transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                      style={{ willChange: 'transform' }}
+                      className="relative w-full h-[175px] sm:h-[185px] shrink-0 bg-[#0a0b10] border-t border-white/10 shadow-[0_-15px_40px_rgba(0,0,0,0.85)] flex flex-col px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] overflow-hidden rounded-t-[1.5rem] sm:rounded-t-[2rem]"
                     >
                       {/* Centered Drag Handle Accent */}
                       <div className="w-8 h-0.5 bg-white/10 rounded-full mx-auto mb-2 shrink-0" />
