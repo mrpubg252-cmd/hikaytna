@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import AuthContainer from './AuthContainer';
 import { fetchAllSeries } from '../services/dataService';
 import { getApiUrl } from '../lib/apiConfig';
+import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
 
 let db: Database | null = null;
 
@@ -346,48 +347,16 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
         return;
       }
       try {
-        const res = await fetch(getApiUrl('/api/v1/config/firebase')).catch(() => null);
-        if (!res || !res.ok) throw new Error("API Config Fetch Failed");
-        
-        const { data } = await res.json();
-        
-        // Decrypt the config
-        const config = Object.fromEntries(
-          Object.entries(data).map(([key, val]) => [key, decryptValue(val as string)])
-        );
-
         if (!getApps().find(a => a.name === 'chatApp')) {
-          const app = initializeApp(config, 'chatApp');
+          const app = initializeApp(chatFirebaseConfig, 'chatApp');
           db = getDatabase(app);
         } else {
           db = getDatabase(getApp('chatApp'));
         }
         setIsDbReady(true);
       } catch (err) {
-        console.warn("Failed to fetch dynamic firebase config. Using ultra-fallback mode for static hostings...");
-        // ULTRA FALLBACK: Safe default credentials (same as server.ts fallbacks)
-        // This ensures the chat system works even if the user just uploaded the dist/ folder to a static-only host!
-        const fallbackConfig = {
-          apiKey: "AIzaSyAnYkOnP2XWfaKrXXvTO3Euq7s-pl9QGKg",
-          authDomain: "chat-516a8.firebaseapp.com",
-          databaseURL: "https://chat-516a8-default-rtdb.firebaseio.com",
-          projectId: "chat-516a8",
-          storageBucket: "chat-516a8.firebasestorage.app",
-          messagingSenderId: "276393305302",
-          appId: "1:276393305302:web:12f90a55d7c13a4c57d577"
-        };
-        
-        try {
-          if (!getApps().find(a => a.name === 'chatApp')) {
-            const app = initializeApp(fallbackConfig, 'chatApp');
-            db = getDatabase(app);
-          } else {
-            db = getDatabase(getApp('chatApp'));
-          }
-          setIsDbReady(true);
-        } catch (innerErr) {
-          setDbError("فشل في تهيئة نظام الدردشة. تأكد من أنك قمت برفع كافة الملفات بشكل صحيح.");
-        }
+        console.warn("Failed to initialize chat database from local JSON configuration:", err);
+        setDbError("فشل في تهيئة نظام الدردشة.");
       }
     }
     initSecureDB();

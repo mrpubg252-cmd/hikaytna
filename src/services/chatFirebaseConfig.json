@@ -1,7 +1,9 @@
 {
-  "apiKey": "AIzaSyD7-kL247_yH0C4zXW-6eP3L3W0W7E2W1E",
-  "authDomain": "chat-app-12345.firebaseapp.com",
-  "projectId": "chat-app-12345",
-  "databaseURL": "https://chat-app-12345-default-rtdb.firebaseio.com",
-  "storageBucket": "chat-app-12345.firebasestorage.app"
+  "apiKey": "AIzaSyAnYkOnP2XWfaKrXXvTO3Euq7s-pl9QGKg",
+  "authDomain": "chat-516a8.firebaseapp.com",
+  "projectId": "chat-516a8",
+  "databaseURL": "https://chat-516a8-default-rtdb.firebaseio.com",
+  "storageBucket": "chat-516a8.firebasestorage.app",
+  "messagingSenderId": "276393305302",
+  "appId": "1:276393305302:web:12f90a55d7c13a4c57d577"
 }

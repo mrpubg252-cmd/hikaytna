@@ -1557,26 +1557,6 @@ ${seriesContext}`;
     }
   });
 
-  // Firebase Config with obfuscation
-  app.get("/api/v1/config/firebase", (req, res) => {
-    const config = {
-      apiKey: process.env.FIREBASE_API_KEY || "AIzaSyCQpOf-eNn6Le8b5wsdiDuPabBV_scBD68",
-      authDomain: process.env.FIREBASE_AUTH_DOMAIN || "mo-play-b0cb7.firebaseapp.com",
-      databaseURL: process.env.FIREBASE_DATABASE_URL || "https://mo-play-b0cb7-default-rtdb.firebaseio.com",
-      projectId: process.env.FIREBASE_PROJECT_ID || "mo-play-b0cb7",
-      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "mo-play-b0cb7.firebasestorage.app",
-      messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "276393305302",
-      appId: process.env.FIREBASE_APP_ID || "1:276393305302:web:12f90a55d7c13a4c57d577"
-    };
-
-    // Encrypt each value
-    const securedConfig = Object.fromEntries(
-      Object.entries(config).map(([key, val]) => [key, encryptValue(val)])
-    );
-
-    res.json({ status: true, data: securedConfig });
-  });
-
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });

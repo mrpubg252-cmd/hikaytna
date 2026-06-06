@@ -5,6 +5,7 @@ import { getDatabase, ref, onValue, push, set } from 'firebase/database';
 import { decryptValue } from '../lib/security';
 import { db as fallbackDb } from '../services/firebase';
 import { getApiUrl } from '../lib/apiConfig';
+import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
 
 export interface Notice {
   id: string;
@@ -40,17 +41,9 @@ export default function NoticeAndSupportBubble() {
   useEffect(() => {
     async function initSecureDB() {
       try {
-        const res = await fetch(getApiUrl('/api/v1/config/firebase'));
-        const { data } = await res.json();
-        
-        // Decrypt the config
-        const config = Object.fromEntries(
-          Object.entries(data).map(([key, val]) => [key, decryptValue(val as string)])
-        );
-
         let databaseInstance;
         if (!getApps().find(a => a.name === 'chatApp')) {
-          const app = initializeApp(config, 'chatApp');
+          const app = initializeApp(chatFirebaseConfig, 'chatApp');
           databaseInstance = getDatabase(app);
         } else {
           databaseInstance = getDatabase(getApp('chatApp'));
