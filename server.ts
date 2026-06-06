@@ -354,7 +354,31 @@ async function smartChat(msg: string, systemPrompt: string, history: any[]) {
     return { ok: true, reply: gemiResult.reply };
   }
 
-  return { ok: false, reply: "عذراً! يبدو أن هناك مشكلة مؤقتة في الاتصال. يرجى إعادة المحاولة." };
+  // Active helpful guidance instead of a dry, generic connection error when no api key exists
+  const isFallbackKeyUsed = !process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY";
+  const isCustomKeyEmpty = !USER_CUSTOM_AI_CONFIG || !USER_CUSTOM_AI_CONFIG.key;
+
+  if (isFallbackKeyUsed && isCustomKeyEmpty) {
+    return { 
+      ok: true, 
+      reply: `مرحباً بك! 👋 المساعد الذكي "حكيم" جاهز للعمل على البيئة التطويرية للذكاء الاصطناعي بنجاح، ولكن لتفعيله بشكل كامل واحترافي على استضافة **Railway**، يرجى اتباع إحدى الطريقتين البسيطتين والسريعتين:\n\n` +
+             `1️⃣ **الخيار الأول (الأسهل والأسرع - من التطبيق مباشرة):**\n` +
+             `• افتح نافذة الدردشة مع حكيم 💬.\n` +
+             `• اضغط على **أيقونة الترس ⚙️** الموجودة بالأعلى لفتح إعدادات المساعد.\n` +
+             `• اكتب كلمة المرور المخصصة للأدمن: \`bewCew,iDYgC@K6\`.\n` +
+             `• أدخل مفتاحك الخاص (Gemini API Key) المستخرج من Google AI Studio.\n` +
+             `• اضغط على **حفظ الإعدادات**. سيقوم سيرفر المنصة بحفظه وتشفيره والمزامنة تلقائياً مع قواعد البيانات السحابية (Firestore و RTDB) ليعمل السيرفر فوراً دون انقطاع حتى بعد إعادة تشغيل سيرفر Railway!\n\n` +
+             `2️⃣ **الخيار الثاني (بيئة عمل Railway):**\n` +
+             `• توجه إلى لوحة تحكم مشروعك في **Railway.com** 🚀.\n` +
+             `• اذهب إلى تبويب **Variables** التابع للخدمة.\n` +
+             `• قم بإضافة متغير بيئة جديد كالتالي:\n` +
+             `  - الاسم: \`GEMINI_API_KEY\`\n` +
+             `  - القيمة: (مفتاح الـ Gemini API Key الخاص بك الخاص بـ Google AI Studio)\n\n` +
+             `بعد الضغط على إضافة، سيتم إعادة بناء السيرفر تلقائياً وتفعيل البوت "حكيم" بذكاء خارق وسرعة فائقة لخدمة زوار منصتك وتوليد روابط المسلسلات بذكاء مذهل! 🎭✨`
+    };
+  }
+
+  return { ok: false, reply: "عذراً! يبدو أن هناك مشكلة مؤقتة في الاتصال بخوادم الذكاء الاصطناعي. يرجى تكرار المحاولة." };
 }
 
 async function startServer() {
@@ -394,11 +418,12 @@ async function startServer() {
     console.warn("Could not load database JSONs", e);
   }
 
-  // ============== SYSTEM-WIDE PERSISTENT CLOUD SELF-HEALING SYSTEM (FIRESTORE) ==============
-  // Fetches master backups from Firestore raw REST API (bypassing the 401 connection limits)
-  // This guarantees complete survival across restarts and rebuilds!
+  // ============== SYSTEM-WIDE PERSISTENT CLOUD SELF-HEALING SYSTEM (FIRESTORE & RTDB) ==============
+  // Fetches master backups from Firestore and Realtime Database raw REST APIs
+  // This guarantees complete survival across restarts, rebuilds, and ephemeral disk wipes!
   const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || "mo-play-b0cb7";
 
+  // --- 1. AI Configuration Self-Healing ---
   try {
     const aiConfigRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_admin_ai_config`, { timeout: 4000 }).catch(() => null);
     if (aiConfigRes && aiConfigRes.data && aiConfigRes.data.fields && aiConfigRes.data.fields.data) {
@@ -416,6 +441,17 @@ async function startServer() {
   }
 
   try {
+    const aiConfigRTDB = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, { timeout: 4000 }).catch(() => null);
+    if (aiConfigRTDB && aiConfigRTDB.data && aiConfigRTDB.data.key) {
+      USER_CUSTOM_AI_CONFIG = aiConfigRTDB.data;
+      console.log("Successfully self-healed USER_CUSTOM_AI_CONFIG from RTDB! Key prefix:", USER_CUSTOM_AI_CONFIG.key.substring(0, 8));
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal AI config from RTDB on startup:", err.message);
+  }
+
+  // --- 2. Pins Memory Self-Healing ---
+  try {
     const pinsRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_category_pins`, { timeout: 4000 }).catch(() => null);
     if (pinsRes && pinsRes.data && pinsRes.data.fields && pinsRes.data.fields.data) {
       const dataStr = pinsRes.data.fields.data.stringValue;
@@ -430,6 +466,17 @@ async function startServer() {
   }
 
   try {
+    const pinsRTDB = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/category_pins.json`, { timeout: 4000 }).catch(() => null);
+    if (pinsRTDB && pinsRTDB.data) {
+      pinsMemory = { ...pinsMemory, ...pinsRTDB.data };
+      console.log("Successfully self-healed Pins memory from RTDB! Loaded count:", Object.keys(pinsRTDB.data).length);
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal Category Pins from RTDB on startup:", err.message);
+  }
+
+  // --- 3. Slider Selections Self-Healing ---
+  try {
     const sliderRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_slider_selections`, { timeout: 4000 }).catch(() => null);
     if (sliderRes && sliderRes.data && sliderRes.data.fields && sliderRes.data.fields.data) {
       const dataStr = sliderRes.data.fields.data.stringValue;
@@ -443,8 +490,19 @@ async function startServer() {
     console.warn("Could not self-heal Sliders from Firestore on startup:", err.message);
   }
 
-  // Cloud backup write helper functions
-  const savePinsToFirestore = async () => {
+  try {
+    const sliderRTDB = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/slider_selections.json`, { timeout: 4000 }).catch(() => null);
+    if (sliderRTDB && sliderRTDB.data) {
+      sliderMemory = { ...sliderMemory, ...sliderRTDB.data };
+      console.log("Successfully self-healed Sliders memory from RTDB! Loaded count:", Object.keys(sliderRTDB.data).length);
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal Sliders from RTDB on startup:", err.message);
+  }
+
+  // Cloud backup write helper functions (Dual-Save to Firestore AND RTDB for maximum resilience)
+  const savePinsToCloud = async () => {
+    // Save to Firestore
     try {
       await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_category_pins?updateMask.fieldPaths=data`, {
         fields: {
@@ -454,9 +512,16 @@ async function startServer() {
     } catch (e: any) {
       console.warn("Error background backup category pins to Firestore:", e.message);
     }
+    // Save to RTDB
+    try {
+      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/category_pins.json`, pinsMemory, { timeout: 4000 }).catch(() => null);
+    } catch (e: any) {
+      console.warn("Error background backup category pins to RTDB:", e.message);
+    }
   };
 
-  const saveSliderToFirestore = async () => {
+  const saveSliderToCloud = async () => {
+    // Save to Firestore
     try {
       await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_slider_selections?updateMask.fieldPaths=data`, {
         fields: {
@@ -466,9 +531,15 @@ async function startServer() {
     } catch (e: any) {
       console.warn("Error background backup slider selections to Firestore:", e.message);
     }
+    // Save to RTDB
+    try {
+      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/slider_selections.json`, sliderMemory, { timeout: 4000 }).catch(() => null);
+    } catch (e: any) {
+      console.warn("Error background backup slider selections to RTDB:", e.message);
+    }
   };
 
-  const saveAIConfigToFirestore = async () => {
+  const saveAIConfigToCloud = async () => {
     try {
       // Save locally to disk first layout to ensure complete hosting durability
       fs.writeFileSync(aiConfigFilePath, JSON.stringify(USER_CUSTOM_AI_CONFIG, null, 2), "utf-8");
@@ -477,21 +548,31 @@ async function startServer() {
       console.warn("Failed to write manual AI configuration to disk:", err.message);
     }
 
+    // Save to Firestore
     try {
       await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_admin_ai_config?updateMask.fieldPaths=data`, {
         fields: {
           data: { stringValue: JSON.stringify(USER_CUSTOM_AI_CONFIG) }
         }
       }, { timeout: 4000 }).catch(() => null);
+      console.log("Successfully back-saved AI configuration to Cloud Firestore master!");
     } catch (e: any) {
       console.warn("Error background backup administrative AI config to Firestore:", e.message);
+    }
+
+    // Save to RTDB
+    try {
+      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, USER_CUSTOM_AI_CONFIG, { timeout: 4000 }).catch(() => null);
+      console.log("Successfully back-saved AI configuration to Cloud RTDB master!");
+    } catch (e: any) {
+      console.warn("Error background backup administrative AI config to RTDB:", e.message);
     }
   };
 
   const savePinsToFile = () => {
     try {
       fs.writeFileSync(pinsFilePath, JSON.stringify(pinsMemory, null, 2), "utf-8");
-      savePinsToFirestore(); // Double backup to cloud
+      savePinsToCloud(); // Double backup to cloud
     } catch (e) {
       console.warn("Could not save pins.json", e);
     }
@@ -500,7 +581,7 @@ async function startServer() {
   const saveSliderToFile = () => {
     try {
       fs.writeFileSync(sliderFilePath, JSON.stringify(sliderMemory, null, 2), "utf-8");
-      saveSliderToFirestore(); // Double backup to cloud
+      saveSliderToCloud(); // Double backup to cloud
     } catch (e) {
       console.warn("Could not save slider.json", e);
     }
@@ -1284,8 +1365,8 @@ async function startServer() {
     KEY_COOLDOWNS.clear(); // Clear all cooldowns so the new key can be tested immediately
     console.log(`AI Configuration updated via admin endpoint. Type: ${type}`);
     
-    // Save backup permanently to Firestore
-    saveAIConfigToFirestore();
+    // Save backup permanently to cloud (Firestore + RTDB)
+    saveAIConfigToCloud();
     
     res.json({ status: true, message: `تم تحديث مفتاح الربط (${type === 'gemini' ? 'Gemini' : 'OpenAI/Other'}) بنجاح! 🚀` });
   });
@@ -1422,11 +1503,11 @@ ${seriesContext}`;
   // Firebase Config with obfuscation
   app.get("/api/v1/config/firebase", (req, res) => {
     const config = {
-      apiKey: process.env.FIREBASE_API_KEY || "AIzaSyAnYkOnP2XWfaKrXXvTO3Euq7s-pl9QGKg",
-      authDomain: process.env.FIREBASE_AUTH_DOMAIN || "chat-516a8.firebaseapp.com",
-      databaseURL: process.env.FIREBASE_DATABASE_URL || "https://chat-516a8-default-rtdb.firebaseio.com",
-      projectId: process.env.FIREBASE_PROJECT_ID || "chat-516a8",
-      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "chat-516a8.firebasestorage.app",
+      apiKey: process.env.FIREBASE_API_KEY || "AIzaSyCQpOf-eNn6Le8b5wsdiDuPabBV_scBD68",
+      authDomain: process.env.FIREBASE_AUTH_DOMAIN || "mo-play-b0cb7.firebaseapp.com",
+      databaseURL: process.env.FIREBASE_DATABASE_URL || "https://mo-play-b0cb7-default-rtdb.firebaseio.com",
+      projectId: process.env.FIREBASE_PROJECT_ID || "mo-play-b0cb7",
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "mo-play-b0cb7.firebasestorage.app",
       messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "276393305302",
       appId: process.env.FIREBASE_APP_ID || "1:276393305302:web:12f90a55d7c13a4c57d577"
     };

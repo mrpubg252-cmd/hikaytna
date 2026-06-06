@@ -430,9 +430,10 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
 
           <button 
             onClick={onClose}
-            className="p-2 bg-zinc-900/40 hover:bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-colors border border-white/5 cursor-pointer"
+            className="p-2.5 bg-zinc-900/50 hover:bg-red-500/15 rounded-xl text-zinc-400 hover:text-rose-400 transition-all active:scale-95 duration-205 border border-white/5 cursor-pointer flex items-center justify-center group"
+            title="إغلاق المحادثة"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
           </button>
         </div>
       </div>
