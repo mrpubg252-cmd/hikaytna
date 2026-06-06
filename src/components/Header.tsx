@@ -9,6 +9,40 @@ import AiChatDrawer from './AiChatDrawer';
 export default function Header() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState('100dvh');
+
+  // Multi-resilient dynamic mobile visual viewport resize listener (fixes keyboard cut-off on Chrome/Safari mobile platforms)
+  useEffect(() => {
+    if (!isAiOpen) return;
+
+    const handleResize = () => {
+      if (window.visualViewport) {
+        setViewportHeight(`${window.visualViewport.height}px`);
+      } else {
+        setViewportHeight(`${window.innerHeight}px`);
+      }
+    };
+
+    // Prevent body background scroll while chat drawer is actively open
+    document.body.style.overflow = 'hidden';
+
+    if (window.visualViewport) {
+      handleResize();
+      window.visualViewport.addEventListener('resize', handleResize);
+    } else {
+      window.addEventListener('resize', handleResize);
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleResize);
+      } else {
+        window.removeEventListener('resize', handleResize);
+      }
+    };
+  }, [isAiOpen]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
@@ -135,25 +169,26 @@ export default function Header() {
       <AnimatePresence>
         {isAiOpen && (
           <>
-            {/* Backdrop click to close */}
+            {/* Backdrop click to close - remains beautifully visible with a 15% width tap-to-close safe zone on mobile */}
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.7 }}
+              animate={{ opacity: 0.75 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsAiOpen(false)}
-              className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[150] cursor-pointer"
+              className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[150] cursor-pointer"
             />
             
-            {/* Drawer Container */}
+            {/* Drawer Container (Optimized with responsive width to expose tap-to-close overlay zone, plus real-time iOS/Android visual viewport height adaptation) */}
             <motion.div
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 240 }}
-              className="fixed inset-y-0 left-0 h-[100dvh] w-full sm:max-w-md bg-[#0a0a0f] border-r border-white/5 z-[160] shadow-2xl flex flex-col"
+              transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+              className="fixed left-0 top-0 w-[85%] sm:w-[420px] bg-[#0a0a0f] border-r border-white/5 z-[155] sm:z-[160] shadow-[0_0_50px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden"
+              style={{ height: viewportHeight }}
               dir="ltr"
             >
-              <div className="flex-1 h-full flex flex-col" dir="rtl">
+              <div className="flex-1 h-full flex flex-col overflow-hidden" dir="rtl">
                 <AiChatDrawer onClose={() => setIsAiOpen(false)} />
               </div>
             </motion.div>

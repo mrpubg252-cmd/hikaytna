@@ -7,7 +7,7 @@ import CategoryBar from "../components/CategoryBar";
 import SeriesCard from "../components/SeriesCard";
 import BottomNav from "../components/BottomNav";
 import { fetchCategoryPage, getCachedSeriesByCategory, getAllCachedSeries, fetchAllSeries } from "../services/dataService";
-import { applyPrioritySort } from "../services/api";
+import { applyPrioritySort, sliderSelections, syncSliderSelections } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { Series } from "../services/firebase";
 import { motion, AnimatePresence } from "motion/react";
@@ -23,23 +23,22 @@ import {
 } from "../lib/episodeHistory";
 
 export default function HomeScreen() {
-  const [allSeries, setAllSeries] = useState<Series[]>([]);
+  const [allSeriesRaw, setAllSeriesRaw] = useState<Series[]>([]);
+  const [globalCache, setGlobalCache] = useState<Series[]>([]);
   const [selectedCategory, setSelectedCategory] = useState("تركي");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 30; // Increased to show more items per page
+  const [isAdmin, setIsAdmin] = useState(false);
   
+  const itemsPerPage = 30;
   const navigate = useNavigate();
   const location = useLocation();
   const query = new URLSearchParams(location.search).get("q");
 
-  const [globalCache, setGlobalCache] = useState<Series[]>([]);
-
+  // 1. Initial Data Preload
   useEffect(() => {
-    // Keep global cache fresh and trigger background global preload instantly
-    // to populate the search database across ALL categories!
-    const initPreload = async () => {
+    const initData = async () => {
       try {
         const fullList = await fetchAllSeries(false);
         setGlobalCache(fullList);
@@ -47,9 +46,15 @@ export default function HomeScreen() {
         console.warn("Silent background preload failed:", err);
       }
     };
-    initPreload();
+    initData();
+
+    const adminAccess = localStorage.getItem('short_admin_access') === 'true' || 
+                        localStorage.getItem('guest_chat_name') === 'المدير 🛡️';
+    setIsAdmin(adminAccess);
+    syncSliderSelections();
   }, []);
 
+  // 2. Optimized Category Loading
   useEffect(() => {
     let isMounted = true;
     const controller = new AbortController();
@@ -58,100 +63,35 @@ export default function HomeScreen() {
       if (!isMounted) return;
       setError(null);
       
-      // Try to load from cache first for instant UI response
       const cached = getCachedSeriesByCategory(selectedCategory);
       if (cached.length > 0) {
-        setAllSeries(sortAndProcess(cached));
+        setAllSeriesRaw(cached);
         setLoading(false);
       } else {
         setLoading(true);
       }
 
-      const filterUnique = (list: Series[]) => {
-        const uniqueSeen = new Set();
-        return list.filter((s) => {
-          const cleanTitle = (s.title || "").toLowerCase().trim().replace(/^(المسلسل التركي|المسلسل الكوري|المسلسل المكسيكي|المسلسل الاسيوي|المسلسل|الفيلم|البرنامج|مسلسل|برنامج|فيلم)\s+/g, "").replace(/^ال/g, "").replace(/ـ/g, "").replace(/\s+/g, "");
-          const key = cleanTitle || (s.id || "").toString().toLowerCase().trim();
-          if (!key || uniqueSeen.has(key)) return false;
-          uniqueSeen.add(key);
-          return true;
-        });
-      };
-
       try {
-        // Step 1: FETCH PAGE 0 IMMEDIATELY FOR INSTANT USER LOAD (~300-500ms)
-        let combined: Series[] = [];
-        try {
-          const page0Series = await fetchCategoryPage(selectedCategory, 0, controller.signal);
-          if (page0Series.length > 0) {
-            combined = [...page0Series];
-            if (isMounted) {
-              initializeEpisodeTracking(combined);
-              setAllSeries(sortAndProcess(combined));
-              setLoading(false);
-            }
+        // Fetch the first 4 pages for thorough coverage (especially for Turkish series)
+        const pagePromises = [0, 1, 2, 3].map(page => 
+          fetchCategoryPage(selectedCategory, page, controller.signal)
+        );
+        
+        const results = await Promise.allSettled(pagePromises);
+        let allFetched: Series[] = [];
+        results.forEach(res => {
+          if (res.status === 'fulfilled' && res.value.length > 0) {
+            allFetched = [...allFetched, ...res.value];
           }
-        } catch (e) {
-          console.warn("Error fetching page 0:", e);
-        }
+        });
 
-        if (!isMounted || controller.signal.aborted) return;
-
-        // Step 2: ACCUMULATE DEEP PAGES FAST BY FETCHING IN PARALLEL CHUNKS (of 5 pages)
-        // This ensures the entire massive category is loaded completely in 1-2 seconds instead of taking 30 seconds!
-        const maxPageIndex = 45;
-        const chunkSize = 5;
-
-        for (let baseIdx = 1; baseIdx <= maxPageIndex; baseIdx += chunkSize) {
-          if (!isMounted || controller.signal.aborted) break;
-
-          const chunkPages: number[] = [];
-          for (let p = baseIdx; p < baseIdx + chunkSize && p <= maxPageIndex; p++) {
-            chunkPages.push(p);
-          }
-
-          // Fetch all pages in this chunk in parallel!
-          const chunkResults = await Promise.allSettled(
-            chunkPages.map(idx => fetchCategoryPage(selectedCategory, idx, controller.signal))
-          );
-
-          if (!isMounted || controller.signal.aborted) break;
-
-          let chunkSeries: Series[] = [];
-          let hasNewContent = false;
-
-          chunkResults.forEach(res => {
-            if (res.status === "fulfilled" && res.value.length > 0) {
-              chunkSeries = [...chunkSeries, ...res.value];
-              hasNewContent = true;
-            }
-          });
-
-          // If the entire chunk returned absolutely no items, we must have hit the end of the category
-          if (!hasNewContent && chunkSeries.length === 0) {
-            console.log(`[Dynamic Chunk Pagination] Reached end of category "${selectedCategory}" at page index ${baseIdx}`);
-            break;
-          }
-
-          if (chunkSeries.length > 0) {
-            combined = [...combined, ...chunkSeries];
-            const currentUnique = filterUnique(combined);
-            if (currentUnique.length > 0) {
-              setAllSeries(sortAndProcess(currentUnique));
-              setLoading(false);
-            }
-          }
-
-          // A small polite delay to prevent rate-limiting or heavy burst while preserving lightning speed
-          await new Promise(r => setTimeout(r, 150));
-        }
-
-        // If even the first page returned nothing, and we have no cached data, display the user-friendly warning
-        const currentCache = getCachedSeriesByCategory(selectedCategory);
-        if (combined.length === 0 && cached.length === 0 && currentCache.length === 0) {
-          setError("فشل الاتصال بالخادم. يرجى التأكد من الإنترنت أو المحاولة لاحقاً.");
+        if (isMounted && allFetched.length > 0) {
+          initializeEpisodeTracking(allFetched);
+          setAllSeriesRaw(allFetched);
+          setLoading(false);
         }
       } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
         console.error("Error loading category", err);
         if (isMounted && cached.length === 0) setError("تعذر تحميل قائمة المسلسلات حالياً.");
       } finally {
@@ -159,147 +99,97 @@ export default function HomeScreen() {
       }
     }
 
-    // Optimized sort and process helper
-    function sortAndProcess(list: Series[]) {
-      // First apply the centralized priority and exclusion sort
-      let sorted = applyPrioritySort(list);
-
-      // Then apply secondary UI-specific sorting (new detected logic)
-      const mapped = sorted.map((s: Series) => {
-        return {
-          ...s,
-          _hasNew: hasNewEpisode(s),
-          _updatedAt: getEpisodeUpdatedAt(s) || 0,
-          _detectedAt: getLastNewDetectedAt(s) || 0
-        };
-      });
-
-      mapped.sort((a: any, b: any) => {
-        // Keeps priority items at the VERY top
-        if (a.isPriority && !b.isPriority) return -1;
-        if (!a.isPriority && b.isPriority) return 1;
-        
-        // If BOTH are priority, do NOT fall through to new-episode sort
-        // Preserve the order from applyPrioritySort
-        if (a.isPriority && b.isPriority) {
-          // Since it's a stable sort, returning 0 keeps existing order
-          return 0;
-        }
-
-        if (a._hasNew && !b._hasNew) return -1;
-        if (!a._hasNew && b._hasNew) return 1;
-        
-        if (a._hasNew && b._hasNew) {
-          return b._updatedAt - a._updatedAt;
-        }
-
-        if (a._detectedAt !== b._detectedAt) {
-          return b._detectedAt - a._detectedAt;
-        }
-
-        return (b.rating || 0) - (a.rating || 0);
-      });
-
-      return mapped;
-    }
-
     loadCategory();
 
-    const handleBackgroundSync = () => {
+    const handleSync = () => {
       if (!isMounted) return;
-      
-      // Reactive update of the global search cache
       const allCached = getAllCachedSeries();
-      setGlobalCache(allCached);
-
-      const currentCache = getCachedSeriesByCategory(selectedCategory);
-      if (currentCache.length > 0) {
-        setAllSeries(prev => {
-          const combined = [...prev, ...currentCache];
-          const seen = new Set();
-          const unique = combined.filter((s) => {
-            const key = (s.id || s.title || "").toString().toLowerCase().trim();
-            if (!key || seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-          return sortAndProcess(unique);
-        });
+      setGlobalCache([...allCached]);
+      
+      const categoryData = getCachedSeriesByCategory(selectedCategory);
+      if (categoryData.length > 0) {
+        setAllSeriesRaw([...categoryData]);
       }
     };
 
-    window.addEventListener("series-data-updated", handleBackgroundSync);
+    window.addEventListener("series-data-updated", handleSync);
+    window.addEventListener("category-pins-updated", handleSync);
+    window.addEventListener("slider-selections-updated", handleSync);
 
     return () => {
       isMounted = false;
-      controller.abort("Navigation or category change");
-      window.removeEventListener("series-data-updated", handleBackgroundSync);
+      controller.abort();
+      window.removeEventListener("series-data-updated", handleSync);
+      window.removeEventListener("category-pins-updated", handleSync);
+      window.removeEventListener("slider-selections-updated", handleSync);
     };
   }, [selectedCategory]);
 
-  const filteredSeries = useMemo(() => {
+  // 3. Centralized Processing (Sorting + Filtering) - This is where the magic happens!
+  // We apply the heavy logic here in useMemo to keep the UI buttery smooth.
+  const processedSeries = useMemo(() => {
     try {
-      if (!query) return allSeries;
-      const q = query.toLowerCase().trim();
-      
-      // When searching, we look through BOTH the currently loaded category items 
-      // AND the global cache to ensure nothing is missed.
-      const globalPool = globalCache;
-      
-      // Combine and deduplicate
-      const combinedPool = [...allSeries];
-      const seenIds = new Set(allSeries.map(s => s.id));
-      
-      globalPool.forEach(s => {
-        if (!seenIds.has(s.id)) {
-          combinedPool.push(s);
-          seenIds.add(s.id);
-        }
-      });
+      // Step A: Determine base list (Search vs Category)
+      let list: Series[] = [];
+      if (query) {
+        const q = query.toLowerCase().trim();
+        // Index search across ALL loaded series
+        const seenIds = new Set();
+        const pool = [...allSeriesRaw];
+        pool.forEach(s => seenIds.add(s.id));
+        
+        globalCache.forEach(s => {
+          if (!seenIds.has(s.id)) pool.push(s);
+        });
 
-      return combinedPool.filter((s: Series) => {
-        if (!s) return false;
-        
-        // Search in title
-        const titleMatch = fuzzyMatchArabic(s.title || "", q);
-        if (titleMatch) return true;
-        
-        // Search in category (allow searching for "تركي", "كوري", etc.)
-        const categoryMatch = fuzzyMatchArabic(s.category || "", q);
-        if (categoryMatch) return true;
-        
-        return false;
-      });
+        list = pool.filter(s => 
+          fuzzyMatchArabic(s.title || "", q) || 
+          fuzzyMatchArabic(s.category || "", q)
+        );
+      } else {
+        list = allSeriesRaw;
+      }
+
+      // Step B: Apply Universal Professional Sort (handled by API service for consistency)
+      return applyPrioritySort(list);
     } catch (err) {
-      console.error("Filtering error", err);
-      return allSeries;
+      console.error("Processing series failed:", err);
+      return [];
     }
-  }, [allSeries, query, globalCache]);
+  }, [allSeriesRaw, globalCache, query]);
 
-  // Calculate total pages
-  const totalPages = Math.ceil(filteredSeries.length / itemsPerPage);
-
-  // Pagination logic: only show items for current page
+  // 4. Pagination
+  const totalPages = Math.ceil(processedSeries.length / itemsPerPage);
   const paginatedSeries = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const items = filteredSeries.slice(startIndex, startIndex + itemsPerPage);
-    // If we're on a page that doesn't have enough items but there are more pages theoretically,
-    // this keeps the layout consistent. With slice it's fine.
-    return items;
-  }, [filteredSeries, currentPage]);
+    const start = (currentPage - 1) * itemsPerPage;
+    return processedSeries.slice(start, start + itemsPerPage);
+  }, [processedSeries, currentPage]);
 
-  // Reset page when filtering or changing category
   useEffect(() => {
     setCurrentPage(1);
-  }, [filteredSeries.length, selectedCategory, query]);
+  }, [selectedCategory, query]);
+
+  // 5. Slider logic (Global and stable)
+  const sliderSeries = useMemo(() => {
+    const pool = globalCache.length > 0 ? globalCache : allSeriesRaw;
+    const selected = (pool || []).filter(s => s && sliderSelections[s.id]?.selected === true);
+
+    if (selected.length > 0) {
+      // Match the sorting in api.ts
+      return selected.sort((a, b) => (sliderSelections[b.id]?.selectedAt || 0) - (sliderSelections[a.id]?.selectedAt || 0));
+    }
+    
+    // Fallback: Use Global Pins (top 5)
+    return applyPrioritySort(pool).slice(0, 6);
+  }, [globalCache, allSeriesRaw, sliderSelections]);
 
   function handleCategoryChange(category: string) {
     if (category !== selectedCategory) {
       setSelectedCategory(category);
-      // Stay on page 1 of the new category
       setCurrentPage(1);
     }
   }
+
 
   if (error) {
     return (
@@ -339,7 +229,11 @@ export default function HomeScreen() {
       <Header />
 
       <main className="pb-20">
-        <Slider series={filteredSeries.slice(0, 5)} />
+        <Slider 
+          series={sliderSeries} 
+          isAdmin={isAdmin}
+          allSeriesForManager={globalCache.length > 0 ? globalCache : allSeriesRaw}
+        />
 
         <div className="relative z-10 -mt-10 sm:-mt-20">
           <CategoryBar
@@ -368,7 +262,7 @@ export default function HomeScreen() {
                 )}
               </div>
               <span className="text-zinc-600 font-bold text-[8px] sm:text-[10px] tracking-widest uppercase italic">
-                {filteredSeries.length} TITLES
+                {processedSeries.length} TITLES
               </span>
             </div>
 
@@ -469,7 +363,7 @@ export default function HomeScreen() {
               </div>
             )}
 
-            {filteredSeries.length === 0 && !loading && (
+            {processedSeries.length === 0 && !loading && (
               <div className="flex flex-col items-center justify-center py-20 text-gray-500">
                 <p className="text-xl">لا توجد مسلسلات في هذا القسم حالياً.</p>
               </div>

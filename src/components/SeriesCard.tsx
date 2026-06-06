@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Play } from 'lucide-react';
 import { Series } from '../services/firebase';
 import { hasNewEpisode } from '../lib/episodeHistory';
+import { getTMDBPoster, getTMDBPosterSync } from '../lib/tmdbHealing';
 
 interface SeriesCardProps {
   item: Series;
@@ -12,8 +13,55 @@ interface SeriesCardProps {
 
 const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
   if (!item) return null;
-  const isNewEpisode = hasNewEpisode(item);
+  const _hasNew = hasNewEpisode(item);
+  const [clicked, setClicked] = React.useState(false);
+
+  const handlePress = React.useCallback(() => {
+    if (_hasNew && !clicked) {
+      import('../lib/episodeHistory').then(({ markSeriesAsRead }) => {
+         markSeriesAsRead(item);
+         setClicked(true);
+      });
+    }
+    onPress();
+  }, [_hasNew, clicked, item, onPress]);
+
+  const [currentSrc, setCurrentSrc] = React.useState<string>(() => {
+    // 1. Check synchronous cache first for zero-latency presentation
+    const cached = getTMDBPosterSync(item.title, item.category);
+    if (cached) return cached;
+    
+    // 2. Return original image or transparent loading state
+    return item.image || "";
+  });
   const [imageLoaded, setImageLoaded] = React.useState(false);
+
+  // Pre-emptive healing if the image parameter is empty or a generic placeholder
+  React.useEffect(() => {
+    const cached = getTMDBPosterSync(item.title, item.category);
+    if (cached) {
+      setCurrentSrc(cached);
+      return;
+    }
+
+    const isPlaceholder = !item.image || 
+      item.image.includes('images.unsplash.com') || 
+      item.image.includes('default_image') || 
+      item.image.includes('thumbnail.jpg') || 
+      item.image.includes('logo.png') ||
+      item.image.includes('alooytv') ||
+      item.image.includes('video_thumb');
+
+    if (isPlaceholder) {
+      getTMDBPoster(item.title, item.category).then((healedUrl) => {
+        if (healedUrl) {
+          setCurrentSrc(healedUrl);
+        }
+      });
+    } else {
+      setCurrentSrc(item.image);
+    }
+  }, [item.title, item.image, item.category]);
 
   const displayRating = React.useMemo(() => {
     if (item.rating && item.rating > 0) {
@@ -42,30 +90,30 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
       whileTap={{ scale: 0.98 }}
       transition={{ duration: 0.3 }}
       className="relative group cursor-pointer aspect-[3/4] rounded-2xl overflow-hidden bg-zinc-900 border border-white/5 will-change-transform"
-      onClick={onPress}
+      onClick={handlePress}
     >
       <img 
-        src={item.image} 
+        src={currentSrc} 
         alt={item.title} 
         loading="lazy"
         decoding="async"
         referrerPolicy="no-referrer"
         className={`w-full h-full object-cover transition-opacity duration-500 will-change-transform ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
         onLoad={() => setImageLoaded(true)}
-        onError={(e) => {
-          const currentSrc = e.currentTarget.src;
-          if (currentSrc.includes('/api/v1/image-proxy?url=')) {
-            try {
-              const urlPart = currentSrc.split('url=')[1];
-              if (urlPart) {
-                e.currentTarget.src = decodeURIComponent(urlPart);
-                setImageLoaded(true);
-                return;
-              }
-            } catch(err) {}
+        onError={() => {
+          // Reactively fetch fallback poster path from TMDB on rendering errors
+          if (currentSrc && currentSrc.includes('image.tmdb.org')) {
+            // Already a TMDB url that failed, prevent infinite loops
+            return;
           }
-          e.currentTarget.src = 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png';
-          setImageLoaded(true);
+          getTMDBPoster(item.title, item.category).then((healedUrl) => {
+            if (healedUrl) {
+              setCurrentSrc(healedUrl);
+            } else {
+              // Final generic background fallbacks
+              setCurrentSrc("https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
+            }
+          });
         }}
       />
 
@@ -73,13 +121,6 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
       <div className="absolute top-2.5 left-2 bg-black/70 backdrop-blur-md border border-white/10 text-[9px] sm:text-[10px] text-yellow-500 font-extrabold px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-lg z-30 select-none">
         ⭐ <span className="text-zinc-100">{displayRating}</span>
       </div>
-
-      {isNewEpisode && (
-        <div className="absolute top-2.5 right-2 w-max bg-red-600 border border-white/20 text-[9px] sm:text-[10px] text-white font-extrabold px-2.5 py-1 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.6)] flex items-center gap-1.5 animate-pulse z-30 select-none">
-          <span className="w-1.5 h-1.5 rounded-full bg-white bg-opacity-90 inline-block animate-ping" />
-          حلقة جديدة
-        </div>
-      )}
       
       <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent flex flex-col justify-end p-3 sm:p-5">
         <h3 className="text-white font-black text-xs sm:text-sm uppercase tracking-tight truncate">{item.title}</h3>

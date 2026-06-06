@@ -92,6 +92,18 @@ service cloud.firestore {
         allow write: if isOwner(userId) && incoming().userId == userId;
     }
 
+    // Category Pins Rules
+    match /category_pins/{pinId} {
+        allow read: if true;
+        allow write: if isSignedIn();
+    }
+
+    // Slider Selections Rules
+    match /slider_selections/{selectionId} {
+        allow read: if true;
+        allow write: if isSignedIn();
+    }
+
     // Support Tickets Rules
     match /supportTickets/{ticketId} {
         allow read: if isSignedIn() && (isOwner(resource.data.userId));

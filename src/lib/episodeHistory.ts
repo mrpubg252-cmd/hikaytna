@@ -30,10 +30,14 @@ function getMemoryMap(): Record<string, TrackingRecord> {
   return memoryMap || {};
 }
 
+let saveTimeout: any = null;
 function saveMap(map: Record<string, TrackingRecord>) {
   memoryMap = map;
   if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+    }, 500);
   }
 }
 
@@ -89,11 +93,10 @@ export function initializeEpisodeTracking(seriesList: any[]) {
         };
         changed = true;
       } else if (currentCount > existing.lastCount) {
-        if (!existing.updatedAt) {
-          existing.updatedAt = Date.now();
-          existing.lastNewDetectedAt = Date.now();
-          changed = true;
-        }
+        existing.updatedAt = Date.now();
+        existing.lastNewDetectedAt = Date.now();
+        existing.lastCount = currentCount; // compare against this new peak in future
+        changed = true;
       } else if (currentCount < existing.lastCount) {
         existing.lastCount = currentCount;
         existing.updatedAt = 0;
@@ -111,15 +114,21 @@ export function hasNewEpisode(series: any): boolean {
   const track = map[series.id];
   if (!track) return false;
   
-  const countHasIncreased = getEpisodeCount(series) > track.lastCount;
-  if (!countHasIncreased) return false;
-
-  if (track.updatedAt) {
+  // 1. If actively marked with an updatedAt within the last 24 hours, count as new
+  if (track.updatedAt && track.updatedAt > 0) {
     const elapsed = Date.now() - track.updatedAt;
-    if (elapsed > 24 * 60 * 60 * 1000) return false;
+    if (elapsed < 24 * 60 * 60 * 1000) {
+      return true;
+    }
+  }
+
+  // 2. Or if current count has somehow increased beyond tracked count (extra safety fallback)
+  const countHasIncreased = getEpisodeCount(series) > track.lastCount;
+  if (countHasIncreased) {
+    return true;
   }
   
-  return true;
+  return false;
 }
 
 export function getEpisodeUpdatedAt(series: any): number {

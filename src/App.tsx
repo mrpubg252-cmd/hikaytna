@@ -14,6 +14,7 @@ import ProfileScreen from './screens/ProfileScreen';
 import ChatScreen from './screens/ChatScreen';
 import ShortsScreen from './screens/ShortsScreen';
 import AdminScreen from './screens/AdminScreen';
+import { getApiUrl } from './lib/apiConfig';
 
 function AppLayout() {
   const { deviceMode, isTV } = useDevice();
@@ -73,7 +74,7 @@ function AppLayout() {
 
           console.log("⚡ [Telemetry Verification] Human actions detected. Registering referral for:", refCode);
 
-          fetch('/api/v1/referral/register', {
+          fetch(getApiUrl('/api/v1/referral/register'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ referrerId: refCode })

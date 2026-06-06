@@ -1,6 +1,8 @@
 import { fetchAllFromAPI, applyPrioritySort } from "./api";
-import { fetchAllFromFirebase, Series } from "./firebase";
+import { fetchAllFromFirebase, Series, db } from "./firebase";
 import { fetchCategoryPageFromAPI } from "./api";
+import { getApiUrl } from "../lib/apiConfig";
+import { ref, onValue } from "firebase/database";
 
 function isSimilarTitle(a: string, b: string) {
   if (!a || !b) return false;
@@ -43,7 +45,7 @@ function fixImageUrl(url: string, title: string = "") {
     !finalUrl.includes("/api/v1/image-proxy") &&
     !finalUrl.includes("unsplash.com") // Unsplash usually works fine without proxy
   ) {
-    return `/api/v1/image-proxy?url=${encodeURIComponent(finalUrl)}`;
+    return getApiUrl(`/api/v1/image-proxy?url=${encodeURIComponent(finalUrl)}`);
   }
 
   return finalUrl;
@@ -111,23 +113,38 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
   firebaseData.forEach((s) => {
     if (!s) return;
     const norm = getNormalizedTitle(s.title);
-    if (norm) {
-      const existing = mergedMap.get(norm);
-      if (existing) {
-        mergedMap.set(norm, {
-          ...existing,
-          ...s,
-          id: s.id || existing.id || norm,
-          image: s.image && s.image.trim() !== "" ? s.image : existing.image,
-          category: s.category && s.category.trim() !== "" ? s.category : existing.category,
-          episodes: s.episodes && s.episodes.length > 0 ? s.episodes : existing.episodes,
-          trailer: s.trailer && s.trailer.trim() !== "" ? s.trailer : existing.trailer,
-        });
-      } else {
-        mergedMap.set(norm, { ...s, id: s.id || norm });
-      }
+    
+    let existingKey = null;
+    if (norm && mergedMap.has(norm)) {
+      existingKey = norm;
+    } else if (s.id && mergedMap.has(s.id)) {
+      existingKey = s.id;
     } else if (s.id) {
-      mergedMap.set(s.id, s);
+      for (const [k, v] of mergedMap.entries()) {
+        if (v.id === s.id) {
+          existingKey = k;
+          break;
+        }
+      }
+    }
+
+    const existing = existingKey ? mergedMap.get(existingKey) : null;
+
+    if (existing) {
+      mergedMap.set(existingKey!, {
+        ...existing,
+        ...s,
+        id: s.id || existing.id,
+        title: s.title && s.title.trim() !== "" ? s.title : existing.title,
+        image: s.image && s.image.trim() !== "" ? s.image : existing.image,
+        category: s.category && s.category.trim() !== "" ? s.category : existing.category,
+        episodes: s.episodes && s.episodes.length > 0 ? s.episodes : existing.episodes,
+        trailer: s.trailer && s.trailer.trim() !== "" ? s.trailer : existing.trailer,
+      });
+    } else {
+      if (s.title && s.title.trim() !== "") {
+        mergedMap.set(norm || s.id, { ...s, id: s.id || norm });
+      }
     }
   });
 
@@ -200,8 +217,65 @@ export async function fetchAllSeries(forceRefresh = false): Promise<Series[]> {
   return fastInitialData;
 }
 
+// Subscribe to real-time updates from Firebase Series for metadata overlays (like Trailers added by Admin!)
+if (typeof window !== "undefined") {
+  try {
+    const seriesRef = ref(db, 'series');
+    onValue(seriesRef, (snapshot) => {
+      const fbData = snapshot.val();
+      if (!fbData) return;
+      
+      let dirty = false;
+      if (cachedSeriesList) {
+        Object.keys(fbData).forEach(key => {
+          const val = fbData[key];
+          if (val && val.trailer) {
+            // Check if we need to update cache
+            const targetIdx = cachedSeriesList!.findIndex(s => s.id === key);
+            if (targetIdx !== -1 && cachedSeriesList![targetIdx].trailer !== val.trailer) {
+              cachedSeriesList![targetIdx] = { ...cachedSeriesList![targetIdx], trailer: val.trailer };
+              dirty = true;
+            }
+          }
+        });
+        
+        if (dirty) {
+           try {
+             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+               data: cachedSeriesList,
+               timestamp: lastFetchTime
+             }));
+           } catch (e) {}
+           window.dispatchEvent(new CustomEvent("series-data-updated", { detail: cachedSeriesList }));
+        }
+      }
+    });
+  } catch (err) {}
+}
+
 export function getAllCachedSeries(): Series[] {
   return cachedSeriesList || [];
+}
+
+export function updateCachedSeriesTrailer(seriesId: string, trailerUrl: string) {
+  if (cachedSeriesList) {
+    cachedSeriesList = cachedSeriesList.map(s => {
+      if (s.id === seriesId) {
+        return { ...s, trailer: trailerUrl };
+      }
+      return s;
+    });
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+        data: cachedSeriesList,
+        timestamp: lastFetchTime
+      }));
+    } catch (e) {}
+    
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("series-data-updated", { detail: cachedSeriesList }));
+    }
+  }
 }
 
 export function getCachedSeriesByCategory(categoryName: string): Series[] {
@@ -247,15 +321,36 @@ export async function fetchCategoryPage(
     return all.slice(start, start + 50);
   }
 
-  const rawApiData = await fetchCategoryPageFromAPI(categoryName, pageIndex, signal);
+  const [rawApiData, firebaseData] = await Promise.all([
+    fetchCategoryPageFromAPI(categoryName, pageIndex, signal),
+    fetchAllFromFirebase()
+  ]);
 
   if (rawApiData.length === 0) return [];
 
+  // Extract firebase overlays to a quick map
+  const fbOverrides = new Map<string, any>();
+  firebaseData.forEach(s => {
+    if (s.id) fbOverrides.set(s.id, s);
+    // Try to map by normalized title as well
+    if (s.title) {
+       const norm = s.title.toLowerCase().trim().replace(/^(المسلسل التركي|المسلسل الكوري|المسلسل المكسيكي|المسلسل الاسيوي|المسلسل|الفيلم|البرنامج|مسلسل|برنامج|فيلم)\s+/g, "").replace(/^ال/g, "").replace(/ـ/g, "").replace(/\s+/g, "");
+       if (norm) fbOverrides.set(norm, s);
+    }
+  });
+
   // Format the returned data using the same fixImageUrl
-  const processedSeries = rawApiData.map((s) => ({
-    ...s,
-    image: fixImageUrl(s.image, s.title),
-  }));
+  const processedSeries = rawApiData.map((s) => {
+    const norm = s.title ? s.title.toLowerCase().trim().replace(/^(المسلسل التركي|المسلسل الكوري|المسلسل المكسيكي|المسلسل الاسيوي|المسلسل|الفيلم|البرنامج|مسلسل|برنامج|فيلم)\s+/g, "").replace(/^ال/g, "").replace(/ـ/g, "").replace(/\s+/g, "") : '';
+    const override = fbOverrides.get(s.id) || (norm ? fbOverrides.get(norm) : null);
+    
+    return {
+      ...s,
+      id: override?.id || s.id,
+      trailer: override?.trailer || s.trailer,
+      image: fixImageUrl(override?.image || s.image, s.title),
+    };
+  });
 
   // Apply centralized priority sort and exclusions for this page
   const newSeries = applyPrioritySort(processedSeries);
@@ -264,13 +359,16 @@ export async function fetchCategoryPage(
   if (!cachedSeriesList) {
     cachedSeriesList = newSeries;
   } else {
-    // Add only new ones
-    const existingIds = new Set(cachedSeriesList.map((s) => s.id));
-    const toAdd = newSeries.filter((s) => !existingIds.has(s.id));
-    cachedSeriesList = [...cachedSeriesList, ...toAdd];
+    // Merge deeply into cache (overlaying existing IDs to ensure trailer updates propagate locally)
+    const existingIds = new Map(cachedSeriesList.map((s, i) => [s.id, i]));
+    newSeries.forEach(s => {
+      if (existingIds.has(s.id)) {
+        cachedSeriesList![existingIds.get(s.id)!] = s;
+      } else {
+        cachedSeriesList!.push(s);
+      }
+    });
   }
 
-  // We can return just the newly fetched block, or all cached!
-  // It's usually better to just return the new block for infinite scroll appending
   return newSeries;
 }

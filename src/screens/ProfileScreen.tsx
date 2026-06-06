@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { User, Share2, Copy, Check, Gift, Crown, Trophy, Sparkles, AlertCircle } from 'lucide-react';
 import Header from '../components/Header';
 import BottomNav from '../components/BottomNav';
+import { getApiUrl } from '../lib/apiConfig';
 
 export default function ProfileScreen() {
   const [currentName, setCurrentName] = useState(() => {
-    return localStorage.getItem('guest_chat_name') || 'غير مسجل (حساب زائر)';
+    const s = localStorage.getItem('guest_chat_name') || 'غير مسجل (حساب زائر)';
+    return s;
   });
   const [enteredName, setEnteredName] = useState('');
   
@@ -52,7 +54,7 @@ export default function ProfileScreen() {
   // Sync user mapping profile when they are fully registered
   useEffect(() => {
     if (hasRegisteredName && myRefId) {
-      fetch('/api/v1/referral/register-user', {
+      fetch(getApiUrl('/api/v1/referral/register-user'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ referrerId: myRefId, username: currentName })
@@ -65,16 +67,18 @@ export default function ProfileScreen() {
 
   const handleSaveName = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!enteredName.trim() || enteredName.trim() === 'غير مسجل (حساب زائر)') return;
-    localStorage.setItem('guest_chat_name', enteredName.trim());
-    setCurrentName(enteredName.trim());
+    const trimmed = enteredName.trim();
+    if (!trimmed || trimmed === 'غير مسجل (حساب زائر)') return;
+    localStorage.setItem('guest_chat_name', trimmed);
+    setCurrentName(trimmed);
   };
 
   const handleRename = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newNameInput.trim() || newNameInput.trim() === 'غير مسجل (حساب زائر)') return;
-    localStorage.setItem('guest_chat_name', newNameInput.trim());
-    setCurrentName(newNameInput.trim());
+    const trimmed = newNameInput.trim();
+    if (!trimmed || trimmed === 'غير مسجل (حساب زائر)') return;
+    localStorage.setItem('guest_chat_name', trimmed);
+    setCurrentName(trimmed);
     setIsEditingName(false);
   };
 
