@@ -48,26 +48,13 @@ export default function NoticeAndSupportBubble() {
           Object.entries(data).map(([key, val]) => [key, decryptValue(val as string)])
         );
 
-        let app;
         let databaseInstance;
         if (!getApps().find(a => a.name === 'chatApp')) {
-          app = initializeApp(config, 'chatApp');
+          const app = initializeApp(config, 'chatApp');
           databaseInstance = getDatabase(app);
         } else {
-          app = getApp('chatApp');
-          databaseInstance = getDatabase(app);
+          databaseInstance = getDatabase(getApp('chatApp'));
         }
-
-        // Authenticate anonymously for secure read/write permissions
-        try {
-          const { getAuth, signInAnonymously } = await import('firebase/auth');
-          const authObj = getAuth(app);
-          await signInAnonymously(authObj);
-          console.log("Authenticated anonymously with 'chatApp' successfully (NoticeAndSupport Bubble)!");
-        } catch (authErr) {
-          console.warn("Anonymous sign-in failed during secure db initialization (NoticeAndSupport Bubble):", authErr);
-        }
-
         setActiveDb(databaseInstance);
         
         // Fetch tickets and replies

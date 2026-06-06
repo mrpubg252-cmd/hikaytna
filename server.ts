@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -78,15 +77,10 @@ function getActiveAIConfig(remoteConfig?: any) {
 // Ultra-fast API caller with optimized speed and dynamic options
 async function callDeepSeek(msg: string, systemPrompt: string, history: any[], keyIdx: number, config: { baseUrl: string, model: string, keys: string[] }, ignoreCooldown = false) {
   if (keyIdx >= config.keys.length) return { ok: false, error: "No key found at index" };
-  const key = (config.keys[keyIdx] || "").trim();
-  if (!key) return { ok: false, error: "Empty key provided" };
-  
+  const key = config.keys[keyIdx];
   if (!ignoreCooldown && KEY_COOLDOWNS.has(key) && Date.now() < KEY_COOLDOWNS.get(key)!) {
     return { ok: false, error: "Key is currently on cooldown (rate-limited or invalid)" };
   }
-  
-  const cleanBaseUrl = config.baseUrl.trim().replace(/\/$/, "");
-  const cleanModel = config.model.trim();
   
   try {
     const messages = [
@@ -100,8 +94,10 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
 
     const isDefaultPool = (config.keys === API_KEYS);
     const isToken = key.startsWith("AQ.");
+    const requestTimeout = (isDefaultPool && !isToken) ? 2200 : 15000;
+
     const isGoogleKey = key.startsWith("AIzaSy");
-    const isGoogleDomain = cleanBaseUrl.includes("generativelanguage.googleapis.com");
+    const isGoogleDomain = config.baseUrl.includes("generativelanguage.googleapis.com");
 
     const reqHeaders: Record<string, string> = {
       "Content-Type": "application/json",
@@ -112,30 +108,31 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
       reqHeaders["Authorization"] = `Bearer ${key}`;
     } else if (isGoogleKey) {
       reqHeaders["x-goog-api-key"] = key;
-      if (cleanBaseUrl.includes("/openai")) {
+      if (config.baseUrl.includes("/openai")) {
         reqHeaders["Authorization"] = `Bearer ${key}`;
       }
     } else {
       reqHeaders["Authorization"] = `Bearer ${key}`;
     }
 
-    let finalBaseUrl = cleanBaseUrl;
+    let cleanBaseUrl = config.baseUrl.trim().replace(/\/$/, "");
+    
     // Auto-fix Google OpenAI endpoint path ONLY if completely missing
-    if (isGoogleDomain && !finalBaseUrl.includes("/openai")) {
-        if (!finalBaseUrl.includes("/v1beta") && !finalBaseUrl.includes("/v1")) {
-            finalBaseUrl += "/v1beta/openai";
+    if (isGoogleDomain && !cleanBaseUrl.includes("/openai")) {
+        if (!cleanBaseUrl.includes("/v1beta") && !cleanBaseUrl.includes("/v1")) {
+            cleanBaseUrl += "/v1beta/openai";
         } else {
-            finalBaseUrl += "/openai";
+            cleanBaseUrl += "/openai";
         }
     }
-    
-    let finalModel = cleanModel;
-    if (isGoogleDomain && finalModel.startsWith("models/")) {
-      finalModel = finalModel.replace("models/", "");
+    // Google OpenAI endpoint handles model names without 'models/' prefix
+    let cleanModel = config.model;
+    if (isGoogleDomain && cleanModel.startsWith("models/")) {
+      cleanModel = cleanModel.replace("models/", "");
     }
 
-    const res = await axios.post(`${finalBaseUrl}/chat/completions`, {
-      model: finalModel,
+    const res = await axios.post(`${cleanBaseUrl}/chat/completions`, {
+      model: cleanModel,
       messages,
       temperature: 0.7,
       max_tokens: 800,
@@ -146,35 +143,13 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
     });
 
     if (res.data && res.data.choices && res.data.choices[0]) {
-      const replyText = res.data.choices[0].message.content;
-      HAKEEM_LOGS.push(`[${new Date().toISOString()}] ✅ Succeeded using key=${key.substring(0, 8)}... model=${finalModel} url=${finalBaseUrl}`);
-      if (HAKEEM_LOGS.length > 50) HAKEEM_LOGS.shift();
-      return { ok: true, reply: replyText };
+      return { ok: true, reply: res.data.choices[0].message.content };
     }
     
-    const formatErr = "Invalid response format from gateway (no message choices returned)";
-    HAKEEM_LOGS.push(`[${new Date().toISOString()}] ❌ Format error: ${formatErr}`);
-    if (HAKEEM_LOGS.length > 50) HAKEEM_LOGS.shift();
-    return { ok: false, error: formatErr };
+    return { ok: false, error: "Invalid AI response format" };
   } catch (error: any) {
-    let errorMsg = error.message || "Unknown error";
-    if (error.response?.data) {
-      if (typeof error.response.data === 'string') {
-        errorMsg = error.response.data;
-      } else if (error.response.data.error) {
-        errorMsg = typeof error.response.data.error === 'string'
-          ? error.response.data.error
-          : (error.response.data.error.message || JSON.stringify(error.response.data.error));
-      } else if (error.response.data.message) {
-        errorMsg = error.response.data.message;
-      } else {
-        errorMsg = JSON.stringify(error.response.data);
-      }
-    }
-    
-    console.error(`AI Error for key=${key.substring(0, 8)}... :`, errorMsg);
-    HAKEEM_LOGS.push(`[${new Date().toISOString()}] ❌ callDeepSeek failed (key=${key.substring(0, 8)}..., model=${cleanModel}, url=${cleanBaseUrl}): ${errorMsg}`);
-    if (HAKEEM_LOGS.length > 50) HAKEEM_LOGS.shift();
+    const errorMsg = error.response?.data?.error?.message || error.message;
+    console.error(`AI Error [${keyIdx}]:`, errorMsg);
     
     if (error.response?.status === 429) {
       KEY_COOLDOWNS.set(key, Date.now() + 5 * 60 * 1000);
@@ -190,10 +165,7 @@ function getGeminiClient(customKey?: string) {
   // Respect user custom config first if it is set to gemini
   let key = "";
   if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.type === 'gemini') {
-    const isPekPik = USER_CUSTOM_AI_CONFIG.baseUrl?.includes("pekpik.com") || USER_CUSTOM_AI_CONFIG.key.startsWith("sk-");
-    if (!isPekPik) {
-      key = USER_CUSTOM_AI_CONFIG.key;
-    }
+    key = USER_CUSTOM_AI_CONFIG.key;
   }
   
   key = key || customKey || process.env.GEMINI_API_KEY || "";
@@ -373,76 +345,14 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
   }
 }
 
-function getPekPikModelForKey(key: string): string {
-  const k = key || "";
-  if (k.includes("O3kEN") || k.includes("EkDJLX") || k.includes("03kEN")) {
-    return "gemini-2.5-flash";
-  }
-  if (k.includes("K8wYe") || k.includes("T1xzBx")) {
-    return "openrouter/owl-alpha";
-  }
-  if (k.includes("igD4x") || k.includes("UChHgr")) {
-    return "qwen/qwen3.6-flash";
-  }
-  return "gemini-2.5-flash"; // Default fallback
-}
-
 // Unified Robust AI Caller for Hakeem (Direct Priority)
 async function smartChat(msg: string, systemPrompt: string, history: any[]) {
-  // 1. Direct environment variable mapping for custom PekPik/OpenAI keys
-  const envKey = (process.env.PEKPIK_API_KEY || process.env.CUSTOM_AI_KEY || process.env.GEMINI_API_KEY || "").trim();
-  const envBaseUrl = (process.env.PEKPIK_BASE_URL || process.env.GEMINI_BASE_URL || process.env.CUSTOM_AI_BASE_URL || "").trim();
-  const envModel = (process.env.PEKPIK_MODEL || process.env.GEMINI_MODEL || process.env.CUSTOM_AI_MODEL || "").trim();
-  
-  const isEnvPekPik = envKey.startsWith("sk-") || envBaseUrl.includes("pekpik") || envBaseUrl.includes("aiapiv2");
-
-  if (isEnvPekPik && envKey) {
-    const customConfig = {
-      baseUrl: envBaseUrl || "https://aiapiv2.pekpik.com/v1",
-      model: envModel || getPekPikModelForKey(envKey),
-      keys: [envKey]
-    };
-    HAKEEM_LOGS.push(`[${new Date().toISOString()}] 🚀 Routing chat to PekPik environment: model=${customConfig.model} url=${customConfig.baseUrl}`);
-    if (HAKEEM_LOGS.length > 50) HAKEEM_LOGS.shift();
-    
-    const rEnvCustom = await callDeepSeek(msg, systemPrompt, history, 0, customConfig, true);
-    if (rEnvCustom.ok && rEnvCustom.reply) return rEnvCustom;
-
-    // PekPik Resilience Pool: If the primary key failed or had a typo, try the other bought keys sequentially
-    HAKEEM_LOGS.push(`[${new Date().toISOString()}] ⚠️ Primary PekPik key failed. Trying sequential resilience pool from items...`);
-    if (HAKEEM_LOGS.length > 50) HAKEEM_LOGS.shift();
-
-    const boughtKeys = [
-      { key: "sk-O3kEN936mtOOgGn79NHccA0SaHTaobDU2oyQB0EkDJLX1fNH", model: "gemini-2.5-flash" },
-      { key: "sk-03kEN936mtOOgGn79NHccA0SaHTaobDU2oyQB0EkDJLX1fNH", model: "gemini-2.5-flash" },
-      { key: "sk-K8wYetO3JUqPP5pUnjRO9jo1DqbXYjTnXNaT1xzBx5kA00xL", model: "openrouter/owl-alpha" },
-      { key: "sk-igD4x9w7xWyePiXcOlszsyRyMTUlzkisfEsagUChHgrayXbo", model: "qwen/qwen3.6-flash" }
-    ];
-
-    for (const bk of boughtKeys) {
-      if (bk.key.trim() === envKey.trim()) continue; // Skip if already tried
-      const poolConfig = {
-        baseUrl: envBaseUrl || "https://aiapiv2.pekpik.com/v1",
-        model: bk.model,
-        keys: [bk.key]
-      };
-      HAKEEM_LOGS.push(`[${new Date().toISOString()}] 🔄 Trying backup bought key prefix=${bk.key.substring(0, 8)}... model=${bk.model}`);
-      if (HAKEEM_LOGS.length > 50) HAKEEM_LOGS.shift();
-
-      const rBk = await callDeepSeek(msg, systemPrompt, history, 0, poolConfig, true);
-      if (rBk.ok && rBk.reply) return rBk;
-    }
-  }
-
-  // 2. Priority: Custom Overrides (Set by Admin via UI)
+  // 1. Priority: Custom Overrides (Set by Admin)
   if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key) {
-    const isPekPik = USER_CUSTOM_AI_CONFIG.baseUrl?.includes("pekpik") || USER_CUSTOM_AI_CONFIG.key.startsWith("sk-");
-    const isCustomOpenAI = USER_CUSTOM_AI_CONFIG.type === 'openai' || isPekPik;
-
-    if (isCustomOpenAI) {
+    if (USER_CUSTOM_AI_CONFIG.type === 'openai') {
       const customConfig = {
-        baseUrl: USER_CUSTOM_AI_CONFIG.baseUrl || "https://aiapiv2.pekpik.com/v1",
-        model: USER_CUSTOM_AI_CONFIG.model || getPekPikModelForKey(USER_CUSTOM_AI_CONFIG.key),
+        baseUrl: USER_CUSTOM_AI_CONFIG.baseUrl || "https://api.openai.com/v1",
+        model: USER_CUSTOM_AI_CONFIG.model || "gpt-3.5-turbo",
         keys: [USER_CUSTOM_AI_CONFIG.key]
       };
       const rCustom = await callDeepSeek(msg, systemPrompt, history, 0, customConfig, true);
@@ -453,31 +363,30 @@ async function smartChat(msg: string, systemPrompt: string, history: any[]) {
     }
   }
 
-  // 3. Priority: Stable Platform Google Gemini Key (Highly reliable, provided by AI Studio environment)
-  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY" && !isEnvPekPik) {
+  // 2. Priority: Stable Platform Google Gemini Key (Highly reliable, provided by AI Studio environment)
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY") {
     const rPlatform = await callGeminiFallback(msg, systemPrompt, history);
     if (rPlatform.ok && rPlatform.reply) {
       return rPlatform;
     }
   }
 
-  // 4. Fallback Pool of hardcoded backup keys
+  // 3. Last Resort Fallback: Hardcoded Fallback Pool (Using callDeepSeek with API_KEYS)
   const config = getActiveAIConfig();
   if (config && config.keys && config.keys.length > 0) {
+    // Try up to 2 attempts for the primary pool keys
     for (let i = 0; i < 2; i++) {
-       const rPool = await callDeepSeek(msg, systemPrompt, history, 0, config, i === 1);
-       if (rPool.ok && rPool.reply) {
-         return rPool;
-       }
+      const rPool = await callDeepSeek(msg, systemPrompt, history, 0, config, i === 1);
+      if (rPool.ok && rPool.reply) {
+        return rPool;
+      }
     }
   }
 
-  // 5. Absolute Final Backstop
-  if (!isEnvPekPik) {
-    const gemiResult = await callGeminiFallback(msg, systemPrompt, history);
-    if (gemiResult.ok && gemiResult.reply) {
-      return { ok: true, reply: gemiResult.reply };
-    }
+  // 4. Absolute Final Backstop
+  const gemiResult = await callGeminiFallback(msg, systemPrompt, history);
+  if (gemiResult.ok && gemiResult.reply) {
+    return { ok: true, reply: gemiResult.reply };
   }
 
   // Active helpful guidance instead of a dry, generic connection error when no api key exists
@@ -569,7 +478,7 @@ async function startServer() {
   // ============== SYSTEM-WIDE PERSISTENT CLOUD SELF-HEALING SYSTEM (FIRESTORE & RTDB) ==============
   // Fetches master backups from Firestore and Realtime Database raw REST APIs
   // This guarantees complete survival across restarts, rebuilds, and ephemeral disk wipes!
-  const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || "chat-app-12345";
+  const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || "mo-play-b0cb7";
 
   // --- 1. AI Configuration Self-Healing ---
   try {
@@ -1492,32 +1401,6 @@ async function startServer() {
     res.json(pinsMemory);
   });
 
-  // Secure admin AI configuration retrieval endpoint
-  app.post("/api/v1/admin/ai-config", (req, res) => {
-    const { password } = req.body;
-    if (password !== "bewCew,iDYgC@K6") {
-      return res.status(401).json({ error: "كلمة المرور غير صحيحة" });
-    }
-    if (!USER_CUSTOM_AI_CONFIG) {
-      return res.json({ config: null });
-    }
-    
-    // Create safe mask
-    const k = USER_CUSTOM_AI_CONFIG.key || "";
-    const maskedKey = k.length > 12 
-      ? `${k.substring(0, 6)}...${k.substring(k.length - 6)}`
-      : "••••••••••••";
-
-    res.json({
-      config: {
-        key: maskedKey,
-        baseUrl: USER_CUSTOM_AI_CONFIG.baseUrl || "",
-        model: USER_CUSTOM_AI_CONFIG.model || "",
-        type: USER_CUSTOM_AI_CONFIG.type || "gemini"
-      }
-    });
-  });
-
   app.post("/api/v1/admin/gemini-key", (req, res) => {
     const { password, key, baseUrl, model, type = 'gemini' } = req.body;
     if (password !== "bewCew,iDYgC@K6") {
@@ -1677,11 +1560,11 @@ ${seriesContext}`;
   // Firebase Config with obfuscation
   app.get("/api/v1/config/firebase", (req, res) => {
     const config = {
-      apiKey: process.env.FIREBASE_API_KEY || "AIzaSyD7-kL247_yH0C4zXW-6eP3L3W0W7E2W1E",
-      authDomain: process.env.FIREBASE_AUTH_DOMAIN || "chat-app-12345.firebaseapp.com",
-      databaseURL: process.env.FIREBASE_DATABASE_URL || "https://chat-app-12345-default-rtdb.firebaseio.com",
-      projectId: process.env.FIREBASE_PROJECT_ID || "chat-app-12345",
-      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "chat-app-12345.firebasestorage.app",
+      apiKey: process.env.FIREBASE_API_KEY || "AIzaSyCQpOf-eNn6Le8b5wsdiDuPabBV_scBD68",
+      authDomain: process.env.FIREBASE_AUTH_DOMAIN || "mo-play-b0cb7.firebaseapp.com",
+      databaseURL: process.env.FIREBASE_DATABASE_URL || "https://mo-play-b0cb7-default-rtdb.firebaseio.com",
+      projectId: process.env.FIREBASE_PROJECT_ID || "mo-play-b0cb7",
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "mo-play-b0cb7.firebasestorage.app",
       messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "276393305302",
       appId: process.env.FIREBASE_APP_ID || "1:276393305302:web:12f90a55d7c13a4c57d577"
     };
