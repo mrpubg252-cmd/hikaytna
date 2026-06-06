@@ -165,7 +165,10 @@ function getGeminiClient(customKey?: string) {
   // Respect user custom config first if it is set to gemini
   let key = "";
   if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.type === 'gemini') {
-    key = USER_CUSTOM_AI_CONFIG.key;
+    const isPekPik = USER_CUSTOM_AI_CONFIG.baseUrl?.includes("pekpik.com") || USER_CUSTOM_AI_CONFIG.key.startsWith("sk-");
+    if (!isPekPik) {
+      key = USER_CUSTOM_AI_CONFIG.key;
+    }
   }
   
   key = key || customKey || process.env.GEMINI_API_KEY || "";
@@ -349,7 +352,10 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
 async function smartChat(msg: string, systemPrompt: string, history: any[]) {
   // 1. Priority: Custom Overrides (Set by Admin)
   if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key) {
-    if (USER_CUSTOM_AI_CONFIG.type === 'openai') {
+    const isPekPik = USER_CUSTOM_AI_CONFIG.baseUrl?.includes("pekpik.com") || USER_CUSTOM_AI_CONFIG.key.startsWith("sk-");
+    const isCustomOpenAI = USER_CUSTOM_AI_CONFIG.type === 'openai' || isPekPik;
+
+    if (isCustomOpenAI) {
       const customConfig = {
         baseUrl: USER_CUSTOM_AI_CONFIG.baseUrl || "https://api.openai.com/v1",
         model: USER_CUSTOM_AI_CONFIG.model || "gpt-3.5-turbo",
@@ -1399,6 +1405,32 @@ async function startServer() {
   // Category Pins Read API
   app.get("/api/v1/pins", async (req, res) => {
     res.json(pinsMemory);
+  });
+
+  // Secure admin AI configuration retrieval endpoint
+  app.post("/api/v1/admin/ai-config", (req, res) => {
+    const { password } = req.body;
+    if (password !== "bewCew,iDYgC@K6") {
+      return res.status(401).json({ error: "كلمة المرور غير صحيحة" });
+    }
+    if (!USER_CUSTOM_AI_CONFIG) {
+      return res.json({ config: null });
+    }
+    
+    // Create safe mask
+    const k = USER_CUSTOM_AI_CONFIG.key || "";
+    const maskedKey = k.length > 12 
+      ? `${k.substring(0, 6)}...${k.substring(k.length - 6)}`
+      : "••••••••••••";
+
+    res.json({
+      config: {
+        key: maskedKey,
+        baseUrl: USER_CUSTOM_AI_CONFIG.baseUrl || "",
+        model: USER_CUSTOM_AI_CONFIG.model || "",
+        type: USER_CUSTOM_AI_CONFIG.type || "gemini"
+      }
+    });
   });
 
   app.post("/api/v1/admin/gemini-key", (req, res) => {

@@ -31,9 +31,16 @@ const PRESET_PROMPTS = [
   { text: 'اقترح لي مسلسل تركي رومانسي وحزين 💔', icon: '💖', color: 'border-rose-500/20 hover:border-rose-500/50 bg-rose-500/5 text-rose-350 hover:bg-rose-500/10' },
   { text: 'عندكم مسلسل المتوحش؟ عطني قصته 🐺', icon: '🐺', color: 'border-indigo-500/20 hover:border-indigo-500/50 bg-indigo-500/5 text-indigo-350 hover:bg-indigo-500/10' },
   { text: 'أبي مسلسل أكشن وحرب تاريخي رهيب ⚔️', icon: '⚔️', color: 'border-red-500/20 hover:border-red-500/50 bg-red-500/5 text-red-350 hover:bg-red-500/10' },
-  { text: 'دلني على مسلسل خليجي درامي راقي 📺', icon: '📺', color: 'border-amber-500/20 hover:border-amber-500/50 bg-amber-500/5 text-amber-350 hover:bg-amber-500/10' },
+  { text: 'دلني على مسلسل خليجي درامي راقي 📺', icon: '📺', color: 'border-amber-500/20 hover:border-amber-500/50 bg-amber-500/5 text-amber-300 hover:bg-amber-500/10' },
   { text: 'اقتراح خفيف وكوميدي يسليني 🎭', icon: '🎭', color: 'border-purple-500/20 hover:border-purple-500/50 bg-purple-500/5 text-purple-350 hover:bg-purple-500/10' },
   { text: 'أريد كرتون مدبلج عائلي رهيب 🧸', icon: '🧸', color: 'border-emerald-500/20 hover:border-emerald-500/50 bg-emerald-500/5 text-emerald-350 hover:bg-emerald-500/10' }
+];
+
+export const PRESET_CONFIGS = [
+  { id: 'free-gemini', name: 'الافتراضي: Google AI Studio 🔴', type: 'gemini', model: 'gemini-2.5-flash', baseUrl: '' },
+  { id: 'pekpik-gemini', name: 'Gemini 2.5 (PekPik) ⚡', type: 'openai', model: 'gemini-2.5-flash', baseUrl: 'https://aiapiv2.pekpik.com/v1' },
+  { id: 'pekpik-owl', name: 'Owl Alpha (PekPik) 🦉', type: 'openai', model: 'openrouter/owl-alpha', baseUrl: 'https://aiapiv2.pekpik.com/v1' },
+  { id: 'pekpik-qwen', name: 'Qwen 3.6 (PekPik) 🇨🇳', type: 'openai', model: 'qwen/qwen3.6-flash', baseUrl: 'https://aiapiv2.pekpik.com/v1' }
 ];
 
 // Modern synthetic audio chimes using browser AudioContext to avoid remote file asset dependency
@@ -107,6 +114,33 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
   const [newApiModel, setNewApiModel] = useState('');
   const [newApiType, setNewApiType] = useState<'gemini' | 'openai'>('gemini');
   const [settingStatus, setSettingStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error', msg: string }>({ type: 'idle', msg: '' });
+
+  // Auto-fetch existing configuration when the correct password is typed in the drawer settings
+  useEffect(() => {
+    if (adminPassword === 'bewCew,iDYgC@K6') {
+      const loadCurrentConfig = async () => {
+        try {
+          const res = await fetch(getApiUrl('/api/v1/admin/ai-config'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: adminPassword })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.config) {
+              setNewApiKey(data.config.key || '');
+              setNewApiBaseUrl(data.config.baseUrl || '');
+              setNewApiModel(data.config.model || '');
+              setNewApiType(data.config.type || 'gemini');
+            }
+          }
+        } catch (err) {
+          console.warn("Could not load current AI configuration safely:", err);
+        }
+      };
+      loadCurrentConfig();
+    }
+  }, [adminPassword]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -404,7 +438,7 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Audio toggle bell */}
+          {/* Translucent audio bell */}
           <button
             onClick={toggleSound}
             className={`p-2 rounded-xl border transition-all active:scale-95 duration-200 cursor-pointer ${
@@ -417,16 +451,14 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
             {isSoundMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </button>
 
-          {/* Admin access overlay triggers */}
-          {(localStorage.getItem('guest_chat_name') === 'bewCew,iDYgC@K6' || localStorage.getItem('guest_chat_name') === 'المدير 🛡️') && (
-            <button 
-              onClick={() => setShowApiKeySetting(true)}
-              className="p-2 hover:bg-white/5 bg-zinc-900/40 rounded-xl text-zinc-500 hover:text-amber-500 transition-colors border border-white/5 cursor-pointer"
-              title="إعدادات الحكيم"
-            >
-              <Key className="w-4 h-4" />
-            </button>
-          )}
+          {/* Admin access overlay trigger (Always visible for simplified admin access across all mobile devices) */}
+          <button 
+            onClick={() => setShowApiKeySetting(true)}
+            className="p-2 hover:bg-white/5 bg-zinc-900/40 rounded-xl text-zinc-500 hover:text-amber-500 transition-colors border border-white/5 cursor-pointer flex items-center justify-center shrink-0"
+            title="إعدادات الحكيم"
+          >
+            <Key className="w-4 h-4" />
+          </button>
 
           <button 
             onClick={onClose}
@@ -445,93 +477,119 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.96 }}
-            className="absolute inset-0 z-50 bg-[#07070b]/96 backdrop-blur-xl p-6 flex flex-col items-center justify-center space-y-6"
+            className="absolute inset-0 z-50 bg-[#07070b]/96 backdrop-blur-xl p-5 flex flex-col items-center justify-center space-y-4"
           >
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-600 flex items-center justify-center border border-amber-400/20 shadow-xl shadow-amber-500/10">
-              <Key className="w-6 h-6 text-white" />
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-600 flex items-center justify-center border border-amber-400/20 shadow-xl shadow-amber-500/10 shrink-0">
+              <Key className="w-5 h-5 text-white" />
             </div>
             
-            <div className="text-center space-y-1">
-              <h3 className="text-lg font-black text-white">لوحة تحكم حكيم API</h3>
-              <p className="text-[11px] text-zinc-500 font-bold">تحديث مفاتيح ونظم الذكاء الاصطناعي</p>
+            <div className="text-center space-y-0.5">
+              <h3 className="text-base font-black text-white">إعدادات مزود حكيم</h3>
+              <p className="text-[10px] text-zinc-500 font-bold">تحديث مفاتيح التشغيل والنماذج فورياً</p>
             </div>
 
-            <div className="w-full max-w-xs space-y-4 max-h-[70vh] overflow-y-auto px-1 pb-4 scrollbar-none">
-              <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-3 space-y-1">
-                <p className="text-[10px] text-amber-500/90 font-bold leading-relaxed text-right">
-                  ⚠️ إرشادات الموفرات:
-                  <br />- مفتاح Gemini الكلاسيكي (AIza...) اختر <b>Google Gemini</b>.
-                  <br />- الروابط التوافقية OpenAI أو كود (AQ...) اختر <b>OpenAI/Other</b>.
-                </p>
-              </div>
-
+            <div className="w-full max-w-xs space-y-3.5 max-h-[72vh] overflow-y-auto px-1 pb-4 scrollbar-none text-right">
+              
               <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500 font-extrabold pr-1.5">كود لوحة الإدارة 🔐</label>
+                <label className="text-[10px] text-zinc-500 font-extrabold pr-1">رقم السري للوحة الإدارة 🔐</label>
                 <input 
                   type="password"
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
-                  placeholder="الرقم السري للإدارة..."
-                  className="w-full bg-[#0d0d14] border border-white/5 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-primary/50 text-white font-mono placeholder-zinc-600 focus:ring-1 focus:ring-primary/20"
+                  placeholder="أدخل الرقم السري لفتح الإعدادات..."
+                  className="w-full bg-[#0d0d14] border border-white/5 rounded-xl px-3.5 py-2 text-xs outline-none focus:border-amber-500/50 text-white font-mono placeholder-zinc-600 focus:ring-1 focus:ring-amber-500/20"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500 font-extrabold pr-1.5">جهة التشغيل (Provider)</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button 
-                    onClick={() => setNewApiType('gemini')}
-                    className={`py-2 rounded-lg text-[10px] font-black border transition-all duration-200 ${newApiType === 'gemini' ? 'bg-primary/10 border-primary text-primary shadow-sm' : 'bg-[#0d0d14] border-white/5 text-zinc-500'}`}
-                  >
-                    Google Gemini
-                  </button>
-                  <button 
-                    onClick={() => setNewApiType('openai')}
-                    className={`py-2 rounded-lg text-[10px] font-black border transition-all duration-200 ${newApiType === 'openai' ? 'bg-indigo-500/10 border-indigo-500 text-indigo-400 shadow-sm' : 'bg-[#0d0d14] border-white/5 text-zinc-500'}`}
-                  >
-                    OpenAI Engine
-                  </button>
-                </div>
-              </div>
+              {adminPassword === 'bewCew,iDYgC@K6' ? (
+                <>
+                  {/* Preset quick buttons panel */}
+                  <div className="space-y-1 bg-amber-500/[0.02] border border-amber-500/10 rounded-xl p-2.5">
+                    <label className="text-[9.5px] text-amber-500/90 font-black block mb-1 text-center">🎯 اختر نموذج سريع لتعبئة الخانات تلقائياً</label>
+                    <div className="flex flex-col gap-1.5 max-h-36 overflow-y-auto scrollbar-none pr-0.5">
+                      {PRESET_CONFIGS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => {
+                            setNewApiType(preset.type as 'gemini' | 'openai');
+                            setNewApiModel(preset.model);
+                            setNewApiBaseUrl(preset.baseUrl);
+                            setSettingStatus({ type: 'idle', msg: '' });
+                          }}
+                          className="w-full py-1.5 px-2 bg-zinc-900/60 hover:bg-[#1a1a26] border border-white/5 rounded-lg text-[9.5px] font-bold text-zinc-300 text-right transition-all flex items-center justify-between group active:scale-98 cursor-pointer"
+                        >
+                          <span className="text-zinc-500 group-hover:text-amber-500 text-[8px] font-mono shrink-0">
+                            {preset.type === 'gemini' ? 'Gemini SDK' : 'OpenAI JSON'}
+                          </span>
+                          <span className="truncate pl-1">{preset.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500 font-extrabold pr-1.5">مفتاح الاتصال (API Key)</label>
-                <input 
-                  type="text"
-                  value={newApiKey}
-                  onChange={(e) => setNewApiKey(e.target.value)}
-                  placeholder={newApiType === 'gemini' ? "AIzaSy..." : "sk-..."}
-                  className="w-full bg-[#0d0d14] border border-white/5 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-primary/50 text-white font-mono placeholder-zinc-600 focus:ring-1 focus:ring-primary/20"
-                />
-              </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-zinc-500 font-extrabold pr-1">نوع المخدم (Engine Protocol)</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button 
+                        type="button"
+                        onClick={() => setNewApiType('gemini')}
+                        className={`py-1.5 rounded-lg text-[9.5px] font-black border transition-all duration-200 cursor-pointer ${newApiType === 'gemini' ? 'bg-amber-500/10 border-amber-500 text-amber-400 shadow-sm' : 'bg-[#0d0d14] border-white/5 text-zinc-500'}`}
+                      >
+                        Google Gemini SDK
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => setNewApiType('openai')}
+                        className={`py-1.5 rounded-lg text-[9.5px] font-black border transition-all duration-205 cursor-pointer ${newApiType === 'openai' ? 'bg-amber-500/10 border-amber-500 text-amber-400 shadow-sm' : 'bg-[#0d0d14] border-white/5 text-zinc-500'}`}
+                      >
+                        OpenAI Gateway
+                      </button>
+                    </div>
+                  </div>
 
-              {newApiType === 'openai' && (
-                <div className="space-y-1">
-                  <label className="text-[10px] text-zinc-500 font-extrabold pr-1.5">رابط النهاية (Base URL)</label>
-                  <input 
-                    type="text"
-                    value={newApiBaseUrl}
-                    onChange={(e) => setNewApiBaseUrl(e.target.value)}
-                    placeholder="https://api.openai.com/v1"
-                    className="w-full bg-[#0d0d14] border border-white/5 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-primary/50 text-white font-mono placeholder-zinc-600 focus:ring-1 focus:ring-primary/20"
-                  />
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-zinc-500 font-extrabold pr-1">مفتاح الاتصال (API Key)</label>
+                    <input 
+                      type="text"
+                      value={newApiKey}
+                      onChange={(e) => setNewApiKey(e.target.value)}
+                      placeholder={newApiType === 'gemini' ? "AIzaSy..." : "sk-..."}
+                      className="w-full bg-[#0d0d14] border border-white/5 rounded-xl px-3.5 py-2 text-xs outline-none focus:border-amber-500/50 text-white font-mono placeholder-zinc-650 focus:ring-1 focus:ring-amber-500/20"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-zinc-500 font-extrabold pr-1">رابط النهاية (Base URL)</label>
+                    <input 
+                      type="text"
+                      value={newApiBaseUrl}
+                      onChange={(e) => setNewApiBaseUrl(e.target.value)}
+                      placeholder="اتركه فارغاً للافتراضي أو ضع الرابط المخصص..."
+                      className="w-full bg-[#0d0d14] border border-white/5 rounded-xl px-3.5 py-2 text-xs outline-none focus:border-amber-500/50 text-white font-mono placeholder-zinc-650 focus:ring-1 focus:ring-amber-500/20"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-zinc-500 font-extrabold pr-1">اسم الموديل المعتمد (Model ID)</label>
+                    <input 
+                      type="text"
+                      value={newApiModel}
+                      onChange={(e) => setNewApiModel(e.target.value)}
+                      placeholder={newApiType === 'gemini' ? "gemini-2.5-flash" : "gpt-3.5-turbo"}
+                      className="w-full bg-[#0d0d14] border border-white/5 rounded-xl px-3.5 py-2 text-xs outline-none focus:border-amber-500/50 text-white font-mono placeholder-zinc-650 focus:ring-1 focus:ring-amber-500/20"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="p-4 bg-zinc-950/60 rounded-2xl border border-white/5 text-center text-[10px] text-zinc-450 font-semibold leading-relaxed">
+                  🔒 يرجى كتابة الرقم السري الصحيح لعرض الإعدادات وتفاصيل المفاتيح والاتصال والتحكم بالبيئة.
                 </div>
               )}
 
-              <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500 font-extrabold pr-1.5">الموديل (Model ID)</label>
-                <input 
-                  type="text"
-                  value={newApiModel}
-                  onChange={(e) => setNewApiModel(e.target.value)}
-                  placeholder={newApiType === 'gemini' ? "gemini-1.5-flash" : "gpt-3.5-turbo"}
-                  className="w-full bg-[#0d0d14] border border-white/5 rounded-xl px-4 py-2.5 text-xs outline-none focus:border-primary/50 text-white font-mono placeholder-zinc-600 focus:ring-1 focus:ring-primary/20"
-                />
-              </div>
-
               {settingStatus.type !== 'idle' && (
-                <div className={`p-3 rounded-xl text-[10px] font-black text-center ${
-                  settingStatus.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' :
+                <div className={`p-2.5 rounded-xl text-[10px] font-black text-center ${
+                  settingStatus.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 animate-pulse' :
                   settingStatus.type === 'error' ? 'bg-red-500/10 text-red-400 border border-red-500/25' :
                   'bg-zinc-900 border border-white/5 text-zinc-400 animate-pulse'
                 }`}>
@@ -539,16 +597,19 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
                 </div>
               )}
 
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2.5 pt-2 select-none">
                 <button 
+                  type="button"
                   onClick={() => setShowApiKeySetting(false)}
-                  className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-white/5 text-white text-[10.5px] font-black rounded-xl transition-all cursor-pointer"
+                  className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-850 border border-white/5 text-white text-[10.5px] font-black rounded-xl transition-all cursor-pointer text-center"
                 >
-                  إلغاء
+                  إلغاء الإغلاق
                 </button>
                 <button 
+                  type="button"
+                  disabled={adminPassword !== 'bewCew,iDYgC@K6'}
                   onClick={async () => {
-                    setSettingStatus({ type: 'loading', msg: 'جاري التحديث...' });
+                    setSettingStatus({ type: 'loading', msg: 'جاري تحديث الموفر وحفظ الإعدادات دائمياً...' });
                     try {
                       const res = await fetch(getApiUrl('/api/v1/admin/gemini-key'), {
                         method: 'POST',
@@ -564,17 +625,17 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
                       const data = await res.json();
                       if (res.ok) {
                         setSettingStatus({ type: 'success', msg: data.message });
-                        setTimeout(() => setShowApiKeySetting(false), 2000);
+                        setTimeout(() => setShowApiKeySetting(false), 1500);
                       } else {
-                        setSettingStatus({ type: 'error', msg: data.error || 'خطأ في البيئة' });
+                        setSettingStatus({ type: 'error', msg: data.error || 'خطأ غير معروف' });
                       }
                     } catch (e) {
-                      setSettingStatus({ type: 'error', msg: 'خطأ في الاتصال بالشبكة' });
+                      setSettingStatus({ type: 'error', msg: 'خطأ في الربط بشبكة سيرفر حكيم' });
                     }
                   }}
-                  className="flex-1 py-2.5 bg-gradient-to-r from-primary to-orange-600 hover:opacity-90 text-white text-[10.5px] font-black rounded-xl transition-all shadow-lg shadow-primary/25 cursor-pointer"
+                  className="flex-1 py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:brightness-110 disabled:opacity-30 disabled:hover:opacity-30 text-white text-[10.5px] font-black rounded-xl transition-all shadow-lg shadow-amber-500/10 cursor-pointer text-center"
                 >
-                  حفظ الإعدادات
+                  حفظ دائم وحفظ السيرفر
                 </button>
               </div>
             </div>

@@ -10,16 +10,19 @@ export default function Header() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [viewportHeight, setViewportHeight] = useState('100dvh');
+  const drawerRef = useRef<HTMLDivElement>(null);
 
   // Multi-resilient dynamic mobile visual viewport resize listener (fixes keyboard cut-off on Chrome/Safari mobile platforms)
   useEffect(() => {
     if (!isAiOpen) return;
 
     const handleResize = () => {
-      if (window.visualViewport) {
-        setViewportHeight(`${window.visualViewport.height}px`);
+      const currentHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      // Guard against iframe zero-height initialization or nested sizing glitches
+      if (currentHeight > 250) {
+        setViewportHeight(`${currentHeight}px`);
       } else {
-        setViewportHeight(`${window.innerHeight}px`);
+        setViewportHeight('100dvh');
       }
     };
 
@@ -40,6 +43,30 @@ export default function Header() {
       } else {
         window.removeEventListener('resize', handleResize);
       }
+    };
+  }, [isAiOpen]);
+
+  // Click-Outside delegate listener (Ensures that tapping any region outside of Hakeem's drawer exits instantly)
+  useEffect(() => {
+    if (!isAiOpen) return;
+
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      // Check if the click target is within the drawer container
+      if (drawerRef.current && !drawerRef.current.contains(event.target as Node)) {
+        setIsAiOpen(false);
+      }
+    };
+
+    // Tiny safety delay to prevent immediate closing during the click that triggered opening
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }, 80);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
     };
   }, [isAiOpen]);
 
@@ -180,11 +207,12 @@ export default function Header() {
             
             {/* Drawer Container (Optimized with responsive width to expose tap-to-close overlay zone, plus real-time iOS/Android visual viewport height adaptation) */}
             <motion.div
+              ref={drawerRef}
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 220 }}
-              className="fixed left-0 top-0 w-[85%] sm:w-[420px] bg-[#0a0a0f] border-r border-white/5 z-[155] sm:z-[160] shadow-[0_0_50px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden"
+              className="fixed left-0 top-0 w-[82%] sm:w-[420px] bg-[#0a0a0f] border-r border-white/5 z-[155] sm:z-[160] shadow-[0_0_50px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden"
               style={{ height: viewportHeight }}
               dir="ltr"
             >
