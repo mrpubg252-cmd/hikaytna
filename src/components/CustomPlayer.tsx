@@ -840,154 +840,19 @@ const SafariNotification = () => {
   }, []);
 
   const showAdBreak = () => {
-    if (profile?.isPremium || localStorage.getItem('ads_removed_forever') === 'true' || isOffline || isLocalOfflineVideo) {
-      const video = videoRef.current;
-      if (video) {
-        video.play().catch(() => {});
-        setIsPlaying(true);
-      }
-      return;
+    // Ad breaks are completely disabled as requested by the user
+    const video = videoRef.current;
+    if (video) {
+      video.play().catch(() => {});
+      setIsPlaying(true);
     }
-    if (adCampaigns.length === 0) {
-      const video = videoRef.current;
-      if (video) {
-        video.play().catch(() => {});
-        setIsPlaying(true);
-      }
-      return;
-    }
-
-    if (videoRef.current) {
-      videoRef.current.pause();
-    }
-    setIsPlaying(false);
-
-    // Pick random cinematic video ad source from campaign state list
-    const randomIndex = Math.floor(Math.random() * adCampaigns.length);
-    const campaign = adCampaigns[randomIndex];
-    setCurrentAdVideoSrc(campaign.videoUrl);
-    setCurrentAdClickThrough(campaign.clickThrough);
-    setCurrentAdImpression(campaign.impressionUrl);
-
-    // Fire impression and tracking pixels (BOTH Image and Fetch with no-cors to guarantee earnings registration)
-    const trackUrls = [
-      ...(campaign.impressionUrls || []),
-      ...(campaign.trackingUrls || []),
-      ...(campaign.impressionUrl ? [campaign.impressionUrl] : [])
-    ];
-
-    const uniqueTrackUrls = Array.from(new Set(trackUrls));
-
-    uniqueTrackUrls.forEach((url) => {
-      if (url && url.startsWith('http')) {
-        // Fire via Fetch api in no-cors background mode
-        fetch(url, { mode: 'no-cors' }).catch((err) => {
-          console.warn("Fetch tracking pixel fail:", err);
-        });
-        
-        // Fire via standard programmatic Image elements to ensure cookies + referrer context are properly saved
-        try {
-          const img = new Image();
-          img.src = url;
-        } catch (e) {
-          console.warn("Image tracking pixel fail:", e);
-        }
-      }
-    });
-
-    setAdBreakActive(true);
-    setAdIsPlaying(true);
-    setAdMuted(false);
-    setIframeHasLoaded(false);
-
-    if (adFallbackTimeoutRef.current) {
-      clearTimeout(adFallbackTimeoutRef.current);
-    }
-    
-    // Check if we should use iframe ad mode
-    const isForcedNetwork = campaign.clickThrough?.includes('effectivecpmnetwork.com');
-    const isIframeAd = !campaign.videoUrl || 
-                      campaign.videoUrl === "" ||
-                      campaign.clickThrough?.includes('omg10.com') || 
-                      campaign.clickThrough?.includes('tiny-ambition.com') ||
-                      isForcedNetwork ||
-                      campaign.clickThrough?.includes('silence') ||
-                      campaign.clickThrough?.includes('silent');
-    setUseIframeAd(isIframeAd); // Dynamically set iframe mode instead of forcing true to let MP4 ads play beautifully!
-    setIframeHasLoaded(false);
-
-    // If it's a web-ad, set a safety timeout to force visibility if it fails to send load event
-    const safetyTime = 6000;
-    adFallbackTimeoutRef.current = setTimeout(() => {
-      setIframeHasLoaded(true); 
-      console.log("Forced ad visibility after safety timeout (6s)");
-    }, safetyTime);
-
-    // Skip button is now available after 8 seconds for better engagement
-    setAdCountdown(8);
-    setAdDuration(30);
-
-    setAdCurrentTime(0);
-    setAdDuration(isForcedNetwork ? 30 : (campaign.defaultDuration || 20));
+    return;
   };
 
   useEffect(() => {
-    if (!resolvedVideoUrl || isOffline || isLocalOfflineVideo) return;
-
-    sessionStartTimeRef.current = Date.now();
-    lastTimeRef.current = 0;
-    adPointsRef.current.clear();
-    const newPoints: number[] = [];
-
-    // Generate smarter trigger points for ads (Yellow Markers)
-    // First ad scheduled early (after 30-45 seconds) for quick verification
-    let nextScheduledPoint = Math.floor(Math.random() * 15) + 30; 
-    for (let i = 0; i < 8; i++) {
-      adPointsRef.current.add(nextScheduledPoint);
-      newPoints.push(nextScheduledPoint);
-      // Next ads every 2-4 minutes for active monetization session
-      nextScheduledPoint += Math.floor(Math.random() * 120) + 120;
-    }
-    setVisualAdPoints(newPoints);
-
-    console.log("Ad points scheduled:", newPoints);
-
-    const interval = setInterval(() => {
-      const wallTimeSeconds = Math.floor((Date.now() - sessionStartTimeRef.current) / 1000);
-      const video = videoRef.current;
-      const videoTimeSeconds = video ? Math.floor(video.currentTime) : 0;
-      
-      const currentTime = isIframeFallback ? wallTimeSeconds : (videoTimeSeconds > 0 ? videoTimeSeconds : wallTimeSeconds);
-      const previousTime = lastTimeRef.current;
-      lastTimeRef.current = currentTime;
-      
-      if (adBreakActive || adCampaigns.length === 0) return; 
-
-      // If user is Gold/Premium, or offline, skip
-      if (profile?.isPremium || localStorage.getItem('ads_removed_forever') === 'true' || isOffline || isLocalOfflineVideo) {
-        return;
-      }
-
-      // Trigger scheduled mid-rolls (Natural playback or Seeking past)
-      const points = Array.from(adPointsRef.current) as number[];
-      for (const pt of points) {
-        // Condition 1: Natural playback hits the point
-        // Condition 2: User seeks past the point (jumped from before pt to after pt)
-        const hitPoint = (currentTime >= pt && currentTime < pt + 3);
-        const jumpedPastPoint = (previousTime < pt && currentTime > pt + 1);
-
-        if (hitPoint || jumpedPastPoint) {
-          console.log(`Triggering ad at ${pt}s. Method: ${jumpedPastPoint ? 'Seek Detection' : 'Linear Playback'}`);
-          adPointsRef.current.delete(pt); 
-          setVisualAdPoints(prev => prev.filter(p => p !== pt));
-          showAdBreak();
-          break;
-        }
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [resolvedVideoUrl, isIframeFallback, adsBlocked, profile, adCampaigns, isOffline, isLocalOfflineVideo]);
+    // Ad breaks are completely disabled as requested by the user
+    setVisualAdPoints([]);
+  }, [resolvedVideoUrl]);
 
   // Autoplay handler for the ad video element
   useEffect(() => {
