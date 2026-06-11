@@ -21,15 +21,54 @@ import { getTMDBPosterSync } from '../lib/tmdbHealing';
 export default function WatchScreen() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { series } = (location.state as { series: Series }) || {};
-  
+  const { series: routeSeries } = (location.state as { series: Series }) || {};
+
+  // Resolve the series, loading from route state or sessionStorage backup
+  const [series] = useState<Series | null>(() => {
+    if (routeSeries) {
+      sessionStorage.setItem('backup_watching_series', JSON.stringify(routeSeries));
+      return routeSeries;
+    }
+    const backup = sessionStorage.getItem('backup_watching_series');
+    if (backup) {
+      try {
+        return JSON.parse(backup);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
+
+  const [isAdGatePassed, setIsAdGatePassed] = useState<boolean>(() => {
+    if (!series) return false;
+    // If the window URL search params contains unlocked=true, then they just came from the unlock screen
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('unlocked') === 'true') {
+      sessionStorage.setItem('ad_gate_passed_' + series.id, 'true');
+      return true;
+    }
+    return sessionStorage.getItem('ad_gate_passed_' + series.id) === 'true';
+  });
+
   useEffect(() => {
     if (!series) {
       navigate('/', { replace: true });
+      return;
     }
-  }, [series, navigate]);
 
-  if (!series) return null;
+    const params = new URLSearchParams(location.search);
+    if (params.get('unlocked') === 'true') {
+      sessionStorage.setItem('ad_gate_passed_' + series.id, 'true');
+      setIsAdGatePassed(true);
+    } else if (!isAdGatePassed) {
+      // Direct them to the /unlock page
+      const watchUrl = `/watch?unlocked=true`;
+      navigate(`/unlock?target=${encodeURIComponent(watchUrl)}`, { replace: true });
+    }
+  }, [series, isAdGatePassed, location.search, navigate]);
+
+  if (!series || !isAdGatePassed) return null;
 
   const resolvedSeriesImage = React.useMemo(() => {
     return getTMDBPosterSync(series.title, series.category) || series.image || "";
