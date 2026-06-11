@@ -24,7 +24,7 @@ export default function WatchScreen() {
   const { series: routeSeries } = (location.state as { series: Series }) || {};
 
   // Resolve the series, loading from route state or sessionStorage backup
-  const [series] = useState<Series | null>(() => {
+  const [series, setSeries] = useState<Series | null>(() => {
     if (routeSeries) {
       sessionStorage.setItem('backup_watching_series', JSON.stringify(routeSeries));
       return routeSeries;
@@ -32,7 +32,12 @@ export default function WatchScreen() {
     const backup = sessionStorage.getItem('backup_watching_series');
     if (backup) {
       try {
-        return JSON.parse(backup);
+        const parsed = JSON.parse(backup);
+        const params = new URLSearchParams(window.location.search);
+        const queryId = params.get('id');
+        if (!queryId || parsed.id === queryId) {
+          return parsed;
+        }
       } catch (e) {
         return null;
       }
@@ -40,35 +45,69 @@ export default function WatchScreen() {
     return null;
   });
 
+  const [loadingSeries, setLoadingSeries] = useState(!series);
+
   const [isAdGatePassed, setIsAdGatePassed] = useState<boolean>(() => {
-    if (!series) return false;
-    // If the window URL search params contains unlocked=true, then they just came from the unlock screen
     const params = new URLSearchParams(window.location.search);
     if (params.get('unlocked') === 'true') {
-      sessionStorage.setItem('ad_gate_passed_' + series.id, 'true');
-      return true;
+      const queryId = params.get('id');
+      if (queryId) {
+        sessionStorage.setItem('ad_gate_passed_' + queryId, 'true');
+        return true;
+      }
     }
+    if (!series) return false;
     return sessionStorage.getItem('ad_gate_passed_' + series.id) === 'true';
   });
 
+  // Dynamic series loading by ID if they arrived from the direct external ads link
   useEffect(() => {
     if (!series) {
-      navigate('/', { replace: true });
-      return;
+      const params = new URLSearchParams(location.search);
+      const queryId = params.get('id');
+      if (queryId) {
+        setLoadingSeries(true);
+        fetchAllSeries()
+          .then((all) => {
+            const found = all.find((s) => s.id === queryId);
+            if (found) {
+              setSeries(found);
+              sessionStorage.setItem('backup_watching_series', JSON.stringify(found));
+            } else {
+              navigate('/', { replace: true });
+            }
+          })
+          .catch(() => navigate('/', { replace: true }))
+          .finally(() => setLoadingSeries(false));
+      } else {
+        navigate('/', { replace: true });
+      }
+    } else {
+      setLoadingSeries(false);
     }
+  }, [series, location.search, navigate]);
+
+  useEffect(() => {
+    if (!series) return;
 
     const params = new URLSearchParams(location.search);
     if (params.get('unlocked') === 'true') {
       sessionStorage.setItem('ad_gate_passed_' + series.id, 'true');
       setIsAdGatePassed(true);
     } else if (!isAdGatePassed) {
-      // Direct them to the /unlock page
-      const watchUrl = `/watch?unlocked=true`;
-      navigate(`/unlock?target=${encodeURIComponent(watchUrl)}`, { replace: true });
+      // Direct full standalone window redirect to the Express-served /ads endpoint
+      window.location.href = `/ads?id=${encodeURIComponent(series.id)}`;
     }
-  }, [series, isAdGatePassed, location.search, navigate]);
+  }, [series, isAdGatePassed, location.search]);
 
-  if (!series || !isAdGatePassed) return null;
+  if (loadingSeries || !series || !isAdGatePassed) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center space-y-4">
+        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+        <span className="text-xs text-zinc-500 font-bold">جاري تحميل خوادم الفيديو...</span>
+      </div>
+    );
+  }
 
   const resolvedSeriesImage = React.useMemo(() => {
     return getTMDBPosterSync(series.title, series.category) || series.image || "";

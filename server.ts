@@ -1562,6 +1562,183 @@ ${seriesContext}`;
     res.json({ status: "ok" });
   });
 
+  // Isolated HTML ad serving page
+  app.get("/ads", (req, res) => {
+    const seriesId = String(req.query.id || "");
+    const html = `<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>تهيئة البث المباشر</title>
+
+<style>
+body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    color: #111827;
+    font-family: system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    box-sizing: border-box;
+}
+.container {
+    text-align: center;
+    max-width: 420px;
+    padding: 40px 24px;
+    box-sizing: border-box;
+}
+h2 {
+    font-size: 24px;
+    font-weight: 900;
+    color: #111827;
+    margin-bottom: 12px;
+    line-height: 1.4;
+}
+p {
+    font-size: 14px;
+    color: #4b5563;
+    line-height: 1.6;
+    margin-bottom: 40px;
+}
+.counter {
+    font-size: 80px;
+    font-weight: 950;
+    color: #dc2626;
+    margin: 30px 0;
+    font-family: monospace, sans-serif;
+}
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 18px 24px;
+    background: #dc2626;
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 900;
+    border: none;
+    border-radius: 16px;
+    text-decoration: none;
+    cursor: pointer;
+    box-shadow: 0 10px 30px rgba(220, 38, 38, 0.4);
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+}
+.btn:hover {
+    background: #b91c1c;
+    transform: translateY(-1px);
+}
+.btn:active {
+    transform: translateY(1px);
+}
+.btn-disabled {
+    background: #f3f4f6 !important;
+    color: #9ca3af !important;
+    box-shadow: none !important;
+    cursor: not-allowed !important;
+    font-weight: 800;
+}
+.footer-text {
+    font-size: 10px;
+    color: #9ca3af;
+    font-weight: 600;
+    margin-top: 50px;
+}
+</style>
+
+<!-- 11033994 -->
+<script>
+(function(s){
+    s.dataset.zone='11033994';
+    s.src='https://n6wxm.com/vignette.min.js';
+    document.head.appendChild(s);
+})(document.createElement('script'));
+</script>
+
+<!-- 11033969 -->
+<script>
+(function(s){
+    s.dataset.zone='11033969';
+    s.src='https://n6wxm.com/vignette.min.js';
+    document.head.appendChild(s);
+})(document.createElement('script'));
+</script>
+
+<!-- 10995706 -->
+<script>
+(function(s){
+    s.dataset.zone='10995706';
+    s.src='https://nap5k.com/tag.min.js';
+    document.head.appendChild(s);
+})(document.createElement('script'));
+</script>
+
+<!-- 10943622 -->
+<script>
+(function(s){
+    s.dataset.zone='10943622';
+    s.src='https://al5sm.com/tag.min.js';
+    document.head.appendChild(s);
+})(document.createElement('script'));
+</script>
+
+<!-- 234781 -->
+<script>
+var s = document.createElement('script');
+s.src = 'https://quge5.com/88/tag.min.js';
+s.dataset.zone = '234781';
+s.async = true;
+s.setAttribute('data-cfasync','false');
+document.head.appendChild(s);
+</script>
+
+</head>
+<body dir="rtl">
+    <div class="container">
+        <h2>جاري تهيئة خوادم البث المباشر...</h2>
+        <p>يرجى الانتظار بضع ثوانٍ لتخطي الإعلان الراعي والتحويل الفوري لسرعة البث القصوى.</p>
+        
+        <div class="counter" id="countdown">6</div>
+        
+        <div id="btn-container">
+            <button class="btn btn-disabled" id="main-btn" disabled>الرجاء الانتظار 6 ثوانٍ لمتابعة المشاهدة...</button>
+        </div>
+
+        <div class="footer-text">شبكة البث الآمنة المعززة تضمن لك مشاهدة سلسة وذات دقة عالية.</div>
+    </div>
+
+    <script>
+        var countdown = 6;
+        var timer = setInterval(function() {
+            countdown--;
+            if (countdown <= 0) {
+                clearInterval(timer);
+                document.getElementById('countdown').style.display = 'none';
+                
+                var btn = document.getElementById('main-btn');
+                btn.className = 'btn';
+                btn.removeAttribute('disabled');
+                btn.innerText = 'العودة للموقع ومتابعة المشاهدة 🚀';
+                btn.onclick = function() {
+                    window.location.href = '/watch?id=' + encodeURIComponent("${seriesId}") + '&unlocked=true';
+                };
+            } else {
+                document.getElementById('countdown').innerText = countdown;
+                document.getElementById('main-btn').innerText = 'الرجاء الانتظار ' + countdown + ' ثوانٍ لمتابعة المشاهدة...';
+            }
+        }, 1000);
+    </script>
+</body>
+</html>`;
+    res.send(html);
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
