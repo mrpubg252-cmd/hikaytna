@@ -49,6 +49,26 @@ export default function WatchScreen() {
   const [playerTime, setPlayerTime] = useState(0);
   const [viewportHeight, setViewportHeight] = useState('100dvh');
 
+  const [isUnlocked, setIsUnlocked] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hasUnlockedParam = params.get('unlocked') === 'true';
+    if (hasUnlockedParam) {
+      if (series?.id) {
+        sessionStorage.setItem('ad_gate_passed_' + series.id, 'true');
+      }
+      return true;
+    }
+    return series?.id ? sessionStorage.getItem('ad_gate_passed_' + series.id) === 'true' : false;
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('unlocked') === 'true' && series?.id) {
+      sessionStorage.setItem('ad_gate_passed_' + series.id, 'true');
+      setIsUnlocked(true);
+    }
+  }, [location.search, series?.id]);
+
   const [selectedActor, setSelectedActor] = useState<any | null>(null);
   const [actorWorks, setActorWorks] = useState<Series[]>([]);
   const [loadingActorWorks, setLoadingActorWorks] = useState(false);
@@ -817,22 +837,71 @@ export default function WatchScreen() {
                 : "relative mb-6 sm:mb-8"
             )}
           >
-            <CustomPlayer
-              ref={playerControlRef}
-              videoUrl={videoUrl}
-              activeServerUrl={activeServerUrl}
-              seriesId={series.id}
-              seriesImage={resolvedSeriesImage}
-              episodeIndex={currentEpisode}
-              episodes={episodes}
-              servers={servers}
-              onSelectEpisode={(ep, idx) => playEpisode(ep, idx)}
-              onSelectServer={handleServerSelect}
-              isMaximized={isMaximized}
-              onToggleMaximize={() => setIsMaximized(!isMaximized)}
-              onTimeUpdate={(t) => setPlayerTime(t)}
-              seriesCategory={series.category}
-            />
+            {!isUnlocked ? (
+              <div className="w-full aspect-video bg-[#0a0a0f] border border-white/5 rounded-3xl p-6 md:p-12 flex flex-col items-center justify-center text-center space-y-6 md:space-y-8 shadow-[0_20px_50px_rgba(0,0,0,0.9)] relative overflow-hidden select-none">
+                {/* Decorative glows */}
+                <div className="absolute top-0 left-0 w-48 h-48 bg-primary/10 blur-3xl rounded-full" />
+                <div className="absolute bottom-0 right-0 w-48 h-48 bg-red-800/10 blur-3xl rounded-full" />
+
+                <div className="w-16 h-16 md:w-20 md:h-20 rounded-[2rem] bg-[#14141d] border border-white/10 flex items-center justify-center animate-bounce shadow-xl">
+                  <Play className="w-8 h-8 md:w-10 md:h-10 text-primary fill-none ml-0.5" />
+                </div>
+
+                <div className="space-y-2 md:space-y-3 max-w-lg relative z-10">
+                  <span className="text-primary text-[10px] sm:text-xs font-black tracking-widest uppercase bg-primary/10 border border-primary/20 px-3 py-1 rounded-full">
+                    بوابة تفعيل البث المجاني
+                  </span>
+                  <h3 className="text-xl md:text-3xl font-black text-white font-sans tracking-tight leading-snug">
+                    خطوة أخيرة لتشغيل البث فائق السرعة! ⚡
+                  </h3>
+                  <p className="text-zinc-400 text-xs md:text-sm leading-relaxed">
+                    لمشاهدة هذا العمل مجاناً وبدون إعلانات داخل المشغّل، يُرجى تفعيل مشغّل البث بالضغط على الزر أدناه والانتظار 6 ثوانٍ فقط لتخطي الإعلان الراعي في الصفحة الجديدة.
+                  </p>
+                </div>
+
+                <div className="w-full max-w-sm pt-2 relative z-10 animate-pulse">
+                  <button
+                    onClick={() => {
+                      const watchUrl = window.location.pathname + window.location.search;
+                      const unlockUrl = `/unlock?target=${encodeURIComponent(watchUrl)}`;
+                      window.open(unlockUrl, '_blank');
+                    }}
+                    className="w-full py-4 px-6 bg-gradient-to-r from-red-600 to-primary hover:from-red-500 hover:to-red-700 text-white font-black text-xs md:text-base rounded-2xl shadow-[0_12px_45px_rgba(229,9,20,0.5)] hover:shadow-[0_15px_55px_rgba(229,9,20,0.7)] cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 flex items-center justify-center gap-2.5"
+                  >
+                    <span>عرض الإعلان وتنشيط البث المباشر الآن 🚀</span>
+                  </button>
+                </div>
+                
+                <div className="text-[10px] text-zinc-500 font-extrabold flex items-center gap-4 relative z-10">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
+                    <span>تفعيل فوري</span>
+                  </div>
+                  <span>•</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
+                    <span>خوادم آمنة 100%</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <CustomPlayer
+                ref={playerControlRef}
+                videoUrl={videoUrl}
+                activeServerUrl={activeServerUrl}
+                seriesId={series.id}
+                seriesImage={resolvedSeriesImage}
+                episodeIndex={currentEpisode}
+                episodes={episodes}
+                servers={servers}
+                onSelectEpisode={(ep, idx) => playEpisode(ep, idx)}
+                onSelectServer={handleServerSelect}
+                isMaximized={isMaximized}
+                onToggleMaximize={() => setIsMaximized(!isMaximized)}
+                onTimeUpdate={(t) => setPlayerTime(t)}
+                seriesCategory={series.category}
+              />
+            )}
           </div>
         )}
 

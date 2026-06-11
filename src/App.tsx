@@ -14,6 +14,7 @@ import ProfileScreen from './screens/ProfileScreen';
 import ChatScreen from './screens/ChatScreen';
 import ShortsScreen from './screens/ShortsScreen';
 import AdminScreen from './screens/AdminScreen';
+import UnlockScreen from './screens/UnlockScreen';
 import { getApiUrl } from './lib/apiConfig';
 
 function AppLayout() {
@@ -146,6 +147,7 @@ function AppLayout() {
         <Route path="/chat" element={<ChatScreen />} />
         <Route path="/shorts" element={<ShortsScreen />} />
         <Route path="/admin" element={<AdminScreen />} />
+        <Route path="/unlock" element={<UnlockScreen />} />
       </Routes>
 
       {isTV && showTvBadge && (
