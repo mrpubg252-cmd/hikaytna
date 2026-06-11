@@ -1726,6 +1726,9 @@ document.head.appendChild(s);
                 btn.removeAttribute('disabled');
                 btn.innerText = 'العودة للموقع ومتابعة المشاهدة 🚀';
                 btn.onclick = function() {
+                    btn.innerText = 'الرجاء الانتظار...';
+                    btn.className = 'btn btn-disabled';
+                    btn.setAttribute('disabled', 'true');
                     window.location.href = '/watch?id=' + encodeURIComponent("${seriesId}") + '&unlocked=true';
                 };
             } else {

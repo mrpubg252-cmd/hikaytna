@@ -47,17 +47,18 @@ export default function WatchScreen() {
 
   const [loadingSeries, setLoadingSeries] = useState(!series);
 
+  // Sync routeSeries with series state for smooth switching
+  useEffect(() => {
+    if (routeSeries) {
+      setSeries(routeSeries);
+      sessionStorage.setItem('backup_watching_series', JSON.stringify(routeSeries));
+      setLoadingSeries(false);
+    }
+  }, [routeSeries]);
+
   const [isAdGatePassed, setIsAdGatePassed] = useState<boolean>(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('unlocked') === 'true') {
-      const queryId = params.get('id');
-      if (queryId) {
-        sessionStorage.setItem('ad_gate_passed_' + queryId, 'true');
-        return true;
-      }
-    }
-    if (!series) return false;
-    return sessionStorage.getItem('ad_gate_passed_' + series.id) === 'true';
+    return params.get('unlocked') === 'true';
   });
 
   // Dynamic series loading by ID if they arrived from the direct external ads link
@@ -92,13 +93,13 @@ export default function WatchScreen() {
 
     const params = new URLSearchParams(location.search);
     if (params.get('unlocked') === 'true') {
-      sessionStorage.setItem('ad_gate_passed_' + series.id, 'true');
       setIsAdGatePassed(true);
-    } else if (!isAdGatePassed) {
+    } else {
+      setIsAdGatePassed(false);
       // Direct full standalone window redirect to the Express-served /ads endpoint
       window.location.href = `/ads?id=${encodeURIComponent(series.id)}`;
     }
-  }, [series, isAdGatePassed, location.search]);
+  }, [series, location.search]);
 
   if (loadingSeries || !series || !isAdGatePassed) {
     return (
