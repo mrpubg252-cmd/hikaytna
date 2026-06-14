@@ -1650,19 +1650,36 @@ ${seriesContext}`;
           if (!channel) channel = $(el).find(".channel, .channel-name").first().text().trim();
           if (!league) league = $(el).find(".league, .league-name").first().text().trim();
 
-          // Live status detection logic
+          // Robust Live and Ended status detection logic
           let live = false;
+          let ended = false;
+
+          const hasLiveClass = $(el).hasClass("live") || $(el).find(".live, .live-badge, .date.live").length > 0;
+          const hasSoonClass = $(el).hasClass("soon") || $(el).find(".soon, .date.soon").length > 0;
+
           if (
-            $(el).hasClass("live") ||
-            $(el).hasClass("soon") ||
+            hasLiveClass ||
             statusText.includes("مباشر") ||
             statusText.includes("جارية") ||
-            statusText.includes("بعد قليل") ||
-            $(el).find(".live, .live-badge, .soon").length > 0
+            statusText.includes("الان") ||
+            statusText.includes("الآن")
           ) {
-            if (!statusText.includes("انتهت") && !$(el).hasClass("end")) {
-              live = true;
-            }
+            live = true;
+          }
+
+          if (
+            statusText.includes("انتهت") ||
+            statusText.includes("انتهت المباراة") ||
+            $(el).find(".date.end").text().includes("انتهت") ||
+            (result && !live && !hasSoonClass)
+          ) {
+            ended = true;
+            live = false;
+          }
+
+          // If it ended, ensure statusText indicates that
+          if (ended && !statusText.includes("انتهت")) {
+            statusText = "انتهت المباراة";
           }
 
           if (team1 && team2) {
@@ -1680,7 +1697,8 @@ ${seriesContext}`;
               result: result || "",
               statusText: statusText || "بانتظار البداية",
               league: league || "بطولة اليوم",
-              live
+              live,
+              ended
             });
           }
         } catch (e) {

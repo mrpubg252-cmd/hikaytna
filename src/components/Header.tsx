@@ -223,49 +223,56 @@ export default function Header() {
               </div>
 
               {/* 1. Search Bar at the Very Top */}
-              <div className="relative group" onClick={(e) => e.stopPropagation()}>
-                <div className="absolute -inset-1 bg-gradient-to-r from-primary/50 to-orange-600/50 rounded-[40px] blur opacity-20 group-focus-within:opacity-40 transition-opacity"></div>
+              <div className="relative group w-full" onClick={(e) => e.stopPropagation()}>
+                <div className="absolute -inset-1 bg-gradient-to-r from-primary/30 to-orange-600/30 rounded-2xl blur opacity-25 group-focus-within:opacity-45 transition-opacity"></div>
                 <form 
                   onSubmit={handleSearch}
-                  className="relative flex items-center bg-zinc-900/40 border border-white/10 rounded-[32px] p-2 transition-all group-focus-within:border-primary/50"
+                  className="relative flex items-center gap-2 bg-[#09090f] border border-white/10 rounded-2xl p-1.5 focus-within:border-primary/50 transition-all duration-300 w-full"
                 >
-                  <Search className="w-6 h-6 text-zinc-500 ml-6" />
+                  <Search className="w-5 h-5 text-zinc-500 mr-2 shrink-0" />
                   <input
                     autoFocus
                     type="text"
                     dir="rtl"
                     placeholder="اسم المسلسل، البطل، أو النوع..."
-                    className="flex-1 bg-transparent border-none outline-none text-white text-xl sm:text-4xl font-bold py-4 px-4 placeholder-zinc-700 italic font-sans"
+                    className="flex-1 min-w-0 bg-transparent border-none outline-none text-white text-sm sm:text-base md:text-lg font-bold py-2.5 px-2 placeholder-zinc-600 font-sans"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
-                  {searchQuery.trim() !== "" ? (
-                    <div className="flex items-center gap-2 pl-2">
+                  <div className="flex items-center gap-1.5 shrink-0 pl-1">
+                    {searchQuery.trim() !== "" ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery('')}
+                          className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/5 hover:bg-white/10 active:scale-90 text-zinc-400 hover:text-white transition-all cursor-pointer border border-white/5"
+                          title="تفريغ خانة البحث"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="submit"
+                          className="h-10 px-4 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 font-black text-white text-xs sm:text-sm flex items-center gap-1.5 transition-all shadow-lg shadow-red-600/10 cursor-pointer"
+                        >
+                          <Search className="w-3.5 h-3.5" />
+                          <span>بحث</span>
+                        </button>
+                      </>
+                    ) : (
                       <button
                         type="button"
-                        onClick={() => setSearchQuery('')}
-                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-all cursor-pointer border border-white/5"
-                        title="تفريع خانة البحث"
+                        onClick={toggleVoiceSearch}
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                          isListening 
+                            ? 'bg-red-600 text-white animate-pulse' 
+                            : 'bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-primary border border-white/5'
+                        }`}
+                        title="بحث صوتي"
                       >
-                        <X className="w-5 h-5" />
+                        <Mic className="w-4.5 h-4.5" />
                       </button>
-                      <button
-                        type="submit"
-                        className="h-10 sm:h-12 px-6 rounded-2xl bg-red-600 hover:bg-red-500 font-black text-white text-xs sm:text-sm flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
-                      >
-                        <Search className="w-4 h-4" />
-                        <span>بحث</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={toggleVoiceSearch}
-                      className={`w-12 sm:w-16 h-12 sm:h-16 rounded-[24px] flex items-center justify-center transition-all ${isListening ? 'bg-red-600 text-white animate-pulse' : 'bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-primary'}`}
-                    >
-                      <Mic className="w-6 h-6" />
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </form>
               </div>
 

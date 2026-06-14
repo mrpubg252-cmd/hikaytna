@@ -20,6 +20,7 @@ interface Match {
   statusText?: string;
   league: string;
   live: boolean;
+  ended?: boolean;
 }
 
 export default function MatchesScreen() {
@@ -331,9 +332,15 @@ export default function MatchesScreen() {
                       {loadingStream === m.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
                       ) : (
-                        <Play className={`w-3.5 h-3.5 ${m.live ? 'fill-current text-white' : 'text-zinc-700'}`} />
+                        <Play className={`w-3.5 h-3.5 ${m.live ? 'fill-current text-white' : 'text-zinc-750'}`} />
                       )}
-                      <span>{m.live ? "شاهد المباراة والدردشة" : "لم تبدأ بعد"}</span>
+                      <span>
+                        {m.live 
+                          ? "شاهد المباراة والدردشة" 
+                          : (m.ended || m.statusText?.includes("انتهت") || m.result) 
+                            ? "انتهت المباراة" 
+                            : "لم تبدأ بعد"}
+                      </span>
                     </button>
                   </div>
                 </motion.div>
