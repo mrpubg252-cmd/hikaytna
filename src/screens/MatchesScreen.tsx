@@ -33,6 +33,15 @@ export default function MatchesScreen() {
   const [activeFilter, setActiveFilter] = useState<'all' | 'live' | 'cup'>('all');
   const [currentTime, setCurrentTime] = useState<string>('');
 
+  // Helper to determine if a match has ended
+  const isMatchEnded = (m: Match) => {
+    if (m.ended) return true;
+    const txt = (m.statusText || '').trim();
+    if (txt.includes('انتهت') || txt.includes('انتهي') || txt.includes('منتهية')) return true;
+    if (!m.live && m.result && m.result.trim() !== '' && m.result.trim() !== '-') return true;
+    return false;
+  };
+
   // Clock Ticker
   useEffect(() => {
     const updateTime = () => {
@@ -137,7 +146,7 @@ export default function MatchesScreen() {
     <div className="min-h-screen bg-[#070708] text-white pb-32 selection:bg-red-650 selection:text-white font-sans">
       <Header />
 
-      <main className="max-w-6xl mx-auto px-4 md:px-6 pt-24 space-y-6">
+      <main className="max-w-6xl mx-auto px-4 md:px-6 pt-14 sm:pt-16 space-y-6">
         
         {/* CLEAN TABLE/GRID HEADER */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-zinc-950/40 border border-zinc-900/60 p-5 rounded-[2rem] shadow-lg">
@@ -326,7 +335,7 @@ export default function MatchesScreen() {
                       className={`py-2.5 px-6 rounded-2xl text-[11px] font-black flex items-center gap-2 transition duration-250 shrink-0 ${
                         m.live 
                           ? "bg-red-600 hover:bg-red-500 text-white cursor-pointer shadow-lg shadow-red-600/10 hover:shadow-red-600/25 active:scale-95" 
-                          : "bg-zinc-950 border border-zinc-900 text-zinc-500 cursor-not-allowed"
+                          : "bg-zinc-950 border border-zinc-900 text-zinc-505 cursor-not-allowed"
                       }`}
                     >
                       {loadingStream === m.id ? (
@@ -337,7 +346,7 @@ export default function MatchesScreen() {
                       <span>
                         {m.live 
                           ? "شاهد المباراة والدردشة" 
-                          : (m.ended || m.statusText?.includes("انتهت") || m.result) 
+                          : isMatchEnded(m)
                             ? "انتهت المباراة" 
                             : "لم تبدأ بعد"}
                       </span>

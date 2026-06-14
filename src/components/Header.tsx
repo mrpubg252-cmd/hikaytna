@@ -209,7 +209,7 @@ export default function Header() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="w-full max-w-2xl text-center space-y-6 sm:space-y-8"
+              className="w-full max-w-2xl text-center space-y-6 sm:space-y-8 px-1 sm:px-0"
             >
               {/* Back Bar aligned correctly with text instructions and close button */}
               <div className="w-full flex items-center justify-between pb-3 border-b border-white/5 mb-4 group" onClick={(e) => e.stopPropagation()}>
@@ -227,34 +227,36 @@ export default function Header() {
                 <div className="absolute -inset-1 bg-gradient-to-r from-primary/30 to-orange-600/30 rounded-2xl blur opacity-25 group-focus-within:opacity-45 transition-opacity"></div>
                 <form 
                   onSubmit={handleSearch}
-                  className="relative flex items-center gap-2 bg-[#09090f] border border-white/10 rounded-2xl p-1.5 focus-within:border-primary/50 transition-all duration-300 w-full"
+                  className="relative flex items-center justify-between gap-1.5 bg-[#09090f] border border-white/10 rounded-2xl p-1 sm:p-1.5 focus-within:border-primary/50 transition-all duration-300 w-full overflow-hidden"
                 >
-                  <Search className="w-5 h-5 text-zinc-500 mr-2 shrink-0" />
-                  <input
-                    autoFocus
-                    type="text"
-                    dir="rtl"
-                    placeholder="اسم المسلسل، البطل، أو النوع..."
-                    className="flex-1 min-w-0 bg-transparent border-none outline-none text-white text-sm sm:text-base md:text-lg font-bold py-2.5 px-2 placeholder-zinc-600 font-sans"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                  <div className="flex items-center gap-1.5 shrink-0 pl-1">
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <Search className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-zinc-500 mx-1.5 shrink-0" />
+                    <input
+                      autoFocus
+                      type="text"
+                      dir="rtl"
+                      placeholder="اسم المسلسل، البطل، أو النوع..."
+                      className="w-full bg-transparent border-none outline-none text-white text-xs sm:text-base font-bold py-2 placeholder-zinc-600 font-sans text-right"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 px-1">
                     {searchQuery.trim() !== "" ? (
                       <>
                         <button
                           type="button"
                           onClick={() => setSearchQuery('')}
-                          className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/5 hover:bg-white/10 active:scale-90 text-zinc-400 hover:text-white transition-all cursor-pointer border border-white/5"
+                          className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center bg-white/5 hover:bg-white/10 active:scale-90 text-zinc-400 hover:text-white transition-all cursor-pointer border border-white/5"
                           title="تفريغ خانة البحث"
                         >
                           <X className="w-4 h-4" />
                         </button>
                         <button
                           type="submit"
-                          className="h-10 px-4 rounded-xl bg-red-600 hover:bg-red-500 active:scale-95 font-black text-white text-xs sm:text-sm flex items-center gap-1.5 transition-all shadow-lg shadow-red-600/10 cursor-pointer"
+                          className="h-8 sm:h-10 px-2.5 sm:px-4 rounded-xl bg-red-650 hover:bg-red-600 active:scale-95 font-black text-white text-[11px] sm:text-sm flex items-center gap-1 sm:gap-1.5 transition-all shadow-lg shadow-red-650/10 cursor-pointer"
                         >
-                          <Search className="w-3.5 h-3.5" />
+                          <Search className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                           <span>بحث</span>
                         </button>
                       </>
@@ -262,14 +264,14 @@ export default function Header() {
                       <button
                         type="button"
                         onClick={toggleVoiceSearch}
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition-all ${
                           isListening 
                             ? 'bg-red-600 text-white animate-pulse' 
                             : 'bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-primary border border-white/5'
                         }`}
                         title="بحث صوتي"
                       >
-                        <Mic className="w-4.5 h-4.5" />
+                        <Mic className="w-3.5 h-3.5 sm:w-4.5 sm:h-4.5" />
                       </button>
                     )}
                   </div>
