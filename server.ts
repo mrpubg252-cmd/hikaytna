@@ -1536,11 +1536,11 @@ async function startServer() {
 6. عندما يسألك عن قصة مسلسل أو أبطاله، أو تلمح فرصة، شجعه على مشاهدته فوراً بالتطبيق بوضع رابط الانتقال السحري المباشر كالتالي:
    [شاهد مسلسل {اسم المسلسل} من هنا](navigate:{id})
    مثل: [شاهد مسلسل المتوحش من هنا](navigate:al_mutawahish).
-7. إذا طلب الانتقال أو التشغيل، اخبره بأناقة: "سأنتقل معك الآن فوراً! 🚀💨" وعليك تضمين صيغة الانتقال (navigate:{id}) في متن أو نهاية الرد.
+7. إذا طلب الانتقال أو التشغيل, اخبره بأناقة: "سأنتقل معك الآن فوراً! 🚀💨" وعليك تضمين صيغة الانتقال (navigate:{id}) في متن أو نهاية الرد.
 8. لا ترشح أبداً أي مسلسل خارج قائمتنا الحالية للتشغيل الفوري، ومطابقة ذكية للمسميات العامية.
 9. ممنوع منعاً باتاً كتابة أو توليد أي روابط إنترنت خارجية أو مواقع إلكترونية (مثل الروابط التي تبدأ بـ http أو https) في ردك نهائياً؛ تذكّر أنك لا تملك صلاحية تصفح الويب أو توجيه المستخدم لمواقع أخرى. التوجيه يتم حصرياً للأعمال المتوفرة لدينا بصيغة الانتقال [شاهد مسلسل {اسم العمل} من هنا](navigate:{id}).
 10. إذا سألك المتابع أو اشتكى من مشكلة: "المسلسلات المثبتة تظهر لي فقط ولا تظهر للمستخدمين الآخرين" أو "المستخدمين الآخرين لا تظهر لهم المسلسلات المثبتة، تظهر فقط للشخص الذي قام بتثبيتها" أو "مشكلة أنه يظهر عندي اللي ثبته ما يظهر للمستخدمين":
-    - قل له بابتسامة وفخر وحماس: "يا عسيل! يوسفني جداً هذا الخلل البسيط اللي كان صاير، بس أبشرك الحين مشكلة التثبيت والـ Pins انحلت بالكامل وجذرياً! 🔧🚀 صارت المزامنة الحين تعمل بلحظتها بشكل حي ومباشر بين الكل وFirebase، وأي مسلسل يثبّته الأدمن بيظهر فوراً وبنفس الترتيب الراقي لكل المستخدمين والزوار في نفس اللحظة! جرب تسجل دخول أو تفتح التطبيق من جهاز ثاني وبتشوف عيونك كيف المسلسلات المثبتة مترتبة للجميع يا عسل! 😉💖"
+    - قل له بابتسامة وفخر وحماس: "يا عسيل! يوسفني جداً هذا الخلل البسيط اللي كان صاير، بس أبشرك الحين مشكلة التثبيت والـ Pins انحلت بالكامل وجذرياً! 🔧🚀 صارت المزامنة الحين تعمل بلحظتها بشكل حي ومبعد بين الكل وFirebase، وأي مسلسل يثبّته الأدمن بيظهر فوراً وبنفس الترتيب الراقي لكل المستخدمين والزوار في نفس اللحظة! جرب تسجل دخول أو تفتح التطبيق من جهاز ثاني وبتشوف عيونك كيف المسلسلات المثبتة مترتبة للجميع يا عسل! 😉💖"
 
 إليك قائمة المسلسلات المتوفرة على منصة حكايتنا لتطابقها بذكاء مع أوصاف وتفاصيل المستخدمين:
 ${seriesContext}`;
@@ -1557,6 +1557,207 @@ ${seriesContext}`;
     }
   });
 
+  // ============ LIVE SPORTS MATCH SCRAPER ENDPOINTS ============
+  let cachedMatches: any[] = [];
+  let lastFetchedMatchesTime = 0;
+
+  app.get("/api/v1/matches/scrape", async (req, res) => {
+    const now = Date.now();
+    // Cache for 45 seconds to keep it blazingly fast and avoid triggering 429 rate limit or IP bans
+    if (now - lastFetchedMatchesTime < 45000 && cachedMatches.length > 0) {
+      return res.json({ status: true, cached: true, matches: cachedMatches });
+    }
+
+    try {
+      const SITE = "https://yalla-live.top";
+      const response = await axios.get(SITE, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+          "Accept-Language": "ar,en-US;q=0.7,en;q=0.3"
+        },
+        timeout: 10000
+      });
+
+      const html = response.data;
+      const $ = cheerio.load(html);
+      const matches: any[] = [];
+
+      // Seek matches inside standard selectors
+      let containers = $("#matches-container");
+      let matchDivs = containers.find(".match-container");
+      if (matchDivs.length === 0) {
+        matchDivs = $(".match-container");
+      }
+      if (matchDivs.length === 0) {
+        matchDivs = $(".match-card, .match-box, [class*='match-']");
+      }
+
+      matchDivs.each((idx, el) => {
+        try {
+          const anchor = $(el).find("a").first();
+          let matchPageUrl = anchor.attr("href") || "";
+          if (matchPageUrl && !matchPageUrl.startsWith("http")) {
+            matchPageUrl = SITE + (matchPageUrl.startsWith("/") ? "" : "/") + matchPageUrl;
+          }
+
+          if (!matchPageUrl) return;
+
+          // Team Names
+          let team1 = $(el).find(".right-team .team-name, .team-right .team-name, .team1 .name, .right-team").first().text().trim();
+          let team2 = $(el).find(".left-team .team-name, .team-left .team-name, .team2 .name, .left-team").first().text().trim();
+
+          // Logos
+          let logo1 = $(el).find(".right-team .team-logo img, .team-right img, .team1 img").first().attr("data-src") || 
+                      $(el).find(".right-team .team-logo img, .team-right img, .team1 img").first().attr("src") || "";
+          let logo2 = $(el).find(".left-team .team-logo img, .team-left img, .team2 img").first().attr("data-src") || 
+                      $(el).find(".left-team .team-logo img, .team-left img, .team2 img").first().attr("src") || "";
+
+          if (logo1 && !logo1.startsWith("http")) logo1 = SITE + (logo1.startsWith("/") ? "" : "/") + logo1;
+          if (logo2 && !logo2.startsWith("http")) logo2 = SITE + (logo2.startsWith("/") ? "" : "/") + logo2;
+
+          // Match timing details inside match-center
+          let time = "";
+          let result = "";
+          let statusText = "";
+
+          const matchTiming = $(el).find(".match-center .match-timing");
+          if (matchTiming.length > 0) {
+            const divs = matchTiming.find("div");
+            if (divs.length > 0) {
+              const firstDiv = $(divs[0]);
+              if (firstDiv.hasClass("result")) {
+                result = firstDiv.text().trim();
+              } else {
+                time = firstDiv.text().trim();
+              }
+            }
+            if (divs.length > 1) {
+              statusText = $(divs[1]).text().trim();
+            }
+          }
+
+          // Match info spans (channel, commentator, league)
+          const infoSpans = $(el).find(".match-info ul li span, .match-info li span, .match-details span");
+          let channel = "";
+          let commentator = "";
+          let league = "";
+
+          if (infoSpans.length > 0) channel = $(infoSpans[0]).text().trim();
+          if (infoSpans.length > 1) commentator = $(infoSpans[1]).text().trim();
+          if (infoSpans.length > 2) league = $(infoSpans[2]).text().trim();
+
+          if (!channel) channel = $(el).find(".channel, .channel-name").first().text().trim();
+          if (!league) league = $(el).find(".league, .league-name").first().text().trim();
+
+          // Live status detection logic
+          let live = false;
+          if (
+            $(el).hasClass("live") ||
+            $(el).hasClass("soon") ||
+            statusText.includes("مباشر") ||
+            statusText.includes("جارية") ||
+            statusText.includes("بعد قليل") ||
+            $(el).find(".live, .live-badge, .soon").length > 0
+          ) {
+            if (!statusText.includes("انتهت") && !$(el).hasClass("end")) {
+              live = true;
+            }
+          }
+
+          if (team1 && team2) {
+            const id = Buffer.from(matchPageUrl).toString("base64").replace(/[^a-zA-Z0-9]/g, "").substring(0, 16);
+            matches.push({
+              id,
+              team1,
+              team2,
+              logo1,
+              logo2,
+              matchPageUrl,
+              channel: channel || "بث مباشر",
+              commentator: commentator || "غير معروف",
+              time: time || "مستمر",
+              result: result || "",
+              statusText: statusText || "بانتظار البداية",
+              league: league || "بطولة اليوم",
+              live
+            });
+          }
+        } catch (e) {
+          // ignore parsing error for single element
+        }
+      });
+
+      if (matches.length > 0) {
+        cachedMatches = matches;
+        lastFetchedMatchesTime = now;
+      }
+
+      res.json({ status: true, cached: false, matches });
+    } catch (error: any) {
+      console.error("Match scraper API route error:", error.message);
+      res.json({ status: false, error: error.message, matches: cachedMatches });
+    }
+  });
+
+  app.get("/api/v1/matches/stream", async (req, res) => {
+    const { url } = req.query;
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "Missing match page URL" });
+    }
+
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Referer": "https://yalla-live.top/"
+        },
+        timeout: 10000
+      });
+
+      const html = response.data;
+      
+      // Look for var iframeUrl = "..."
+      const match = html.match(/var\s+iframeUrl\s*=\s*["']([^"']+)["']/);
+      let iframeUrl = match ? match[1] : null;
+
+      if (!iframeUrl) {
+        // Fallback: look for other standard video tags/iframes on yalla-live
+        const $ = cheerio.load(html);
+        iframeUrl = $("iframe").first().attr("src") || null;
+      }
+
+      if (iframeUrl) {
+         return res.json({ status: true, iframeUrl });
+      }
+
+      res.status(404).json({ status: false, error: "لم يتم العثور على رابط بث للمباراة الحالية" });
+    } catch (error: any) {
+      console.error("Error retrieving stream URL:", error.message);
+      res.status(500).json({ status: false, error: error.message });
+    }
+  });
+
+  // Firebase Config with obfuscation
+  app.get("/api/v1/config/firebase", (req, res) => {
+    const config = {
+      apiKey: process.env.FIREBASE_API_KEY || "AIzaSyAnYkOnP2XWfaKrXXvTO3Euq7s-pl9QGKg",
+      authDomain: process.env.FIREBASE_AUTH_DOMAIN || "chat-516a8.firebaseapp.com",
+      databaseURL: process.env.FIREBASE_DATABASE_URL || "https://chat-516a8-default-rtdb.firebaseio.com",
+      projectId: process.env.FIREBASE_PROJECT_ID || "chat-516a8",
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "chat-516a8.firebasestorage.app",
+      messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "276393305302",
+      appId: process.env.FIREBASE_APP_ID || "1:276393305302:web:12f90a55d7c13a4c57d577"
+    };
+
+    // Encrypt each value
+    const securedConfig = Object.fromEntries(
+      Object.entries(config).map(([key, val]) => [key, encryptValue(val)])
+    );
+
+    res.json({ status: true, data: securedConfig });
+  });
+
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
@@ -1565,6 +1766,7 @@ ${seriesContext}`;
   // Isolated HTML ad serving page
   app.get("/ads", (req, res) => {
     const seriesId = String(req.query.id || "");
+    const redirectUrl = String(req.query.redirect || "");
     const html = `<!DOCTYPE html>
 <html lang="ar">
 <head>
@@ -1729,7 +1931,13 @@ document.head.appendChild(s);
                     btn.innerText = 'الرجاء الانتظار...';
                     btn.className = 'btn btn-disabled';
                     btn.setAttribute('disabled', 'true');
-                    window.location.href = '/watch?id=' + encodeURIComponent("${seriesId}") + '&unlocked=true';
+                    
+                    var redirect = "${redirectUrl}";
+                    if (redirect) {
+                        window.location.href = redirect;
+                    } else {
+                        window.location.href = '/watch?id=' + encodeURIComponent("${seriesId}") + '&unlocked=true';
+                    }
                 };
             } else {
                 document.getElementById('countdown').innerText = countdown;

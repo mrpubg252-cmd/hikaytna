@@ -14,6 +14,7 @@ import ProfileScreen from './screens/ProfileScreen';
 import ChatScreen from './screens/ChatScreen';
 import ShortsScreen from './screens/ShortsScreen';
 import AdminScreen from './screens/AdminScreen';
+import MatchesScreen from './screens/MatchesScreen';
 import { getApiUrl } from './lib/apiConfig';
 
 function AppLayout() {
@@ -145,6 +146,7 @@ function AppLayout() {
         <Route path="/profile" element={<ProfileScreen />} />
         <Route path="/chat" element={<ChatScreen />} />
         <Route path="/shorts" element={<ShortsScreen />} />
+        <Route path="/matches" element={<MatchesScreen />} />
         <Route path="/admin" element={<AdminScreen />} />
       </Routes>
 
