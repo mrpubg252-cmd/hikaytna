@@ -25,6 +25,16 @@ function fixImageUrl(url: string, title: string = "") {
       finalUrl = "https://3iskk.xyz/wp-content/uploads/2026/05/daha-17-dizi.jpg";
     } else if (normTitle.includes("هذا بحر سوف يفيض") || normTitle.includes("هذا البحر سوف يفيض")) {
       finalUrl = "https://3iskk.xyz/wp-content/uploads/2025/10/uHIOTJXN9nNTc51WyunL43Fvge3.jpg";
+    } else if (
+      normTitle.includes("knight of the seven kingdoms") ||
+      normTitle.includes("seven kingdoms") ||
+      normTitle.includes("الممالك السبع") ||
+      normTitle.includes("ممالك السبع") ||
+      normTitle.includes("الممالك السبعة") ||
+      normTitle.includes("ممالك السبعة") ||
+      normTitle.includes("فارس الممالك السبع")
+    ) {
+      finalUrl = "https://upload.wikimedia.org/wikipedia/en/c/cc/A_Knight_of_the_Seven_Kingdoms_%28TV_series%29_first_look.jpg";
     }
   }
 

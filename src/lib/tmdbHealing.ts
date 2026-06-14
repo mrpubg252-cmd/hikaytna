@@ -235,6 +235,22 @@ export function isExcludedFromTMDB(title: string, category?: string): boolean {
   
   const clean = cleanTitleForTMDB(title).toLowerCase();
   const lowerTitle = title.toLowerCase();
+
+  // Exclude "A Knight of the Seven Kingdoms" and its Arabic variations from TMDB poster healing entirely
+  if (
+    lowerTitle.includes("knight of the seven kingdoms") ||
+    lowerTitle.includes("seven kingdoms") ||
+    lowerTitle.includes("الممالك السبع") ||
+    lowerTitle.includes("ممالك السبع") ||
+    lowerTitle.includes("الممالك السبعة") ||
+    lowerTitle.includes("ممالك السبعة") ||
+    clean.includes("knight of the seven kingdoms") ||
+    clean.includes("seven kingdoms") ||
+    clean.includes("الممالك السبع") ||
+    clean.includes("ممالك السبع")
+  ) {
+    return true;
+  }
   
   // Specific list of series titles we want to retain their true/original hand-picked covers
   const excludedKeywords = [
