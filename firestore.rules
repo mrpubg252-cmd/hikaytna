@@ -1,0 +1,114 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // User Profile Rules
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      
+      allow create: if isOwner(userId) 
+        && incoming().userId == userId
+        && incoming().points == 0
+        && incoming().isPremium == false
+        && incoming().referralCode is string
+        && incoming().referralCode.size() > 0
+        && incoming().keys().hasAll(['userId', 'points', 'isPremium', 'referralCode'])
+        && incoming().keys().size() == 4;
+
+      allow update: if (
+        isOwner(userId) 
+        && (
+          // Owner can update everything EXCEPT points and isPremium
+          incoming().diff(existing()).affectedKeys().hasOnly(['referralCode'])
+          || (incoming().points >= 10 && incoming().isPremium == true && incoming().diff(existing()).affectedKeys().hasOnly(['isPremium']))
+        )
+      ) || (
+        // REFERRAL INCREMENT ACTION
+        // Someone else increments points by 1
+        isSignedIn()
+        && !isOwner(userId)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['points'])
+        && incoming().points == existing().points + 1
+        // Must be accompanied by a Referral document creation in the same batch
+        && existsAfter(/databases/$(database)/documents/referrals/$(userId + "_" + request.auth.uid))
+      );
+    }
+
+    // Referral Tracking
+    match /referrals/{referralId} {
+      allow get: if isSignedIn(); // Allow checking if referral exists
+      
+      allow create: if isSignedIn()
+        && isValidId(referralId)
+        && referralId == (incoming().referrerId + "_" + request.auth.uid)
+        && incoming().referrerId != request.auth.uid
+        && incoming().visitorId == request.auth.uid
+        && incoming().keys().hasAll(['referrerId', 'visitorId', 'createdAt'])
+        && incoming().keys().size() == 3
+        // Must check that the User points actually incremented
+        && getAfter(/databases/$(database)/documents/users/$(incoming().referrerId)).data.points == get(/databases/$(database)/documents/users/$(incoming().referrerId)).data.points + 1;
+    }
+
+    // Shorts Rules
+    match /shorts/{shortId} {
+        allow read, create, update, delete: if true;
+    }
+
+    // Chats Rules
+    match /chats/{chatId} {
+        allow read: if isSignedIn() && request.auth.uid in resource.data.participants;
+        allow create: if isSignedIn() && request.auth.uid in incoming().participants;
+        allow update: if isSignedIn() && request.auth.uid in existing().participants;
+    }
+
+    // Presence Rules
+    match /presence/{userId} {
+        allow read: if isSignedIn();
+        allow write: if isOwner(userId) && incoming().userId == userId;
+    }
+
+    // Category Pins Rules
+    match /category_pins/{pinId} {
+        allow read: if true;
+        allow write: if isSignedIn();
+    }
+
+    // Slider Selections Rules
+    match /slider_selections/{selectionId} {
+        allow read: if true;
+        allow write: if isSignedIn();
+    }
+
+    // Support Tickets Rules
+    match /supportTickets/{ticketId} {
+        allow read: if isSignedIn() && (isOwner(resource.data.userId));
+        allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+        allow update: if isOwner(existing().userId) && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'issue']);
+    }
+  }
+}
