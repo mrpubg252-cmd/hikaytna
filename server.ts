@@ -1721,20 +1721,14 @@ ${seriesContext}`;
       const match = html.match(/var\s+iframeUrl\s*=\s*["']([^"']+)["']/);
       let iframeUrl = match ? match[1] : null;
 
-      if (!iframeUrl) {
-        // Fallback: look for other standard video tags/iframes on yalla-live
-        const $ = cheerio.load(html);
-        iframeUrl = $("iframe").first().attr("src") || null;
-      }
-
-      if (iframeUrl) {
+      if (iframeUrl && iframeUrl.trim() !== "" && iframeUrl !== "null" && iframeUrl !== "undefined" && iframeUrl.startsWith("http")) {
          return res.json({ status: true, iframeUrl });
       }
 
-      res.status(404).json({ status: false, error: "لم يتم العثور على رابط بث للمباراة الحالية" });
+      res.status(404).json({ status: false, error: "لا يوجد بث حي متوفر لهذه المباراة حالياً." });
     } catch (error: any) {
       console.error("Error retrieving stream URL:", error.message);
-      res.status(500).json({ status: false, error: error.message });
+      res.status(500).json({ status: false, error: "حدث خطأ أثناء محاولة جلب البث المباشر." });
     }
   });
 

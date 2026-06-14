@@ -133,7 +133,7 @@ export default function MatchesScreen() {
   const totalLiveCount = matches.filter(m => m.live).length;
 
   return (
-    <div className="min-h-screen bg-[#070708] text-white pb-32 selection:bg-red-650 selection:text-white font-sans">
+    <div className="min-h-screen bg-[#070708] text-white pb-32 selection:bg-red-600 selection:text-white font-sans">
       <Header />
 
       <main className="max-w-6xl mx-auto px-4 md:px-6 pt-24 space-y-6">
@@ -224,7 +224,7 @@ export default function MatchesScreen() {
             </div>
             <div className="space-y-1">
               <h3 className="text-xs font-black text-white">جاري تحميل جدول مباريات اليوم...</h3>
-              <p className="text-zinc-500 text-[10px]">نقوم بربط المزامنة والتحقق من جودة البثوط في الوقت الفعلي</p>
+              <p className="text-zinc-500 text-[10px]">نقوم بربط المزامنة والتحقق من جودة البث في الوقت الفعلي</p>
             </div>
           </div>
         )}
@@ -239,7 +239,7 @@ export default function MatchesScreen() {
             </div>
             <button 
               onClick={() => fetchMatches()}
-              className="bg-red-650 hover:bg-red-600 text-white px-6 py-2.5 rounded-xl text-[10px] font-bold active:scale-95 transition cursor-pointer"
+              className="bg-red-600 hover:bg-red-500 text-white px-6 py-2.5 rounded-xl text-[10px] font-bold active:scale-95 transition cursor-pointer"
             >
               تحديث الجدول الآن 🔄
             </button>
@@ -274,7 +274,7 @@ export default function MatchesScreen() {
                   className="relative bg-zinc-950/40 border border-zinc-900/60 hover:border-red-950 rounded-[2rem] p-6 transition-all duration-300 flex flex-col justify-between group overflow-hidden"
                 >
                   {/* Subtle Background Red Ripple Accent */}
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-red-650/5 blur-[50px] rounded-full pointer-events-none group-hover:bg-red-650/10 transition-colors" />
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 blur-[50px] rounded-full pointer-events-none group-hover:bg-red-600/10 transition-colors" />
 
                   {/* Match Header */}
                   <div className="relative z-10 flex items-center justify-between text-[11px] mb-6">
@@ -371,7 +371,7 @@ export default function MatchesScreen() {
                     <button
                       onClick={() => handleWatchStream(m)}
                       disabled={loadingStream !== null}
-                      className="bg-red-650 hover:bg-red-600 disabled:bg-zinc-900 disabled:text-zinc-500 text-white py-2.5 px-6 rounded-2xl text-[11px] font-black flex items-center gap-2 transition duration-250 active:scale-95 cursor-pointer shadow-lg shadow-red-650/10 hover:shadow-red-650/25 shrink-0"
+                      className="bg-red-600 hover:bg-red-500 disabled:bg-zinc-900 disabled:text-zinc-500 text-white py-2.5 px-6 rounded-2xl text-[11px] font-black flex items-center gap-2 transition duration-250 active:scale-95 cursor-pointer shadow-lg shadow-red-600/10 hover:shadow-red-600/25 shrink-0"
                     >
                       {loadingStream === m.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
@@ -452,7 +452,7 @@ export default function MatchesScreen() {
                         <div className="flex justify-center gap-3 pt-2">
                           <button
                             onClick={() => handleWatchStream(activeStream.match, true)}
-                            className="bg-red-650 hover:bg-red-600 text-white font-extrabold text-[10px] px-5 py-2.5 rounded-xl transition active:scale-95 cursor-pointer"
+                            className="bg-red-600 hover:bg-red-500 text-white font-extrabold text-[10px] px-5 py-2.5 rounded-xl transition active:scale-95 cursor-pointer"
                           >
                             تثبيت الاتصال بالبث 🔄
                           </button>

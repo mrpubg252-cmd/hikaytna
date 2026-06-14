@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db as rtdb } from '../services/firebase';
-import { ref, push, onValue, limitToLast, query, serverTimestamp } from 'firebase/database';
+import { initializeApp, getApp, getApps } from 'firebase/app';
+import { getDatabase, ref, push, onValue, limitToLast, query, serverTimestamp, Database } from 'firebase/database';
+import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
 import { Send, Users, Smile, User2, MessageSquare, Flame } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -64,8 +65,27 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const [inputName, setInputName] = useState('');
   const [inputGender, setInputGender] = useState<'boy' | 'girl'>('boy');
+  const [db, setDb] = useState<Database | null>(null);
+  const [isDbReady, setIsDbReady] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Initialize DB instance
+  useEffect(() => {
+    try {
+      let instance: Database;
+      if (!getApps().find(a => a.name === 'chatApp')) {
+        const app = initializeApp(chatFirebaseConfig, 'chatApp');
+        instance = getDatabase(app);
+      } else {
+        instance = getDatabase(getApp('chatApp'));
+      }
+      setDb(instance);
+      setIsDbReady(true);
+    } catch (err) {
+      console.warn("Failed to initialize match chat database:", err);
+    }
+  }, []);
 
   // Initialize identity from localStorage
   useEffect(() => {
@@ -100,7 +120,8 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
 
   // Firebase RTDB Live Chat listener
   useEffect(() => {
-    const chatRef = ref(rtdb, `matchesChat/${matchId}`);
+    if (!isDbReady || !db) return;
+    const chatRef = ref(db, `matchesChat/${matchId}`);
     const q = query(chatRef, limitToLast(60));
 
     const unsubscribe = onValue(q, (snapshot) => {
@@ -120,7 +141,7 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
     });
 
     return () => unsubscribe();
-  }, [matchId]);
+  }, [matchId, isDbReady, db]);
 
   // Scroll to bottom on new message
   useEffect(() => {
@@ -129,10 +150,10 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
 
   const handleSendMessage = (msgText: string) => {
     const trimmed = msgText.trim();
-    if (!trimmed) return;
+    if (!trimmed || !isDbReady || !db) return;
 
     try {
-      const chatRef = ref(rtdb, `matchesChat/${matchId}`);
+      const chatRef = ref(db, `matchesChat/${matchId}`);
       push(chatRef, {
         userName,
         userAvatar,
@@ -340,7 +361,7 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
                 <button
                   onClick={handleSaveProfile}
                   disabled={!inputName.trim()}
-                  className="flex-1 py-2 bg-red-650 hover:bg-red-600 disabled:bg-zinc-800 text-white font-black rounded-xl text-[10px] cursor-pointer"
+                  className="flex-1 py-2 bg-red-600 hover:bg-red-500 disabled:bg-zinc-800 text-white font-black rounded-xl text-[10px] cursor-pointer"
                 >
                   حفظ 💾
                 </button>
