@@ -1066,6 +1066,27 @@ export default function WatchScreen() {
                       </div>
                     </div>
                   </a>
+
+                  <a 
+                    href="https://www.instagram.com/hikaytna_my?igsh=MW5qeXY1NXBwazE3dw==" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="group flex flex-1 items-center justify-between p-3 sm:px-4 sm:py-3 bg-[#E1306C]/10 hover:bg-[#E1306C]/20 border border-[#E1306C]/20 rounded-2xl sm:rounded-3xl transition-all duration-300 min-w-0"
+                  >
+                    <div className="flex items-center gap-2.5 overflow-hidden">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 shrink-0 rounded-full bg-[#E1306C]/20 flex items-center justify-center text-[#E1306C] group-hover:scale-110 transition-transform">
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5 fill-none stroke-current stroke-2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+                          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                          <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+                        </svg>
+                      </div>
+                      <div className="flex flex-col text-right truncate">
+                        <span className="text-[11px] sm:text-[13px] font-black text-white truncate">الإنستغرام</span>
+                        <span className="text-[9px] sm:text-[11px] text-[#E1306C] font-bold truncate">تابع حسابنا في إنستغرام</span>
+                      </div>
+                    </div>
+                  </a>
                 </div>
 
                 {/* Professional Chat Portal Trigger Card */}

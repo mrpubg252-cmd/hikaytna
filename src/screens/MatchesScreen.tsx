@@ -27,12 +27,7 @@ export default function MatchesScreen() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeStream, setActiveStream] = useState<{ 
-    match: Match; 
-    iframeUrl: string; 
-    streamError?: boolean; 
-    servers?: { name: string; url: string }[] 
-  } | null>(null);
+  const [activeStream, setActiveStream] = useState<{ match: Match; iframeUrl: string; streamError?: boolean } | null>(null);
   const [loadingStream, setLoadingStream] = useState<string | null>(null); // match ID of the clicked stream
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'live' | 'cup'>('all');
@@ -40,38 +35,11 @@ export default function MatchesScreen() {
 
   // Helper to determine if a match has ended
   const isMatchEnded = (m: Match) => {
-    // Treat 0-0 score matches as NOT ended (likely upcoming or just starting)
-    const isZeroZero = m.result && m.result.trim().replace(/\s+/g, '') === '0-0';
-    if (isZeroZero) return false;
-
     if (m.ended) return true;
     const txt = (m.statusText || '').trim();
-    if (txt.includes('انتهت') || txt.includes('انتهي') || txt.includes('منتهية') || txt.includes('منتهيه')) return true;
-    if (m.live) return false;
+    if (txt.includes('انتهت') || txt.includes('انتهي') || txt.includes('منتهية')) return true;
+    if (!m.live && m.result && m.result.trim() !== '' && m.result.trim() !== '-') return true;
     return false;
-  };
-
-  // Render match results nicely without swapping (aligned: parts[0] is Team 1 score on the left, parts[1] is Team 2 score on the right)
-  const renderMatchResult = (result?: string) => {
-    if (!result) return null;
-    const parts = result.split('-').map(p => p.trim());
-    if (parts.length === 2) {
-      return (
-        <div 
-          className="flex items-center justify-center gap-1.5 font-mono text-xl md:text-2xl font-black text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
-          dir="ltr"
-        >
-          <span>{parts[0]}</span>
-          <span className="text-zinc-500 font-sans text-lg">-</span>
-          <span>{parts[1]}</span>
-        </div>
-      );
-    }
-    return (
-      <span className="text-xl md:text-2xl font-black tracking-widest text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 font-mono shadow-[0_0_15px_rgba(239,68,68,0.1)]" dir="ltr">
-        {result}
-      </span>
-    );
   };
 
   // Clock Ticker
@@ -123,15 +91,10 @@ export default function MatchesScreen() {
 
     setLoadingStream(match.id);
     try {
-      const res = await fetch(getApiUrl(`/api/v1/matches/stream?url=${encodeURIComponent(match.matchPageUrl)}&channel=${encodeURIComponent(match.channel)}`));
+      const res = await fetch(getApiUrl(`/api/v1/matches/stream?url=${encodeURIComponent(match.matchPageUrl)}`));
       const data = await res.json();
       if (data.status && data.iframeUrl) {
-        setActiveStream({ 
-          match, 
-          iframeUrl: data.iframeUrl, 
-          streamError: false,
-          servers: data.servers || [{ name: "سيرفر البث الرئيسي ⚡", url: data.iframeUrl }]
-        });
+        setActiveStream({ match, iframeUrl: data.iframeUrl, streamError: false });
       } else {
         // Activate in-modal stream-error view
         setActiveStream({ match, iframeUrl: "", streamError: true });
@@ -183,7 +146,7 @@ export default function MatchesScreen() {
     <div className="min-h-screen bg-[#070708] text-white pb-32 selection:bg-red-650 selection:text-white font-sans">
       <Header />
 
-      <main className="max-w-6xl mx-auto px-4 md:px-6 pt-14 sm:pt-16 space-y-6">
+      <main className="max-w-6xl mx-auto px-4 md:px-6 pt-4 sm:pt-6 space-y-6">
         
         {/* CLEAN TABLE/GRID HEADER */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-zinc-950/40 border border-zinc-900/60 p-5 rounded-[2rem] shadow-lg">
@@ -314,9 +277,28 @@ export default function MatchesScreen() {
                     {/* VS Badge */}
                     <div className="shrink-0 flex flex-col items-center justify-center space-y-1.5">
                       {m.result ? (
-                        renderMatchResult(m.result)
+                        (() => {
+                          const parts = m.result.split('-').map(p => p.trim());
+                          if (parts.length === 2) {
+                            return (
+                              <div 
+                                className="flex items-center justify-center gap-1.5 font-mono text-xl md:text-2xl font-black text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
+                                dir="ltr"
+                              >
+                                <span>{parts[1]}</span>
+                                <span className="text-zinc-500 font-sans text-lg">-</span>
+                                <span>{parts[0]}</span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <span className="text-xl md:text-2xl font-black tracking-widest text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 font-mono shadow-[0_0_15px_rgba(239,68,68,0.1)]">
+                              {m.result}
+                            </span>
+                          );
+                        })()
                       ) : (
-                        <span className="text-xs font-black text-rose-500 bg-rose-505 bg-rose-500/5 px-3 py-1.5 rounded-2xl border border-rose-500/10">
+                        <span className="text-xs font-black text-rose-500 bg-rose-500/5 px-3 py-1.5 rounded-2xl border border-rose-500/10">
                           VS
                         </span>
                       )}
@@ -365,25 +347,25 @@ export default function MatchesScreen() {
                     </div>
 
                     <button
-                      onClick={() => handleWatchStream(m)}
-                      disabled={loadingStream !== null}
-                      className={`py-2.5 px-6 rounded-2xl text-[11px] font-black flex items-center gap-2 transition duration-250 shrink-0 cursor-pointer active:scale-95 ${
+                      onClick={() => m.live && handleWatchStream(m)}
+                      disabled={loadingStream !== null || !m.live}
+                      className={`py-2.5 px-6 rounded-2xl text-[11px] font-black flex items-center gap-2 transition duration-250 shrink-0 ${
                         m.live 
-                          ? "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/10 hover:shadow-red-600/25" 
-                          : "bg-zinc-900 hover:bg-zinc-800 border border-zinc-850 text-zinc-300 hover:text-white"
+                          ? "bg-red-600 hover:bg-red-500 text-white cursor-pointer shadow-lg shadow-red-600/10 hover:shadow-red-600/25 active:scale-95" 
+                          : "bg-zinc-950 border border-zinc-900 text-zinc-505 cursor-not-allowed"
                       }`}
                     >
                       {loadingStream === m.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
                       ) : (
-                        <Play className={`w-3.5 h-3.5 ${m.live ? 'fill-current text-white' : 'fill-current text-zinc-400'}`} />
+                        <Play className={`w-3.5 h-3.5 ${m.live ? 'fill-current text-white' : 'text-zinc-750'}`} />
                       )}
                       <span>
                         {m.live 
                           ? "شاهد المباراة والدردشة" 
                           : isMatchEnded(m)
-                            ? "انتهت - دخول البث والدردشة 💬" 
-                            : "دخول البث والدردشة 💬"}
+                            ? "انتهت المباراة" 
+                            : "لم تبدأ بعد"}
                       </span>
                     </button>
                   </div>
@@ -471,48 +453,15 @@ export default function MatchesScreen() {
                         </div>
                       </div>
                     ) : (
-                      /* Embed Stream Frame output with Multi-server switcher tabs */
-                      <div className="w-full h-full flex flex-col">
-                        <div className="flex-1 min-h-0 bg-black relative">
-                          <iframe
-                            src={activeStream.iframeUrl}
-                            title="Live Match Player"
-                            className="w-full h-full border-none bg-black"
-                            allowFullScreen
-                            scrolling="no"
-                            allow="autoplay; encrypted-media"
-                          />
-                        </div>
-                        
-                        {/* Server Switcher Selection Strip */}
-                        {activeStream.servers && activeStream.servers.length > 1 && (
-                          <div className="p-2.5 bg-[#08080a] border-t border-zinc-900 flex flex-wrap items-center justify-center gap-2">
-                            <span className="text-[10px] text-zinc-500 font-bold ml-1">تبديل السيرفر:</span>
-                            {activeStream.servers.map((srv, idx) => {
-                              const isActive = activeStream.iframeUrl === srv.url;
-                              return (
-                                <button
-                                  key={idx}
-                                  onClick={() => {
-                                    setActiveStream({
-                                      ...activeStream,
-                                      iframeUrl: srv.url
-                                    });
-                                  }}
-                                  className={`py-1.5 px-3 rounded-lg text-[10px] font-black transition cursor-pointer active:scale-95 flex items-center gap-1.5 ${
-                                    isActive
-                                      ? "bg-red-600 text-white shadow-lg shadow-red-600/15"
-                                      : "bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white border border-zinc-800"
-                                  }`}
-                                >
-                                  <span className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-white animate-pulse" : "bg-zinc-600"}`} />
-                                  {srv.name}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
+                      /* Embed Stream Frame output */
+                      <iframe
+                        src={activeStream.iframeUrl}
+                        title="Live Match Player"
+                        className="w-full h-full border-none bg-black"
+                        allowFullScreen
+                        scrolling="no"
+                        allow="autoplay; encrypted-media"
+                      />
                     )}
                   </div>
 
