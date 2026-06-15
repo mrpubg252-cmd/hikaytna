@@ -1781,7 +1781,67 @@ ${seriesContext}`;
       let iframeUrl = match ? match[1] : null;
 
       if (iframeUrl && iframeUrl.trim() !== "" && iframeUrl !== "null" && iframeUrl !== "undefined" && iframeUrl.startsWith("http")) {
-         return res.json({ status: true, iframeUrl });
+        // Recursive retrieval to extract the clean player container embed instead of showing the entire WordPress blogging shell
+        try {
+          const nestedResponse = await axios.get(iframeUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Referer": "https://yalla-live.top/"
+            },
+            timeout: 5000
+          });
+          const nestedHtml = nestedResponse.data;
+          const $ = cheerio.load(nestedHtml);
+          
+          let foundPlaybackUrl = "";
+          
+          // 1. Target embedvideo or video-1 wrapper elements first
+          $(".embedvideo iframe, #embedvideo iframe, .video-1 iframe, .embed-container iframe").each((_, el) => {
+            const src = $(el).attr("src");
+            if (src && src.startsWith("http")) {
+              foundPlaybackUrl = src;
+              return false;
+            }
+          });
+
+          // 2. Target standard iframes carrying video player indicators/domains
+          if (!foundPlaybackUrl) {
+            $("iframe").each((_, el) => {
+              const src = $(el).attr("src");
+              const name = $(el).attr("name") || "";
+              if (src && src.startsWith("http")) {
+                if (src.includes("albaplayer") || src.includes("kooralive360") || src.includes("player") || name.includes("search_iframe")) {
+                  foundPlaybackUrl = src;
+                  return false;
+                }
+              }
+            });
+          }
+
+          // 3. General iframe fallback (avoiding ad platforms or trackers)
+          if (!foundPlaybackUrl) {
+            $("iframe").each((_, el) => {
+              const src = $(el).attr("src");
+              if (src && src.startsWith("http")) {
+                const lowerSrc = src.toLowerCase();
+                if (!lowerSrc.includes("ads") && !lowerSrc.includes("google") && !lowerSrc.includes("facebook") && !lowerSrc.includes("twitter") && !lowerSrc.includes("telegram") && !lowerSrc.includes("analytics")) {
+                  foundPlaybackUrl = src;
+                  return false;
+                }
+              }
+            });
+          }
+
+          if (foundPlaybackUrl) {
+            console.log(`Successfully extracted inner stream URL from wrapper page: ${foundPlaybackUrl}`);
+            iframeUrl = foundPlaybackUrl;
+          }
+        } catch (nestedError: any) {
+          console.error("Failed to parse nested stream wrapper:", nestedError.message);
+          // Fall back gracefully to using the original iframeUrl instead of failing entirely
+        }
+
+        return res.json({ status: true, iframeUrl });
       }
 
       res.status(404).json({ status: false, error: "لا يوجد بث حي متوفر لهذه المباراة حالياً." });
