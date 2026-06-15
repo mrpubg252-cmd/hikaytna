@@ -1654,32 +1654,64 @@ ${seriesContext}`;
           let live = false;
           let ended = false;
 
-          const hasLiveClass = $(el).hasClass("live") || $(el).find(".live, .live-badge, .date.live").length > 0;
-          const hasSoonClass = $(el).hasClass("soon") || $(el).find(".soon, .date.soon").length > 0;
+          const hasLiveClass = 
+            $(el).hasClass("live") || 
+            $(el).hasClass("live-match") || 
+            $(el).find(".live, .live-badge, .date.live, .live-ico, .live-icon, .live_ico, .match-live, .match_live").length > 0;
 
-          if (
-            hasLiveClass ||
-            statusText.includes("مباشر") ||
-            statusText.includes("جارية") ||
-            statusText.includes("الان") ||
-            statusText.includes("الآن")
-          ) {
-            live = true;
-          }
+          const hasSoonClass = 
+            $(el).hasClass("soon") || 
+            $(el).hasClass("soon-match") || 
+            $(el).find(".soon, .soon-badge, .date.soon, .soon-ico, .soon-icon, .soon_ico, .match-soon").length > 0;
 
-          if (
-            statusText.includes("انتهت") ||
-            statusText.includes("انتهت المباراة") ||
+          const statusLower = (statusText || "").trim();
+          const timeLower = (time || "").trim();
+
+          const hasEndedText = 
+            statusLower.includes("انتهت") || 
+            statusLower.includes("انتهي") || 
+            statusLower.includes("إنتهاء") || 
+            statusLower.includes("انتهاء") || 
+            statusLower.includes("منتهية") || 
+            statusLower.includes("منتهيه") || 
+            statusLower.includes("FT") ||
+            timeLower.includes("انتهت") ||
+            timeLower.includes("انتهي") ||
             $(el).find(".date.end").text().includes("انتهت") ||
-            (result && !live && !hasSoonClass)
-          ) {
+            $(el).hasClass("end") ||
+            $(el).hasClass("ended") ||
+            $(el).hasClass("finished");
+
+          const liveTextIndicators = [
+            "مباشر", "الآن", "الان", "جارية", "جاريه", "جارية الآن", 
+            "الشوط", "شوط", "بين الشوطين", "إضافي", "اضافي", 
+            "ترجيح", "ترجيحية", "دقيقة", "د ", "دقائق", "'"
+          ];
+          const hasLiveText = liveTextIndicators.some(indicator => 
+            statusLower.includes(indicator) || timeLower.includes(indicator)
+          );
+
+          if (hasEndedText) {
             ended = true;
             live = false;
+          } else if (
+            hasLiveClass || 
+            hasLiveText || 
+            (result && result.trim() !== "" && result.trim() !== "vs" && result.trim() !== "-" && !hasSoonClass)
+          ) {
+            live = true;
+            ended = false;
           }
 
           // If it ended, ensure statusText indicates that
-          if (ended && !statusText.includes("انتهت")) {
+          if (ended) {
             statusText = "انتهت المباراة";
+          } else if (live) {
+            if (!statusText || statusText === "بانتظار البداية") {
+              statusText = "مباراة جارية الآن ⚽";
+            }
+          } else {
+            statusText = statusText || "لم تبدأ بعد";
           }
 
           if (team1 && team2) {

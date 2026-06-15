@@ -37,9 +37,36 @@ export default function MatchesScreen() {
   const isMatchEnded = (m: Match) => {
     if (m.ended) return true;
     const txt = (m.statusText || '').trim();
-    if (txt.includes('انتهت') || txt.includes('انتهي') || txt.includes('منتهية')) return true;
-    if (!m.live && m.result && m.result.trim() !== '' && m.result.trim() !== '-') return true;
+    if (txt.includes('انتهت') || txt.includes('انتهي') || txt.includes('منتهية') || txt.includes('منتهيه')) return true;
+    if (m.live) return false;
     return false;
+  };
+
+  // Correctly aligned match results: Team 1 (right-team) is displayed first (on the left in LTR UI)
+  // and Team 2 (left-team) is displayed second (on the right in LTR UI).
+  // The scraped string "result" is formatted as "LeftScore - RightScore" (parts[0] - parts[1]).
+  // To ensure the correct score is next to the correct team in LTR layout,
+  // we render parts[1] (RightScore / Team 1) first, and parts[0] (LeftScore / Team 2) second.
+  const renderMatchResult = (result?: string) => {
+    if (!result) return null;
+    const parts = result.split('-').map(p => p.trim());
+    if (parts.length === 2) {
+      return (
+        <div 
+          className="flex items-center justify-center gap-1.5 font-mono text-xl md:text-2xl font-black text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
+          dir="ltr"
+        >
+          <span>{parts[1]}</span>
+          <span className="text-zinc-500 font-sans text-lg">-</span>
+          <span>{parts[0]}</span>
+        </div>
+      );
+    }
+    return (
+      <span className="text-xl md:text-2xl font-black tracking-widest text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 font-mono shadow-[0_0_15px_rgba(239,68,68,0.1)]" dir="ltr">
+        {result}
+      </span>
+    );
   };
 
   // Clock Ticker
@@ -277,11 +304,9 @@ export default function MatchesScreen() {
                     {/* VS Badge */}
                     <div className="shrink-0 flex flex-col items-center justify-center space-y-1.5">
                       {m.result ? (
-                        <span className="text-xl md:text-2xl font-black tracking-widest text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 font-mono shadow-[0_0_15px_rgba(239,68,68,0.1)]">
-                          {m.result}
-                        </span>
+                        renderMatchResult(m.result)
                       ) : (
-                        <span className="text-xs font-black text-rose-500 bg-rose-500/5 px-3 py-1.5 rounded-2xl border border-rose-500/10">
+                        <span className="text-xs font-black text-rose-500 bg-rose-505 bg-rose-500/5 px-3 py-1.5 rounded-2xl border border-rose-500/10">
                           VS
                         </span>
                       )}
