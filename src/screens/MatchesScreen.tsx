@@ -146,7 +146,7 @@ export default function MatchesScreen() {
     <div className="min-h-screen bg-[#070708] text-white pb-32 selection:bg-red-650 selection:text-white font-sans">
       <Header />
 
-      <main className="max-w-6xl mx-auto px-4 md:px-6 pt-4 sm:pt-6 space-y-6">
+      <main className="max-w-6xl mx-auto px-4 md:px-6 pt-14 sm:pt-16 space-y-6">
         
         {/* CLEAN TABLE/GRID HEADER */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-zinc-950/40 border border-zinc-900/60 p-5 rounded-[2rem] shadow-lg">
@@ -277,26 +277,9 @@ export default function MatchesScreen() {
                     {/* VS Badge */}
                     <div className="shrink-0 flex flex-col items-center justify-center space-y-1.5">
                       {m.result ? (
-                        (() => {
-                          const parts = m.result.split('-').map(p => p.trim());
-                          if (parts.length === 2) {
-                            return (
-                              <div 
-                                className="flex items-center justify-center gap-1.5 font-mono text-xl md:text-2xl font-black text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
-                                dir="ltr"
-                              >
-                                <span>{parts[1]}</span>
-                                <span className="text-zinc-500 font-sans text-lg">-</span>
-                                <span>{parts[0]}</span>
-                              </div>
-                            );
-                          }
-                          return (
-                            <span className="text-xl md:text-2xl font-black tracking-widest text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 font-mono shadow-[0_0_15px_rgba(239,68,68,0.1)]">
-                              {m.result}
-                            </span>
-                          );
-                        })()
+                        <span className="text-xl md:text-2xl font-black tracking-widest text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 font-mono shadow-[0_0_15px_rgba(239,68,68,0.1)]">
+                          {m.result}
+                        </span>
                       ) : (
                         <span className="text-xs font-black text-rose-500 bg-rose-500/5 px-3 py-1.5 rounded-2xl border border-rose-500/10">
                           VS
