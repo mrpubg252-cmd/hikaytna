@@ -319,6 +319,24 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   // Native player properties
   const [isPlaying, setIsPlaying] = useState(false);
   const [isForceRotated, setIsForceRotated] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const checkStandalone = () => {
+        const displayModeStandalone = window.matchMedia('(display-mode: standalone)').matches;
+        const navigatorStandalone = (window.navigator as any).standalone === true;
+        setIsStandalone(displayModeStandalone || navigatorStandalone || !!(document.referrer && document.referrer.includes('android-app://')));
+      };
+      checkStandalone();
+      const mediaQuery = window.matchMedia('(display-mode: standalone)');
+      if (mediaQuery.addEventListener) {
+        mediaQuery.addEventListener('change', checkStandalone);
+        return () => mediaQuery.removeEventListener('change', checkStandalone);
+      }
+    }
+  }, []);
+
   const isIOSDevice = typeof window !== 'undefined' ? 
     (/iPhone|iPad|iPod/.test(window.navigator.userAgent) || 
      (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1)) : false;
@@ -450,15 +468,15 @@ const SafariNotification = () => {
     }
   }, [isOffline, isLocalOfflineVideo, resolvedVideoUrl]);
 
-  // Auto-Orient to landscape when maximized + playing
+  // Auto-Orient to landscape when maximized
   useEffect(() => {
-    if ((isPlaying && isMaximized) || isForceRotated) {
+    if (isMaximized || isForceRotated) {
       if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.lock === 'function') {
         // Attempt to lock to landscape
         (screen as any).orientation.lock('landscape').catch((e: any) => console.warn("Orientation lock unsupported or declined by user gesture", e));
       }
     } else {
-      // Unlock when paused or closed
+      // Unlock when closed
       if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.unlock === 'function') {
         try { (screen as any).orientation.unlock(); } catch (e) {}
       }
@@ -470,7 +488,7 @@ const SafariNotification = () => {
         try { (screen as any).orientation.unlock(); } catch (e) {}
       }
     };
-  }, [isPlaying, isMaximized, isForceRotated]);
+  }, [isMaximized, isForceRotated]);
 
   // Turn off manual forced rotation automatically if screen is no longer maximized
   useEffect(() => {
@@ -2329,7 +2347,7 @@ const SafariNotification = () => {
                 <span>الحلقات</span>
               </button>
             )}
-            {isMobile && (
+            {isMobile && isStandalone && isMaximized && (
               <button 
                 onClick={(e) => { e.stopPropagation(); toggleForceRotation(); }}
                 tabIndex={showControls ? 0 : -1}
@@ -2570,7 +2588,7 @@ const SafariNotification = () => {
               <List className="w-4 h-4 text-primary" />
               الحلقات
             </button>
-            {isMobile && (
+            {isMobile && isStandalone && isMaximized && (
               <button
                 onClick={(e) => { e.stopPropagation(); toggleForceRotation(); }}
                 className={cn(
@@ -2800,7 +2818,7 @@ const SafariNotification = () => {
                     <List className="w-4 h-4 text-primary" />
                     الحلقات
                   </button>
-                  {isMobile && (
+                  {isMobile && isStandalone && isMaximized && (
                     <button
                       onClick={(e) => { e.stopPropagation(); toggleForceRotation(); }}
                       className={cn(
