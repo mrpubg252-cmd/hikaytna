@@ -511,13 +511,34 @@ const SafariNotification = () => {
       }
     };
 
+    const handleWebkitVideoEndFullscreen = () => {
+      if (isMaximized) {
+        onToggleMaximize();
+        setIsForceRotated(false);
+        if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.unlock === 'function') {
+          try { (screen as any).orientation.unlock(); } catch (e) {}
+        }
+      }
+    };
+
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitendfullscreen', handleWebkitVideoEndFullscreen, true);
+
+    const video = videoRef.current;
+    if (video) {
+      video.addEventListener('webkitendfullscreen', handleWebkitVideoEndFullscreen);
+    }
+
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitendfullscreen', handleWebkitVideoEndFullscreen, true);
+      if (video) {
+        video.removeEventListener('webkitendfullscreen', handleWebkitVideoEndFullscreen);
+      }
     };
-  }, [isMaximized, onToggleMaximize]);
+  }, [isMaximized, onToggleMaximize, videoRef]);
 
   const toggleForceRotation = () => {
     const nextState = !isForceRotated;
