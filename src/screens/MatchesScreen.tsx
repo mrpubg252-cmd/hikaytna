@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Tv, Calendar, RefreshCw, Play, X, Loader2, Sparkles, CheckCircle, Info, Flame, AlertCircle, MessageSquare, ExternalLink } from 'lucide-react';
+import { Trophy, Tv, Calendar, RefreshCw, Play, X, Loader2, Sparkles, CheckCircle, Info, Flame, AlertCircle, MessageSquare, ExternalLink, Clock } from 'lucide-react';
 import Header from '../components/Header';
 import BottomNav from '../components/BottomNav';
 import MatchChat from '../components/MatchChat';
@@ -30,7 +30,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "المغرب",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/البرازيل.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/المغرب.webp",
-    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
+    matchPageUrl: "",
     channel: "beIN SPORTS MAX 2",
     commentator: "غير معروف",
     time: "انتهت",
@@ -46,7 +46,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "اسكتلندا",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/هايتي.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/اسكتلندا.webp",
-    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
+    matchPageUrl: "",
     channel: "beIN SPORTS MAX 1",
     commentator: "غير معروف",
     time: "انتهت",
@@ -62,7 +62,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "تركيا",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/استراليا.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/تركيا.webp",
-    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
+    matchPageUrl: "",
     channel: "beIN SPORTS MAX 2",
     commentator: "غير معروف",
     time: "انتهت",
@@ -78,7 +78,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "الوداد الرياضي",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2024/12/4171692205946.png",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2024/12/3131694715431.png",
-    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
+    matchPageUrl: "",
     channel: "الرياضية المغربية (3)",
     commentator: "غير معروف",
     time: "انتهت",
@@ -94,7 +94,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "نهضة بركان",
     logo1: "https://ww2.yalla--live.net/wp-content/uploads/2025/11/8323.png",
     logo2: "https://ar.yalla--live.net/wp-content/uploads/2025/04/1529.png",
-    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
+    matchPageUrl: "",
     channel: "تمازيغت (8)",
     commentator: "غير معروف",
     time: "انتهت",
@@ -110,7 +110,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "اتحاد تواركة",
     logo1: "https://as.yalla--live.net/wp-content/uploads/2025/01/451.png",
     logo2: "https://ar.yalla--live.net/wp-content/uploads/2025/10/14597.png",
-    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
+    matchPageUrl: "",
     channel: "المغربية (5)",
     commentator: "غير معروف",
     time: "انتهت",
@@ -126,7 +126,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "كوراساو",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/المانياا.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/كوراساو.webp",
-    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
+    matchPageUrl: "",
     channel: "beIN SPORTS MAX 1",
     commentator: "غير معروف",
     time: "انتهت",
@@ -142,7 +142,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "اليابان",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/هولندا.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/اليابان.webp",
-    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
+    matchPageUrl: "",
     channel: "beIN SPORTS MAX 2",
     commentator: "غير معروف",
     time: "انتهت",
@@ -161,7 +161,7 @@ const TOMORROW_FALLBACKS: Match[] = [
     team2: "أوروغواي",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/السعوديه.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/الاوروجواي.webp",
-    matchPageUrl: "https://www.yalla9live.tv/matches-tomorrow/",
+    matchPageUrl: "https://worldcup2026go.blogspot.com/2026/06/bein1.html",
     channel: "beIN SPORTS MAX 1",
     commentator: "حسن العيدروس",
     time: "1:00 AM",
@@ -177,7 +177,7 @@ const TOMORROW_FALLBACKS: Match[] = [
     team2: "نيوزلندا",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/ايران.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/نيوزيلندا.webp",
-    matchPageUrl: "https://www.yalla9live.tv/matches-tomorrow/",
+    matchPageUrl: "https://worldcup2026go.blogspot.com/2026/06/bein2.html",
     channel: "beIN SPORTS MAX 2",
     commentator: "عامر الخوذيري",
     time: "4:00 AM",
@@ -193,7 +193,7 @@ const TOMORROW_FALLBACKS: Match[] = [
     team2: "السنغال",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/فرنسا.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/السنغال-1.webp",
-    matchPageUrl: "https://www.yalla9live.tv/matches-tomorrow/",
+    matchPageUrl: "https://worldcup2026go.blogspot.com/2026/06/bein1.html",
     channel: "beIN SPORTS MAX 1",
     commentator: "خليل البلوشي",
     time: "10:00 PM",
@@ -276,18 +276,15 @@ const renderMatchResult = (result?: string) => {
   if (!result) return null;
   const parts = result.split('-').map(p => p.trim());
   if (parts.length === 2) {
-    // Left-to-right score rendering order ensures they are next to the appropriate team
-    // Team 1 is displayed on the Right (first in RTL), Team 2 is displayed on the Left (second in RTL).
-    // In dir="ltr", left element (parts[1]) corresponds to Left Team (Team 2),
-    // and right element (parts[0]) corresponds to Right Team (Team 1).
+    // Correct LTR display order ensures Left-to-Right scores align with natural teams reading direction
     return (
       <div 
         className="flex items-center justify-center gap-1.5 font-mono text-xl md:text-2xl font-black text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
         dir="ltr"
       >
-        <span>{parts[1]}</span>
-        <span className="text-zinc-500 font-sans text-lg">-</span>
         <span>{parts[0]}</span>
+        <span className="text-zinc-500 font-sans text-lg">-</span>
+        <span>{parts[1]}</span>
       </div>
     );
   }
@@ -295,6 +292,21 @@ const renderMatchResult = (result?: string) => {
     <span className="text-xl md:text-2xl font-black tracking-widest text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 font-mono shadow-[0_0_15px_rgba(239,68,68,0.1)]" dir="ltr">
       {result}
     </span>
+  );
+};
+
+const isGenericListUrl = (url?: string) => {
+  if (!url) return true;
+  const lowercase = url.toLowerCase().trim();
+  return (
+    lowercase.includes('matches-yesterday') ||
+    lowercase.includes('matches-tomorrow') ||
+    lowercase.includes('wp-admin') ||
+    lowercase === 'https://www.yalla9live.tv' ||
+    lowercase === 'https://www.yalla9live.tv/' ||
+    lowercase === 'https://yalla-live.top' ||
+    lowercase === 'https://yalla-live.top/' ||
+    lowercase === ''
   );
 };
 
@@ -458,7 +470,7 @@ export default function MatchesScreen() {
     <div className="min-h-screen bg-[#070708] text-white pb-32 selection:bg-red-650 selection:text-white font-sans">
       <Header />
 
-      <main className="max-w-6xl mx-auto px-4 md:px-6 pt-14 sm:pt-16 space-y-6">
+      <main className="max-w-6xl mx-auto px-4 md:px-6 pt-4 sm:pt-6 space-y-6">
         
         {/* CLEAN TABLE/GRID HEADER */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-zinc-950/40 border border-zinc-900/60 p-5 rounded-[2rem] shadow-lg">
@@ -772,6 +784,53 @@ export default function MatchesScreen() {
                           >
                             رجوع
                           </button>
+                        </div>
+                      </div>
+                    ) : isMatchEnded(activeStream.match) ? (
+                      /* LUXURY COMPLETED MATCH SPECIAL RECAP/CARD */
+                      <div className="p-8 text-center space-y-5 max-w-md mx-auto">
+                        <div className="w-16 h-16 rounded-full bg-red-650/10 border border-red-500/10 flex items-center justify-center text-red-500 mx-auto shadow-md">
+                          <CheckCircle className="w-9 h-9" />
+                        </div>
+                        <div className="space-y-2.5">
+                          <h4 className="text-sm font-black text-white">انتهت التغطية المباشرة للمباراة</h4>
+                          <div className="flex items-center justify-center gap-4 py-2 bg-zinc-900/40 rounded-2xl border border-zinc-850/50 max-w-sm mx-auto px-4">
+                            <span className="font-extrabold text-[11px] text-zinc-300">{activeStream.match.team1}</span>
+                            <span className="font-mono font-black text-red-500 text-base">{activeStream.match.result || "انتهت"}</span>
+                            <span className="font-extrabold text-[11px] text-zinc-300">{activeStream.match.team2}</span>
+                          </div>
+                          <p className="text-[10px] text-zinc-500 leading-relaxed">
+                            انتهت هذه المباراة بالفعل في وقتها وموعدها الرسمي. يمكنك متابعة أهم الكواليس وملخصات اللقاءات القادمة عبر صالتنا فور إطلاق البث الجديد للمباريات الحالية.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (!activeStream.match.live && !isMatchEnded(activeStream.match)) ? (
+                      /* LUXURY FUTURE MATCH SPECIAL COUNTDOWN CARD */
+                      <div className="p-8 text-center space-y-5 max-w-md mx-auto">
+                        <div className="w-16 h-16 rounded-full bg-red-650/10 border border-red-500/10 flex items-center justify-center text-red-500 mx-auto">
+                          <Clock className="w-9 h-9 text-red-500" />
+                        </div>
+                        <div className="space-y-2.5">
+                          <h4 className="text-sm font-black text-white">صالة العرض المباشر لم تفتتح بعد</h4>
+                          <p className="text-[11px] text-zinc-400 font-bold bg-zinc-900/50 px-3.5 py-1.5 rounded-full border border-zinc-850 inline-block">
+                            موعد البث: <span className="text-red-500 font-black">{activeStream.match.time}</span>
+                          </p>
+                          <p className="text-[10px] text-zinc-500 leading-relaxed">
+                            سيتم توفير بث اللقاء المباشر بشكل تلقائي مع جودة اتصال مستقرة وآمنة تماماً وقنوات متعددة قبل بداية السيرفر الناقل بـ 15 دقيقة. يمكنك التفاعل في دردشة الجمهور بالأسفل!
+                          </p>
+                        </div>
+                      </div>
+                    ) : isGenericListUrl(activeStream.iframeUrl) ? (
+                      /* NO FALLBACK LIST IN IFRAME: SHOW HIGHLY CHIC SERVER MAINTENANCE CARD */
+                      <div className="p-8 text-center space-y-5 max-w-md mx-auto">
+                        <div className="w-16 h-16 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-500 mx-auto">
+                          <Tv className="w-9 h-9 animate-pulse" />
+                        </div>
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-black text-white">تجهيز التردد الرقمي للخادم</h4>
+                          <p className="text-[10px] text-zinc-500 leading-relaxed">
+                            خادم البث الرياضي ذو الجودة التلقائية يخضع للبناء والتزامن الآمن لتأمين خادم بث سريع وبجودات متعددة تليق بتشجيعكم الكروي الاستثنائي.
+                          </p>
                         </div>
                       </div>
                     ) : (
