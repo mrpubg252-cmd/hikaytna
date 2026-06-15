@@ -20,7 +20,7 @@ interface EpisodeGridProps {
   onSelect: (ep: Episode, index: number) => void;
 }
 
-function formatEpisodeTitle(title: string, index: number, isMovie: boolean): string {
+export function formatEpisodeTitle(title: string, index: number, isMovie: boolean): string {
   if (isMovie) return "مشاهدة الفيلم";
   if (!title) return `الحلقة ${index + 1}`;
   

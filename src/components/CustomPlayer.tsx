@@ -12,6 +12,7 @@ import { Episode } from '../services/firebase';
 import { progressService } from '../services/progressService';
 import HorizontalEpisodeList from './HorizontalEpisodeList';
 import { useDevice } from '../context/DeviceAndNavigationContext';
+import { formatEpisodeTitle } from './EpisodeGrid';
 
 interface CustomPlayerProps {
   videoUrl: string;
@@ -1382,8 +1383,8 @@ const SafariNotification = () => {
       // Calculate minutes and seconds for the professional notification text
       const mins = Math.floor(savedSecond / 60);
       const secs = Math.floor(savedSecond % 60);
-      const formattedEp = episodes[episodeIndex]?.title || `${episodeIndex + 1}`;
-      setResumeTimeText(`الحلقة ${formattedEp} عند الدقيقة ${mins}:${secs.toString().padStart(2, '0')}`);
+      const formattedEpClean = formatEpisodeTitle(episodes[episodeIndex]?.title || "", episodeIndex, false);
+      setResumeTimeText(`تم الاستئناف: ${formattedEpClean} عند الدقيقة ${mins}:${secs.toString().padStart(2, '0')}`);
       setShowResumeNotification(true);
       setTimeout(() => setShowResumeNotification(false), 4500);
     }
@@ -1397,8 +1398,8 @@ const SafariNotification = () => {
         setCurrentTime(savedSecond);
         const mins = Math.floor(savedSecond / 60);
         const secs = Math.floor(savedSecond % 60);
-        const formattedEp = episodes[episodeIndex]?.title || `${episodeIndex + 1}`;
-        setResumeTimeText(`الحلقة ${formattedEp} عند الدقيقة ${mins}:${secs.toString().padStart(2, '0')}`);
+        const formattedEpClean = formatEpisodeTitle(episodes[episodeIndex]?.title || "", episodeIndex, false);
+        setResumeTimeText(`تم الاستئناف: ${formattedEpClean} عند الدقيقة ${mins}:${secs.toString().padStart(2, '0')}`);
         setShowResumeNotification(true);
         const timer = setTimeout(() => setShowResumeNotification(false), 4500);
         return () => clearTimeout(timer);
@@ -3017,15 +3018,15 @@ const SafariNotification = () => {
               <AnimatePresence>
                 {showResumeNotification && (
                   <motion.div
-                    initial={{ opacity: 0, y: 15, x: "-50%" }}
-                    animate={{ opacity: 1, y: 0, x: "-50%" }}
-                    exit={{ opacity: 0, y: -15, x: "-50%" }}
-                    className="absolute bottom-24 sm:bottom-28 left-1/2 z-[1500] bg-black/85 backdrop-blur-md rounded-2xl border border-primary/30 text-white px-5 py-3 shadow-[0_4px_30px_rgba(229,9,20,0.4)] flex items-center gap-3 font-semibold pointer-events-none select-none text-center max-w-sm w-[90%]"
+                    initial={{ opacity: 0, x: -50 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -50 }}
+                    className="absolute bottom-20 sm:bottom-24 left-4 sm:left-6 z-[1500] bg-zinc-950/92 backdrop-blur-md rounded-xl border border-red-500/10 text-white px-4 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.8)] flex items-center gap-2.5 font-bold pointer-events-none select-none text-right max-w-xs"
                   >
-                    <span className="text-xl animate-pulse">⏰</span>
+                    <span className="text-sm">⏰</span>
                     <div className="flex flex-col text-right">
-                      <span className="text-xs font-black text-primary">تم استئناف المشاهدة تلقائياً</span>
-                      <span className="text-[11px] text-zinc-300 font-bold">{resumeTimeText}</span>
+                      <span className="text-[10px] sm:text-[11px] font-black text-red-500 tracking-wider">تم الاستئناف</span>
+                      <span className="text-[11px] sm:text-[12px] text-zinc-200 mt-0.5">{resumeTimeText}</span>
                     </div>
                   </motion.div>
                 )}

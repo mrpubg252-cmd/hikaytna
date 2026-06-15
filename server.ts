@@ -1946,9 +1946,9 @@ document.head.appendChild(s);
                     
                     var redirect = "${redirectUrl}";
                     if (redirect) {
-                        window.location.href = redirect;
+                        window.location.replace(redirect);
                     } else {
-                        window.location.href = '/watch?id=' + encodeURIComponent("${seriesId}") + '&unlocked=true';
+                        window.location.replace('/watch?id=' + encodeURIComponent("${seriesId}") + '&unlocked=true');
                     }
                 };
             } else {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronRight, Share2, Heart, History, MessageSquare, X, ChevronDown, ChevronUp, Download, Trash2, Play, CheckCircle2, AlertTriangle, Globe, Wifi, WifiOff, ExternalLink, Sparkles, Loader2, Users } from 'lucide-react';
-import EpisodeGrid from '../components/EpisodeGrid';
+import EpisodeGrid, { formatEpisodeTitle } from '../components/EpisodeGrid';
 import CustomPlayer from '../components/CustomPlayer';
 import Header from '../components/Header';
 import { fetchEpisodesFromAPI, fetchPlayUrlFromAPI, fetchSeriesDetailsFromTMDB, fetchPersonCreditsFromTMDB } from '../services/api';
@@ -96,8 +96,8 @@ export default function WatchScreen() {
       setIsAdGatePassed(true);
     } else {
       setIsAdGatePassed(false);
-      // Direct full standalone window redirect to the Express-served /ads endpoint
-      window.location.href = `/ads?id=${encodeURIComponent(series.id)}`;
+      // Direct full standalone window replace to the Express-served /ads endpoint (prevents history pollution)
+      window.location.replace(`/ads?id=${encodeURIComponent(series.id)}`);
     }
   }, [series, location.search]);
 
@@ -985,7 +985,7 @@ export default function WatchScreen() {
 
                 <p className="text-zinc-500 font-bold text-xs sm:text-sm mt-4 flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                  {episodes[currentEpisode]?.title ? `الحلقة ${episodes[currentEpisode].title}` : `الحلقة ${currentEpisode + 1}`}
+                  {episodes[currentEpisode] ? formatEpisodeTitle(episodes[currentEpisode].title || "", currentEpisode, false) : `الحلقة ${currentEpisode + 1}`}
                 </p>
 
                 {isAdmin && (
