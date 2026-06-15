@@ -1759,8 +1759,85 @@ ${seriesContext}`;
     }
   });
 
+function getFallbackStreamByChannel(channelName: string, prefix: string = "6"): string {
+  const domain = prefix === "www" ? "kooralive360.com" : `${prefix}.kooralive360.com`;
+  if (!channelName) {
+    return `https://${domain}/albaplayer/bein-sports-max-1/`;
+  }
+  
+  const name = channelName.toLowerCase().replace(/\s+/g, '').trim();
+
+  const isBein = name.includes("bein") || name.includes("بين") || name.includes("بيان");
+  const isMax = name.includes("max") || name.includes("ماكس");
+  const isSsc = name.includes("ssc") || name.includes("اساس") || name.includes("اسسي");
+
+  // beIN SPORTS MAX
+  if (isBein && isMax) {
+    if (name.includes("1") || name.includes("١") || name.includes("one")) return `https://${domain}/albaplayer/bein-sports-max-1/`;
+    if (name.includes("2") || name.includes("٢") || name.includes("two")) return `https://${domain}/albaplayer/bein-sports-max-2/`;
+    if (name.includes("3") || name.includes("٣") || name.includes("three")) return `https://${domain}/albaplayer/bein-sports-max-3/`;
+    if (name.includes("4") || name.includes("٤") || name.includes("four")) return `https://${domain}/albaplayer/bein-sports-max-4/`;
+    return `https://${domain}/albaplayer/bein-sports-max-1/`;
+  }
+
+  // beIN SPORTS HD
+  if (isBein) {
+    if (name.includes("1") || name.includes("١") || name.includes("one")) return `https://${domain}/albaplayer/bein-sports-hd-1/`;
+    if (name.includes("2") || name.includes("٢") || name.includes("two")) return `https://${domain}/albaplayer/bein-sports-hd-2/`;
+    if (name.includes("3") || name.includes("٣") || name.includes("three")) return `https://${domain}/albaplayer/bein-sports-hd-3/`;
+    if (name.includes("4") || name.includes("٤") || name.includes("four")) return `https://${domain}/albaplayer/bein-sports-hd-4/`;
+    if (name.includes("5") || name.includes("٥") || name.includes("five")) return `https://${domain}/albaplayer/bein-sports-hd-5/`;
+    if (name.includes("6") || name.includes("٦") || name.includes("six")) return `https://${domain}/albaplayer/bein-sports-hd-6/`;
+    if (name.includes("7") || name.includes("٧") || name.includes("seven")) return `https://${domain}/albaplayer/bein-sports-hd-7/`;
+    if (name.includes("8") || name.includes("٨") || name.includes("eight")) return `https://${domain}/albaplayer/bein-sports-hd-8/`;
+    return `https://${domain}/albaplayer/bein-sports-hd-1/`;
+  }
+
+  // SSC Sports
+  if (isSsc || name.includes("الرياضيةالسعودية") || name.includes("السعوديةالرياضية")) {
+    if (name.includes("1") || name.includes("١") || name.includes("one")) return `https://${domain}/albaplayer/ssc-1-hd/`;
+    if (name.includes("2") || name.includes("٢") || name.includes("two")) return `https://${domain}/albaplayer/ssc-2-hd/`;
+    if (name.includes("3") || name.includes("٣") || name.includes("three")) return `https://${domain}/albaplayer/ssc-3-hd/`;
+    if (name.includes("4") || name.includes("٤") || name.includes("four")) return `https://${domain}/albaplayer/ssc-4-hd/`;
+    if (name.includes("5") || name.includes("٥") || name.includes("five")) return `https://${domain}/albaplayer/ssc-5-hd/`;
+    return `https://${domain}/albaplayer/ssc-1-hd/`;
+  }
+
+  // Abu Dhabi Sports
+  if (name.includes("abu") || name.includes("dhabi") || name.includes("أبوظبي") || name.includes("ابوظبي")) {
+    return `https://${domain}/albaplayer/abu-dhabi-sports-1/`;
+  }
+
+  // Alkass Sports
+  if (name.includes("alkass") || name.includes("الكأس") || name.includes("الكاس")) {
+    return `https://${domain}/albaplayer/alkass-one-hd/`;
+  }
+
+  // Algerian Ground
+  if (name.includes("algerian") || name.includes("الجزائر") || name.includes("الارضية") || name.includes("الأرضية")) {
+    return `https://${domain}/albaplayer/algerian-ground/`;
+  }
+
+  // Arryadia TNT
+  if (name.includes("arryadia") || name.includes("المغربية") || name.includes("الرياضيةالمغربية")) {
+    return `https://${domain}/albaplayer/arryadia-tnt-hd/`;
+  }
+
+  // ART
+  if (name.includes("art") || name.includes("افلام") || name.includes("سينما")) {
+    return `https://${domain}/albaplayer/art-afric-1/`;
+  }
+
+  if (name.includes("max1") || name.includes("ماكس1")) return `https://${domain}/albaplayer/bein-sports-max-1/`;
+  if (name.includes("max2") || name.includes("ماكس2")) return `https://${domain}/albaplayer/bein-sports-max-2/`;
+  if (name.includes("hd1") || name.includes("سبورت1")) return `https://${domain}/albaplayer/bein-sports-hd-1/`;
+  if (name.includes("hd2") || name.includes("سبورت2")) return `https://${domain}/albaplayer/bein-sports-hd-2/`;
+
+  return `https://${domain}/albaplayer/bein-sports-max-1/`;
+}
+
   app.get("/api/v1/matches/stream", async (req, res) => {
-    const { url } = req.query;
+    const { url, channel } = req.query;
     if (!url || typeof url !== "string") {
       return res.status(400).json({ error: "Missing match page URL" });
     }
@@ -1775,13 +1852,41 @@ ${seriesContext}`;
       });
 
       const html = response.data;
-      
-      // Look for var iframeUrl = "..."
-      const match = html.match(/var\s+iframeUrl\s*=\s*["']([^"']+)["']/);
-      let iframeUrl = match ? match[1] : null;
+      const $ = cheerio.load(html);
 
+      // 1. Try to extract from script matching '(let|const|var) iframeUrl = ...'
+      const match = html.match(/(let|const|var)\s+iframeUrl\s*=\s*["']([^"']+)["']/);
+      let iframeUrl = match ? match[2] : null;
+
+      // 2. Try to extract direct iframe src with matching characteristics
+      if (!iframeUrl || iframeUrl === "null" || iframeUrl === "undefined" || iframeUrl.trim() === "") {
+        $("iframe").each((_, el) => {
+          const src = $(el).attr("src");
+          const name = $(el).attr("name") || "";
+          if (src && src.startsWith("http")) {
+            if (src.includes("albaplayer") || src.includes("kooralive360") || src.includes("player") || name.includes("search_iframe")) {
+              iframeUrl = src;
+              return false;
+            }
+          }
+        });
+      }
+
+      // 3. Try to extract any anchor source linking to a player page
+      if (!iframeUrl || iframeUrl === "null" || iframeUrl === "undefined" || iframeUrl.trim() === "") {
+        $("a").each((_, el) => {
+          const href = $(el).attr("href");
+          if (href && href.startsWith("http")) {
+            if (href.includes("albaplayer") || href.includes("kooralive360") || href.includes("player")) {
+              iframeUrl = href;
+              return false;
+            }
+          }
+        });
+      }
+
+      let extractedPlayer = null;
       if (iframeUrl && iframeUrl.trim() !== "" && iframeUrl !== "null" && iframeUrl !== "undefined" && iframeUrl.startsWith("http")) {
-        // Recursive retrieval to extract the clean player container embed instead of showing the entire WordPress blogging shell
         try {
           const nestedResponse = await axios.get(iframeUrl, {
             headers: {
@@ -1790,25 +1895,22 @@ ${seriesContext}`;
             },
             timeout: 5000
           });
-          const nestedHtml = nestedResponse.data;
-          const $ = cheerio.load(nestedHtml);
-          
+          const n$ = cheerio.load(nestedResponse.data);
           let foundPlaybackUrl = "";
-          
-          // 1. Target embedvideo or video-1 wrapper elements first
-          $(".embedvideo iframe, #embedvideo iframe, .video-1 iframe, .embed-container iframe").each((_, el) => {
-            const src = $(el).attr("src");
+
+          // Look for nested iframes holding clean players
+          n$(".embedvideo iframe, #embedvideo iframe, .video-1 iframe, .embed-container iframe").each((_, el) => {
+            const src = n$(el).attr("src");
             if (src && src.startsWith("http")) {
               foundPlaybackUrl = src;
               return false;
             }
           });
 
-          // 2. Target standard iframes carrying video player indicators/domains
           if (!foundPlaybackUrl) {
-            $("iframe").each((_, el) => {
-              const src = $(el).attr("src");
-              const name = $(el).attr("name") || "";
+            n$("iframe").each((_, el) => {
+              const src = n$(el).attr("src");
+              const name = n$(el).attr("name") || "";
               if (src && src.startsWith("http")) {
                 if (src.includes("albaplayer") || src.includes("kooralive360") || src.includes("player") || name.includes("search_iframe")) {
                   foundPlaybackUrl = src;
@@ -1818,10 +1920,9 @@ ${seriesContext}`;
             });
           }
 
-          // 3. General iframe fallback (avoiding ad platforms or trackers)
           if (!foundPlaybackUrl) {
-            $("iframe").each((_, el) => {
-              const src = $(el).attr("src");
+            n$("iframe").each((_, el) => {
+              const src = n$(el).attr("src");
               if (src && src.startsWith("http")) {
                 const lowerSrc = src.toLowerCase();
                 if (!lowerSrc.includes("ads") && !lowerSrc.includes("google") && !lowerSrc.includes("facebook") && !lowerSrc.includes("twitter") && !lowerSrc.includes("telegram") && !lowerSrc.includes("analytics")) {
@@ -1834,20 +1935,66 @@ ${seriesContext}`;
 
           if (foundPlaybackUrl) {
             console.log(`Successfully extracted inner stream URL from wrapper page: ${foundPlaybackUrl}`);
-            iframeUrl = foundPlaybackUrl;
+            extractedPlayer = foundPlaybackUrl;
+          } else {
+            extractedPlayer = iframeUrl;
           }
-        } catch (nestedError: any) {
-          console.error("Failed to parse nested stream wrapper:", nestedError.message);
-          // Fall back gracefully to using the original iframeUrl instead of failing entirely
+        } catch (e) {
+          extractedPlayer = iframeUrl;
         }
-
-        return res.json({ status: true, iframeUrl });
       }
 
-      res.status(404).json({ status: false, error: "لا يوجد بث حي متوفر لهذه المباراة حالياً." });
+      // Generate backup fallbacks from channel name
+      const channelStr = typeof channel === "string" ? channel : "";
+      const primaryFallback = getFallbackStreamByChannel(channelStr, "6");
+      const secondaryFallback = getFallbackStreamByChannel(channelStr, "5");
+      const tertiaryFallback = getFallbackStreamByChannel(channelStr, "www");
+
+      const servers: any[] = [];
+
+      if (extractedPlayer) {
+        servers.push({ name: "سيرفر البث الرئيسي ⚡", url: extractedPlayer });
+      }
+
+      if (primaryFallback && primaryFallback !== extractedPlayer) {
+        servers.push({ name: "سيرفر البث الاحتياطي 1 🚀", url: primaryFallback });
+      }
+
+      if (secondaryFallback && secondaryFallback !== extractedPlayer && secondaryFallback !== primaryFallback) {
+        servers.push({ name: "سيرفر البث الاحتياطي 2 📺", url: secondaryFallback });
+      }
+
+      if (tertiaryFallback && tertiaryFallback !== extractedPlayer && tertiaryFallback !== primaryFallback && tertiaryFallback !== secondaryFallback) {
+        servers.push({ name: "سيرفر جودة الجوال 📱", url: tertiaryFallback });
+      }
+
+      if (servers.length === 0) {
+        servers.push({ name: "سيرفر البث الرئيسي 📺", url: "https://6.kooralive360.com/albaplayer/bein-sports-hd-1/" });
+      }
+
+      return res.json({
+        status: true,
+        iframeUrl: servers[0].url,
+        servers
+      });
+
     } catch (error: any) {
       console.error("Error retrieving stream URL:", error.message);
-      res.status(500).json({ status: false, error: "حدث خطأ أثناء محاولة جلب البث المباشر." });
+      
+      const channelStr = typeof channel === "string" ? channel : "";
+      const primaryFallback = getFallbackStreamByChannel(channelStr, "6");
+      const secondaryFallback = getFallbackStreamByChannel(channelStr, "5");
+
+      const servers = [
+        { name: "سيرفر البث الاحتياطي 1 🚀", url: primaryFallback || "https://6.kooralive360.com/albaplayer/bein-sports-hd-1/" },
+        { name: "سيرفر البث الاحتياطي 2 📺", url: secondaryFallback || "https://5.kooralive360.com/albaplayer/bein-sports-hd-1/" }
+      ];
+
+      return res.json({
+        status: true,
+        iframeUrl: servers[0].url,
+        servers
+      });
     }
   });
 

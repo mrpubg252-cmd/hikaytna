@@ -27,7 +27,12 @@ export default function MatchesScreen() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeStream, setActiveStream] = useState<{ match: Match; iframeUrl: string; streamError?: boolean } | null>(null);
+  const [activeStream, setActiveStream] = useState<{ 
+    match: Match; 
+    iframeUrl: string; 
+    streamError?: boolean; 
+    servers?: { name: string; url: string }[] 
+  } | null>(null);
   const [loadingStream, setLoadingStream] = useState<string | null>(null); // match ID of the clicked stream
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'live' | 'cup'>('all');
@@ -118,10 +123,15 @@ export default function MatchesScreen() {
 
     setLoadingStream(match.id);
     try {
-      const res = await fetch(getApiUrl(`/api/v1/matches/stream?url=${encodeURIComponent(match.matchPageUrl)}`));
+      const res = await fetch(getApiUrl(`/api/v1/matches/stream?url=${encodeURIComponent(match.matchPageUrl)}&channel=${encodeURIComponent(match.channel)}`));
       const data = await res.json();
       if (data.status && data.iframeUrl) {
-        setActiveStream({ match, iframeUrl: data.iframeUrl, streamError: false });
+        setActiveStream({ 
+          match, 
+          iframeUrl: data.iframeUrl, 
+          streamError: false,
+          servers: data.servers || [{ name: "سيرفر البث الرئيسي ⚡", url: data.iframeUrl }]
+        });
       } else {
         // Activate in-modal stream-error view
         setActiveStream({ match, iframeUrl: "", streamError: true });
@@ -461,15 +471,48 @@ export default function MatchesScreen() {
                         </div>
                       </div>
                     ) : (
-                      /* Embed Stream Frame output */
-                      <iframe
-                        src={activeStream.iframeUrl}
-                        title="Live Match Player"
-                        className="w-full h-full border-none bg-black"
-                        allowFullScreen
-                        scrolling="no"
-                        allow="autoplay; encrypted-media"
-                      />
+                      /* Embed Stream Frame output with Multi-server switcher tabs */
+                      <div className="w-full h-full flex flex-col">
+                        <div className="flex-1 min-h-0 bg-black relative">
+                          <iframe
+                            src={activeStream.iframeUrl}
+                            title="Live Match Player"
+                            className="w-full h-full border-none bg-black"
+                            allowFullScreen
+                            scrolling="no"
+                            allow="autoplay; encrypted-media"
+                          />
+                        </div>
+                        
+                        {/* Server Switcher Selection Strip */}
+                        {activeStream.servers && activeStream.servers.length > 1 && (
+                          <div className="p-2.5 bg-[#08080a] border-t border-zinc-900 flex flex-wrap items-center justify-center gap-2">
+                            <span className="text-[10px] text-zinc-500 font-bold ml-1">تبديل السيرفر:</span>
+                            {activeStream.servers.map((srv, idx) => {
+                              const isActive = activeStream.iframeUrl === srv.url;
+                              return (
+                                <button
+                                  key={idx}
+                                  onClick={() => {
+                                    setActiveStream({
+                                      ...activeStream,
+                                      iframeUrl: srv.url
+                                    });
+                                  }}
+                                  className={`py-1.5 px-3 rounded-lg text-[10px] font-black transition cursor-pointer active:scale-95 flex items-center gap-1.5 ${
+                                    isActive
+                                      ? "bg-red-600 text-white shadow-lg shadow-red-600/15"
+                                      : "bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white border border-zinc-800"
+                                  }`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-white animate-pulse" : "bg-zinc-600"}`} />
+                                  {srv.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
 
