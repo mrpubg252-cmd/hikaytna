@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Tv, Calendar, RefreshCw, Play, X, Loader2, Sparkles, CheckCircle, Info, Flame, AlertCircle, MessageSquare, ExternalLink, Clock } from 'lucide-react';
+import { Trophy, Tv, Calendar, RefreshCw, Play, X, Loader2, Sparkles, CheckCircle, Info, Flame, AlertCircle, MessageSquare } from 'lucide-react';
 import Header from '../components/Header';
 import BottomNav from '../components/BottomNav';
 import MatchChat from '../components/MatchChat';
@@ -23,293 +23,6 @@ interface Match {
   ended?: boolean;
 }
 
-const YESTERDAY_FALLBACKS: Match[] = [
-  {
-    id: "yest_1",
-    team1: "البرازيل",
-    team2: "المغرب",
-    logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/البرازيل.webp",
-    logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/المغرب.webp",
-    matchPageUrl: "",
-    channel: "beIN SPORTS MAX 2",
-    commentator: "غير معروف",
-    time: "انتهت",
-    result: "1 - 1",
-    statusText: "انتهت المباراة",
-    league: "دولي, كأس العالم - المجموعة ج",
-    live: false,
-    ended: true
-  },
-  {
-    id: "yest_2",
-    team1: "هايتي",
-    team2: "اسكتلندا",
-    logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/هايتي.webp",
-    logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/اسكتلندا.webp",
-    matchPageUrl: "",
-    channel: "beIN SPORTS MAX 1",
-    commentator: "غير معروف",
-    time: "انتهت",
-    result: "1 - 0",
-    statusText: "انتهت المباراة",
-    league: "دولي, كأس العالم - المجموعة ج",
-    live: false,
-    ended: true
-  },
-  {
-    id: "yest_3",
-    team1: "أستراليا",
-    team2: "تركيا",
-    logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/استراليا.webp",
-    logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/تركيا.webp",
-    matchPageUrl: "",
-    channel: "beIN SPORTS MAX 2",
-    commentator: "غير معروف",
-    time: "انتهت",
-    result: "0 - 2",
-    statusText: "انتهت المباراة",
-    league: "دولي, كأس العالم - المجموعة د",
-    live: false,
-    ended: true
-  },
-  {
-    id: "yest_4",
-    team1: "الجيش الملكي",
-    team2: "الوداد الرياضي",
-    logo1: "https://www.yalla9live.tv/wp-content/uploads/2024/12/4171692205946.png",
-    logo2: "https://www.yalla9live.tv/wp-content/uploads/2024/12/3131694715431.png",
-    matchPageUrl: "",
-    channel: "الرياضية المغربية (3)",
-    commentator: "غير معروف",
-    time: "انتهت",
-    result: "1 - 2",
-    statusText: "انتهت المباراة",
-    league: "المغرب, الدوري المغربي",
-    live: false,
-    ended: true
-  },
-  {
-    id: "yest_5",
-    team1: "حسنية أكادير",
-    team2: "نهضة بركان",
-    logo1: "https://ww2.yalla--live.net/wp-content/uploads/2025/11/8323.png",
-    logo2: "https://ar.yalla--live.net/wp-content/uploads/2025/04/1529.png",
-    matchPageUrl: "",
-    channel: "تمازيغت (8)",
-    commentator: "غير معروف",
-    time: "انتهت",
-    result: "0 - 1",
-    statusText: "انتهت المباراة",
-    league: "المغرب, الدوري المغربي",
-    live: false,
-    ended: true
-  },
-  {
-    id: "yest_6",
-    team1: "الرجاء البيضاوي",
-    team2: "اتحاد تواركة",
-    logo1: "https://as.yalla--live.net/wp-content/uploads/2025/01/451.png",
-    logo2: "https://ar.yalla--live.net/wp-content/uploads/2025/10/14597.png",
-    matchPageUrl: "",
-    channel: "المغربية (5)",
-    commentator: "غير معروف",
-    time: "انتهت",
-    result: "1 - 1",
-    statusText: "انتهت المباراة",
-    league: "المغرب, الدوري المغربي",
-    live: false,
-    ended: true
-  },
-  {
-    id: "yest_7",
-    team1: "ألمانيا",
-    team2: "كوراساو",
-    logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/المانياا.webp",
-    logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/كوراساو.webp",
-    matchPageUrl: "",
-    channel: "beIN SPORTS MAX 1",
-    commentator: "غير معروف",
-    time: "انتهت",
-    result: "1 - 7",
-    statusText: "انتهت المباراة",
-    league: "دولي, كأس العالم - المجموعة ه",
-    live: false,
-    ended: true
-  },
-  {
-    id: "yest_8",
-    team1: "هولندا",
-    team2: "اليابان",
-    logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/هولندا.webp",
-    logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/اليابان.webp",
-    matchPageUrl: "",
-    channel: "beIN SPORTS MAX 2",
-    commentator: "غير معروف",
-    time: "انتهت",
-    result: "2 - 2",
-    statusText: "انتهت المباراة",
-    league: "دولي, كأس العالم - المجموعة و",
-    live: false,
-    ended: true
-  }
-];
-
-const TOMORROW_FALLBACKS: Match[] = [
-  {
-    id: "tomo_1",
-    team1: "السعودية",
-    team2: "أوروغواي",
-    logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/السعوديه.webp",
-    logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/الاوروجواي.webp",
-    matchPageUrl: "https://worldcup2026go.blogspot.com/2026/06/bein1.html",
-    channel: "beIN SPORTS MAX 1",
-    commentator: "حسن العيدروس",
-    time: "1:00 AM",
-    result: "",
-    statusText: "لم تبدأ بعد",
-    league: "دولي, كأس العالم - المجموعة ح",
-    live: false,
-    ended: false
-  },
-  {
-    id: "tomo_2",
-    team1: "إيران",
-    team2: "نيوزلندا",
-    logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/ايران.webp",
-    logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/نيوزيلندا.webp",
-    matchPageUrl: "https://worldcup2026go.blogspot.com/2026/06/bein2.html",
-    channel: "beIN SPORTS MAX 2",
-    commentator: "عامر الخوذيري",
-    time: "4:00 AM",
-    result: "",
-    statusText: "لم تبدأ بعد",
-    league: "دولي, كأس العالم - المجموعة ز",
-    live: false,
-    ended: false
-  },
-  {
-    id: "tomo_3",
-    team1: "فرنسا",
-    team2: "السنغال",
-    logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/فرنسا.webp",
-    logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/السنغال-1.webp",
-    matchPageUrl: "https://worldcup2026go.blogspot.com/2026/06/bein1.html",
-    channel: "beIN SPORTS MAX 1",
-    commentator: "خليل البلوشي",
-    time: "10:00 PM",
-    result: "",
-    statusText: "لم تبدأ بعد",
-    league: "دولي, كأس العالم - المجموعة ط",
-    live: false,
-    ended: false
-  }
-];
-
-const TODAY_FALLBACKS: Match[] = [
-  {
-    id: "today_1",
-    team1: "كوت ديفوار",
-    team2: "الإكوادور",
-    logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/ساحل-العاج.webp",
-    logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/الاكوادور.webp",
-    matchPageUrl: "",
-    channel: "beIN SPORTS MAX 1",
-    commentator: "غير معروف",
-    time: "2:00 AM",
-    result: "0 - 1",
-    statusText: "انتهت المباراة",
-    league: "دولي, كأس العالم - المجموعة ه",
-    live: false,
-    ended: true
-  },
-  {
-    id: "today_2",
-    team1: "السويد",
-    team2: "تونس",
-    logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/السويد.webp",
-    logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/تونس.webp",
-    matchPageUrl: "",
-    channel: "beIN SPORTS MAX 2",
-    commentator: "غير معروف",
-    time: "5:00 AM",
-    result: "1 - 5",
-    statusText: "انتهت المباراة",
-    league: "دولي, كأس العالم - المجموعة و",
-    live: false,
-    ended: true
-  },
-  {
-    id: "today_3",
-    team1: "إسبانيا",
-    team2: "الرأس الأخضر",
-    logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/اسبانيا.webp",
-    logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/الراس-الاخضر.webp",
-    matchPageUrl: "",
-    channel: "beIN SPORTS MAX 1",
-    commentator: "علي سعيد الكعبي",
-    time: "7:00 PM",
-    result: "0 - 0",
-    statusText: "انتهت المباراة",
-    league: "دولي, كأس العالم - المجموعة ح",
-    live: false,
-    ended: true
-  },
-  {
-    id: "today_4",
-    team1: "بلجيكا",
-    team2: "مصر",
-    logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/بلجيكا.webp",
-    logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/مصر.webp",
-    matchPageUrl: "https://worldcup2026go.blogspot.com/2026/06/bein2.html",
-    channel: "beIN SPORTS MAX 2",
-    commentator: "علي محمد علي",
-    time: "10:00 PM",
-    result: "",
-    statusText: "لم تبدأ بعد",
-    league: "دولي, كأس العالم - المجموعة ز",
-    live: true,
-    ended: false
-  }
-];
-
-const renderMatchResult = (result?: string) => {
-  if (!result) return null;
-  const parts = result.split('-').map(p => p.trim());
-  if (parts.length === 2) {
-    // Correct LTR display order ensures Left-to-Right scores align with natural teams reading direction
-    return (
-      <div 
-        className="flex items-center justify-center gap-1.5 font-mono text-xl md:text-2xl font-black text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
-        dir="ltr"
-      >
-        <span>{parts[0]}</span>
-        <span className="text-zinc-500 font-sans text-lg">-</span>
-        <span>{parts[1]}</span>
-      </div>
-    );
-  }
-  return (
-    <span className="text-xl md:text-2xl font-black tracking-widest text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 font-mono shadow-[0_0_15px_rgba(239,68,68,0.1)]" dir="ltr">
-      {result}
-    </span>
-  );
-};
-
-const isGenericListUrl = (url?: string) => {
-  if (!url) return true;
-  const lowercase = url.toLowerCase().trim();
-  return (
-    lowercase.includes('matches-yesterday') ||
-    lowercase.includes('matches-tomorrow') ||
-    lowercase.includes('wp-admin') ||
-    lowercase === 'https://www.yalla9live.tv' ||
-    lowercase === 'https://www.yalla9live.tv/' ||
-    lowercase === 'https://yalla-live.top' ||
-    lowercase === 'https://yalla-live.top/' ||
-    lowercase === ''
-  );
-};
-
 export default function MatchesScreen() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
@@ -317,7 +30,6 @@ export default function MatchesScreen() {
   const [activeStream, setActiveStream] = useState<{ match: Match; iframeUrl: string; streamError?: boolean } | null>(null);
   const [loadingStream, setLoadingStream] = useState<string | null>(null); // match ID of the clicked stream
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDayTab, setSelectedDayTab] = useState<'yesterday' | 'today' | 'tomorrow'>('today');
   const [activeFilter, setActiveFilter] = useState<'all' | 'live' | 'cup'>('all');
   const [currentTime, setCurrentTime] = useState<string>('');
 
@@ -350,12 +62,10 @@ export default function MatchesScreen() {
       if (data.status && Array.isArray(data.matches)) {
         setMatches(data.matches);
       } else {
-        // Fall back to showing fallback data even if scrape is offline
-        setMatches([]);
+        setError('لا يوجد خوادم بث حي نشطة حالياً. يرجى المتابعة لاحقاً.');
       }
     } catch (err: any) {
-      // Graceful fallback to cached data or local empty array without hard blocking
-      setMatches([]);
+      setError('خطأ في الاتصال بالخادم الرئيسي لقنوات البث. يرجى التحديث.');
     } finally {
       setLoading(false);
     }
@@ -369,12 +79,6 @@ export default function MatchesScreen() {
   }, []);
 
   const handleWatchStream = async (match: Match, bypassAdGate = false) => {
-    // If it has no match page URL (yesterday fallbacks), just provide a nice highlights screen
-    if (!match.matchPageUrl) {
-      setActiveStream({ match, iframeUrl: "https://www.youtube.com/embed/5F_P5_Kx86I", streamError: false });
-      return;
-    }
-
     const params = new URLSearchParams(window.location.search);
     const isUnlocked = params.get('unlocked') === 'true' && params.get('matchId') === match.id;
 
@@ -392,12 +96,11 @@ export default function MatchesScreen() {
       if (data.status && data.iframeUrl) {
         setActiveStream({ match, iframeUrl: data.iframeUrl, streamError: false });
       } else {
-        // Fallback to active external stream link inside the modal if the scraper results are blank
-        setActiveStream({ match, iframeUrl: match.matchPageUrl, streamError: false });
+        // Activate in-modal stream-error view
+        setActiveStream({ match, iframeUrl: "", streamError: true });
       }
     } catch (err) {
-      // Fallback directly to the direct match URL to allow beautiful user experience
-      setActiveStream({ match, iframeUrl: match.matchPageUrl, streamError: false });
+      setActiveStream({ match, iframeUrl: "", streamError: true });
     } finally {
       setLoadingStream(null);
     }
@@ -411,8 +114,7 @@ export default function MatchesScreen() {
     const unlocked = params.get('unlocked');
     
     if (matchId && unlocked === 'true') {
-      const allPossibleMatches = [...YESTERDAY_FALLBACKS, ...TODAY_FALLBACKS, ...TOMORROW_FALLBACKS, ...matches];
-      const targetMatch = allPossibleMatches.find(m => m.id === matchId);
+      const targetMatch = matches.find(m => m.id === matchId);
       if (targetMatch) {
         handleWatchStream(targetMatch, true);
         const newUrl = window.location.pathname;
@@ -421,48 +123,22 @@ export default function MatchesScreen() {
     }
   }, [matches]);
 
-  // Day based selection logic
-  const dayMatches = React.useMemo(() => {
-    if (selectedDayTab === 'yesterday') {
-      return YESTERDAY_FALLBACKS;
-    }
-    if (selectedDayTab === 'tomorrow') {
-      return TOMORROW_FALLBACKS;
-    }
-    // Merge today's scraped matches with TODAY_FALLBACKS dynamically & without duplicates
-    const mergedToday = [...matches];
-    TODAY_FALLBACKS.forEach(fallback => {
-      const isDuplicate = matches.some(scraped => 
-        scraped.team1.toLowerCase().includes(fallback.team1.toLowerCase()) || 
-        fallback.team1.toLowerCase().includes(scraped.team1.toLowerCase()) ||
-        scraped.team2.toLowerCase().includes(fallback.team2.toLowerCase()) ||
-        fallback.team2.toLowerCase().includes(scraped.team2.toLowerCase())
-      );
-      if (!isDuplicate) {
-        mergedToday.push(fallback);
-      }
-    });
-    return mergedToday;
-  }, [matches, selectedDayTab]);
-
   // Filter and Search logic
-  const filteredMatches = React.useMemo(() => {
-    return dayMatches.filter(m => {
-      const matchesSearch = 
-        m.team1.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.team2.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.league.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.channel.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredMatches = matches.filter(m => {
+    const matchesSearch = 
+      m.team1.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.team2.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.league.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.channel.toLowerCase().includes(searchQuery.toLowerCase());
 
-      if (!matchesSearch) return false;
+    if (!matchesSearch) return false;
 
-      if (activeFilter === 'live') return m.live;
-      if (activeFilter === 'cup') {
-        return m.league.includes('كأس') || m.league.includes('العالم') || m.league.includes('كاس') || m.league.includes('أبطال') || m.league.includes('دوري');
-      }
-      return true;
-    });
-  }, [dayMatches, searchQuery, activeFilter]);
+    if (activeFilter === 'live') return m.live;
+    if (activeFilter === 'cup') {
+      return m.league.includes('كأس') || m.league.includes('العالم') || m.league.includes('كاس') || m.league.includes('أبطال') || m.league.includes('دوري');
+    }
+    return true;
+  });
 
   const totalLiveCount = matches.filter(m => m.live).length;
 
@@ -470,17 +146,13 @@ export default function MatchesScreen() {
     <div className="min-h-screen bg-[#070708] text-white pb-32 selection:bg-red-650 selection:text-white font-sans">
       <Header />
 
-      <main className="max-w-6xl mx-auto px-4 md:px-6 pt-4 sm:pt-6 space-y-6">
+      <main className="max-w-6xl mx-auto px-4 md:px-6 pt-14 sm:pt-16 space-y-6">
         
         {/* CLEAN TABLE/GRID HEADER */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-zinc-950/40 border border-zinc-900/60 p-5 rounded-[2rem] shadow-lg">
           <div className="flex items-center gap-2.5">
             <div className="w-1.5 h-6 bg-red-600 rounded-full" />
-            <h1 className="text-base font-black text-white">
-              {selectedDayTab === 'yesterday' && "نتائج مباريات الأمس"}
-              {selectedDayTab === 'today' && "جدول مباريات اليوم"}
-              {selectedDayTab === 'tomorrow' && "جدول مباريات الغد"}
-            </h1>
+            <h1 className="text-base font-black text-white">جدول مباريات اليوم</h1>
           </div>
 
           {/* Search Input & Refresh Button */}
@@ -494,56 +166,18 @@ export default function MatchesScreen() {
                 className="w-full bg-[#0d0d0f] border border-zinc-900 rounded-2xl px-4 py-2.5 text-[11px] text-right text-white focus:outline-none focus:border-red-600 placeholder-zinc-500 transition-colors font-sans"
               />
             </div>
-            {selectedDayTab === 'today' && (
-              <button 
-                onClick={() => fetchMatches(true)}
-                className="p-2.5 bg-zinc-900 hover:bg-zinc-800 active:scale-95 border border-zinc-850 rounded-2xl text-zinc-400 hover:text-white transition cursor-pointer shrink-0"
-                title="تحديث البيانات"
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-red-500' : ''}`} />
-              </button>
-            )}
+            <button 
+              onClick={() => fetchMatches(true)}
+              className="p-2.5 bg-zinc-900 hover:bg-zinc-800 active:scale-95 border border-zinc-850 rounded-2xl text-zinc-400 hover:text-white transition cursor-pointer shrink-0"
+              title="تحديث البيانات"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-red-500' : ''}`} />
+            </button>
           </div>
         </div>
 
-        {/* DAY NAV TABS GROUP (NATIVE ELEGANT DESIGN) */}
-        <div className="grid grid-cols-3 gap-2.5 bg-zinc-950/20 border border-zinc-900/60 p-2 rounded-2xl md:rounded-3xl max-w-xl mx-auto overflow-hidden">
-          <button
-            onClick={() => setSelectedDayTab('yesterday')}
-            className={`py-3 px-1.5 md:px-4 rounded-xl md:rounded-2xl text-[11px] md:text-xs font-black transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
-              selectedDayTab === 'yesterday'
-                ? "bg-[#104783]/15 text-[#42a5f5] border border-[#104783]/30 shadow-[0_0_15px_rgba(16,71,131,0.15)]"
-                : "bg-[#0d0d0f]/60 hover:bg-zinc-900/40 text-zinc-400 hover:text-zinc-200 border border-transparent"
-            }`}
-          >
-            <span>مباريات الأمس</span>
-          </button>
-
-          <button
-            onClick={() => setSelectedDayTab('today')}
-            className={`py-3 px-1.5 md:px-4 rounded-xl md:rounded-2xl text-[11px] md:text-xs font-black transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
-              selectedDayTab === 'today'
-                ? "bg-[#931800]/15 text-[#f44336] border border-[#931800]/30 shadow-[0_0_15px_rgba(147,24,0,0.15)]"
-                : "bg-[#0d0d0f]/60 hover:bg-zinc-900/40 text-zinc-400 hover:text-zinc-200 border border-transparent"
-            }`}
-          >
-            <span>مباريات اليوم</span>
-          </button>
-
-          <button
-            onClick={() => setSelectedDayTab('tomorrow')}
-            className={`py-3 px-1.5 md:px-4 rounded-xl md:rounded-2xl text-[11px] md:text-xs font-black transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
-              selectedDayTab === 'tomorrow'
-                ? "bg-[#caa107]/15 text-[#ffca28] border border-[#caa107]/30 shadow-[0_0_15px_rgba(202,161,7,0.15)]"
-                : "bg-[#0d0d0f]/60 hover:bg-zinc-900/40 text-zinc-400 hover:text-zinc-200 border border-transparent"
-            }`}
-          >
-            <span>مباريات الغد</span>
-          </button>
-        </div>
-
         {/* LOADING STATE CARD */}
-        {loading && selectedDayTab === 'today' && matches.length === 0 && (
+        {loading && matches.length === 0 && (
           <div className="bg-zinc-950/40 border border-zinc-900 rounded-[2rem] py-24 text-center space-y-4 shadow-sm">
             <div className="relative inline-flex items-center justify-center">
               <div className="w-16 h-16 rounded-full border-t-2 border-b-2 border-red-600 animate-spin" />
@@ -556,13 +190,30 @@ export default function MatchesScreen() {
           </div>
         )}
 
+        {/* ERROR STATE CARD */}
+        {error && matches.length === 0 && (
+          <div className="bg-zinc-950/20 border border-zinc-900 rounded-[2rem] p-8 text-center space-y-4 max-w-xl mx-auto">
+            <Info className="w-12 h-12 text-red-500 mx-auto" />
+            <div>
+              <h3 className="text-sm font-black text-white">تعذر تغذية البيانات</h3>
+              <p className="text-[11px] text-zinc-500 mt-1">{error}</p>
+            </div>
+            <button 
+              onClick={() => fetchMatches()}
+              className="bg-red-600 hover:bg-red-500 text-white px-6 py-2.5 rounded-xl text-[10px] font-bold active:scale-95 transition cursor-pointer"
+            >
+              تحديث الجدول الآن 🔄
+            </button>
+          </div>
+        )}
+
         {/* EMPTY MATCHES STATE */}
         {!loading && filteredMatches.length === 0 && (
           <div className="bg-[#0b0b0d] border border-zinc-900 rounded-[2rem] p-16 text-center space-y-3 shadow-md max-w-2xl mx-auto">
-            <AlertCircle className="w-12 h-12 text-zinc-700/60 mx-auto animate-pulse" />
-            <h3 className="text-sm font-black text-zinc-300">لا يوجد مواجهات حالياً</h3>
-            <p className="text-zinc-500 text-[10px] max-w-lg mx-auto leading-relaxed">
-              لا توجد مواجهات مطابقة لشروط البحث أو الفرز في الوقت الحالي. يرجى العودة لاحقاً أو التحقق من الأيام الأخرى.
+            <AlertCircle className="w-12 h-12 text-red-500/20 mx-auto animate-bounce" />
+            <h3 className="text-sm font-black text-zinc-300">لا يوجد بث للمباريات حالياً</h3>
+            <p className="text-zinc-550 text-[10px] max-w-lg mx-auto">
+              تظهر هنا روابط وبث المباراة فور انطلاق اللقاءات المقررة. لا توجد مواجهات مطابقة لشروط الفرز الحالية. يرجى تصفح فئات أخرى.
             </p>
           </div>
         )}
@@ -589,7 +240,7 @@ export default function MatchesScreen() {
                   {/* Match Header */}
                   <div className="relative z-10 flex items-center justify-between text-[11px] mb-6">
                     <span className="font-black text-zinc-300 bg-zinc-900/60 border border-zinc-850 py-1.5 px-3.5 rounded-full shrink-0">
-                      {m.league}
+                      🏆 {m.league}
                     </span>
                     {m.live ? (
                       <span className="flex items-center gap-1.5 font-bold text-red-400 bg-red-950/40 border border-red-500/25 px-2.5 py-1 rounded-full text-[10px] animate-pulse">
@@ -610,12 +261,12 @@ export default function MatchesScreen() {
                     <div className="flex-1 flex flex-col items-center justify-center text-center space-y-3">
                       <div className="relative w-16 h-16 bg-black/50 border border-zinc-900 rounded-full p-3 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
                         <img 
-                           src={m.logo1 || 'https://via.placeholder.com/70?text=Logo'} 
-                           alt={m.team1}
-                           className="w-full h-full object-contain"
-                           onError={(e) => {
-                             (e.target as HTMLImageElement).src = 'https://via.placeholder.com/70?text=No+Logo';
-                           }}
+                          src={m.logo1 || 'https://via.placeholder.com/70?text=Logo'} 
+                          alt={m.team1}
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/70?text=No+Logo';
+                          }}
                         />
                       </div>
                       <h4 className="text-xs md:text-sm font-black truncate max-w-[120px] text-white">
@@ -626,7 +277,9 @@ export default function MatchesScreen() {
                     {/* VS Badge */}
                     <div className="shrink-0 flex flex-col items-center justify-center space-y-1.5">
                       {m.result ? (
-                        renderMatchResult(m.result)
+                        <span className="text-xl md:text-2xl font-black tracking-widest text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 font-mono shadow-[0_0_15px_rgba(239,68,68,0.1)]">
+                          {m.result}
+                        </span>
                       ) : (
                         <span className="text-xs font-black text-rose-500 bg-rose-500/5 px-3 py-1.5 rounded-2xl border border-rose-500/10">
                           VS
@@ -671,33 +324,31 @@ export default function MatchesScreen() {
                       </div>
                       {m.commentator && m.commentator !== "غير معروف" && (
                         <span className="text-[10px] text-zinc-500 font-bold shrink-0">
-                          بصوت: {m.commentator}
+                          🎙️ {m.commentator}
                         </span>
                       )}
                     </div>
 
                     <button
-                      onClick={() => !isMatchEnded(m) && handleWatchStream(m)}
-                      disabled={loadingStream !== null || isMatchEnded(m)}
+                      onClick={() => m.live && handleWatchStream(m)}
+                      disabled={loadingStream !== null || !m.live}
                       className={`py-2.5 px-6 rounded-2xl text-[11px] font-black flex items-center gap-2 transition duration-250 shrink-0 ${
-                        isMatchEnded(m)
-                          ? "bg-zinc-950 border border-zinc-900 text-zinc-600 cursor-not-allowed"
-                          : m.live 
-                            ? "bg-red-650 hover:bg-red-550 text-white cursor-pointer shadow-lg shadow-red-600/10 hover:shadow-red-600/25 active:scale-95" 
-                            : "bg-[#0c310c]/40 hover:bg-[#0c310c]/70 text-[#4caf50] border border-[#2e7d32]/30 cursor-pointer shadow-lg shadow-green-900/10 active:scale-95"
+                        m.live 
+                          ? "bg-red-600 hover:bg-red-500 text-white cursor-pointer shadow-lg shadow-red-600/10 hover:shadow-red-600/25 active:scale-95" 
+                          : "bg-zinc-950 border border-zinc-900 text-zinc-505 cursor-not-allowed"
                       }`}
                     >
                       {loadingStream === m.id ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-current" />
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
                       ) : (
-                        <Play className={`w-3.5 h-3.5 ${!isMatchEnded(m) ? 'fill-current' : 'text-zinc-600'}`} />
+                        <Play className={`w-3.5 h-3.5 ${m.live ? 'fill-current text-white' : 'text-zinc-750'}`} />
                       )}
                       <span>
-                        {isMatchEnded(m)
-                          ? "انتهت المباراة" 
-                          : m.live
-                            ? "شاهد البث المباشر"
-                            : "دخول صالة البث"}
+                        {m.live 
+                          ? "شاهد المباراة والدردشة" 
+                          : isMatchEnded(m)
+                            ? "انتهت المباراة" 
+                            : "لم تبدأ بعد"}
                       </span>
                     </button>
                   </div>
@@ -744,14 +395,12 @@ export default function MatchesScreen() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button 
-                      onClick={() => setActiveStream(null)}
-                      className="p-2 hover:bg-zinc-900 rounded-full transition text-zinc-400 hover:text-white cursor-pointer shrink-0"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
+                  <button 
+                    onClick={() => setActiveStream(null)}
+                    className="p-2 hover:bg-zinc-900 rounded-full transition text-zinc-400 hover:text-white cursor-pointer shrink-0"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
 
                 {/* Main Shared Grid Area: Left is Player / Error view, Right is Chat */}
@@ -776,7 +425,7 @@ export default function MatchesScreen() {
                             onClick={() => handleWatchStream(activeStream.match, true)}
                             className="bg-red-600 hover:bg-red-500 text-white font-extrabold text-[10px] px-5 py-2.5 rounded-xl transition active:scale-95 cursor-pointer"
                           >
-                            تثبيت الاتصال بالبث
+                            تثبيت الاتصال بالبث 🔄
                           </button>
                           <button
                             onClick={() => setActiveStream(null)}
@@ -784,53 +433,6 @@ export default function MatchesScreen() {
                           >
                             رجوع
                           </button>
-                        </div>
-                      </div>
-                    ) : isMatchEnded(activeStream.match) ? (
-                      /* LUXURY COMPLETED MATCH SPECIAL RECAP/CARD */
-                      <div className="p-8 text-center space-y-5 max-w-md mx-auto">
-                        <div className="w-16 h-16 rounded-full bg-red-650/10 border border-red-500/10 flex items-center justify-center text-red-500 mx-auto shadow-md">
-                          <CheckCircle className="w-9 h-9" />
-                        </div>
-                        <div className="space-y-2.5">
-                          <h4 className="text-sm font-black text-white">انتهت التغطية المباشرة للمباراة</h4>
-                          <div className="flex items-center justify-center gap-4 py-2 bg-zinc-900/40 rounded-2xl border border-zinc-850/50 max-w-sm mx-auto px-4">
-                            <span className="font-extrabold text-[11px] text-zinc-300">{activeStream.match.team1}</span>
-                            <span className="font-mono font-black text-red-500 text-base">{activeStream.match.result || "انتهت"}</span>
-                            <span className="font-extrabold text-[11px] text-zinc-300">{activeStream.match.team2}</span>
-                          </div>
-                          <p className="text-[10px] text-zinc-500 leading-relaxed">
-                            انتهت هذه المباراة بالفعل في وقتها وموعدها الرسمي. يمكنك متابعة أهم الكواليس وملخصات اللقاءات القادمة عبر صالتنا فور إطلاق البث الجديد للمباريات الحالية.
-                          </p>
-                        </div>
-                      </div>
-                    ) : (!activeStream.match.live && !isMatchEnded(activeStream.match)) ? (
-                      /* LUXURY FUTURE MATCH SPECIAL COUNTDOWN CARD */
-                      <div className="p-8 text-center space-y-5 max-w-md mx-auto">
-                        <div className="w-16 h-16 rounded-full bg-red-650/10 border border-red-500/10 flex items-center justify-center text-red-500 mx-auto">
-                          <Clock className="w-9 h-9 text-red-500" />
-                        </div>
-                        <div className="space-y-2.5">
-                          <h4 className="text-sm font-black text-white">صالة العرض المباشر لم تفتتح بعد</h4>
-                          <p className="text-[11px] text-zinc-400 font-bold bg-zinc-900/50 px-3.5 py-1.5 rounded-full border border-zinc-850 inline-block">
-                            موعد البث: <span className="text-red-500 font-black">{activeStream.match.time}</span>
-                          </p>
-                          <p className="text-[10px] text-zinc-500 leading-relaxed">
-                            سيتم توفير بث اللقاء المباشر بشكل تلقائي مع جودة اتصال مستقرة وآمنة تماماً وقنوات متعددة قبل بداية السيرفر الناقل بـ 15 دقيقة. يمكنك التفاعل في دردشة الجمهور بالأسفل!
-                          </p>
-                        </div>
-                      </div>
-                    ) : isGenericListUrl(activeStream.iframeUrl) ? (
-                      /* NO FALLBACK LIST IN IFRAME: SHOW HIGHLY CHIC SERVER MAINTENANCE CARD */
-                      <div className="p-8 text-center space-y-5 max-w-md mx-auto">
-                        <div className="w-16 h-16 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-500 mx-auto">
-                          <Tv className="w-9 h-9 animate-pulse" />
-                        </div>
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-black text-white">تجهيز التردد الرقمي للخادم</h4>
-                          <p className="text-[10px] text-zinc-500 leading-relaxed">
-                            خادم البث الرياضي ذو الجودة التلقائية يخضع للبناء والتزامن الآمن لتأمين خادم بث سريع وبجودات متعددة تليق بتشجيعكم الكروي الاستثنائي.
-                          </p>
                         </div>
                       </div>
                     ) : (
@@ -861,7 +463,7 @@ export default function MatchesScreen() {
                     <CheckCircle className="w-3.5 h-3.5 fill-red-500/10" />
                     خادم البث آمن وبجودة تلقائية متعددة الاستقرار
                   </span>
-                  <span>الدردشة تخضع للرقابة التلقائية المباشرة، التزم بالتشجيع النظيف</span>
+                  <span>الدردشة تخضع للرقابة التلقائية المباشرة، التزم بالتشجيع النظيف 💬</span>
                 </div>
               </motion.div>
             </motion.div>

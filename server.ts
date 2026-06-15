@@ -1739,41 +1739,14 @@ ${seriesContext}`;
       const match = html.match(/var\s+iframeUrl\s*=\s*["']([^"']+)["']/);
       let iframeUrl = match ? match[1] : null;
 
-      // Fallback: search with Cheerio for any play iframe src on the page
-      if (!iframeUrl) {
-         try {
-           const $ = cheerio.load(html);
-           let foundSrc = "";
-           $("iframe").each((i, frame) => {
-              const src = $(frame).attr("src") || "";
-              if (src.startsWith("http") && !src.includes("google") && !src.includes("facebook") && !src.includes("disqus")) {
-                 foundSrc = src;
-                 return false; // break
-              }
-           });
-           
-           if (!foundSrc) {
-              foundSrc = $("iframe").first().attr("src") || "";
-           }
-
-           if (foundSrc && foundSrc.startsWith("http")) {
-              iframeUrl = foundSrc;
-           }
-         } catch (cheerioErr) {
-           // Cheerio fallback parsing error
-         }
-      }
-
       if (iframeUrl && iframeUrl.trim() !== "" && iframeUrl !== "null" && iframeUrl !== "undefined" && iframeUrl.startsWith("http")) {
          return res.json({ status: true, iframeUrl });
       }
 
-      // If no iframe is found, return the input URL itself to stream it inside the beautiful custom overlay!
-      return res.json({ status: true, iframeUrl: url });
+      res.status(404).json({ status: false, error: "لا يوجد بث حي متوفر لهذه المباراة حالياً." });
     } catch (error: any) {
       console.error("Error retrieving stream URL:", error.message);
-      // Even if network failed, return input URL to allow direct iframe viewing experience instead of failing!
-      res.json({ status: true, iframeUrl: url });
+      res.status(500).json({ status: false, error: "حدث خطأ أثناء محاولة جلب البث المباشر." });
     }
   });
 
