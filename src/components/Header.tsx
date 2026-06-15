@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, MessageSquare, User, X, Mic, Wand2, ArrowLeft } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 
 import SettingsMenu from './SettingsMenu';
@@ -47,6 +47,7 @@ export default function Header() {
   const [isListening, setIsListening] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const navigate = useNavigate();
+  const location = useLocation();
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
@@ -132,7 +133,7 @@ export default function Header() {
     <>
       <header className="sticky top-0 z-40 flex items-center justify-between px-4 sm:px-8 py-4 sm:py-6 bg-black/40 backdrop-blur-xl border-b border-white/5">
         <div className="flex items-center gap-2">
-            <SettingsMenu />
+            {location.pathname === '/' && <SettingsMenu />}
           </div>
 
         <Link to="/" className="flex items-center gap-2 sm:gap-3">

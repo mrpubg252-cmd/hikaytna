@@ -27,6 +27,7 @@ interface CustomPlayerProps {
   onToggleMaximize: () => void;
   onTimeUpdate?: (time: number) => void;
   seriesCategory?: string;
+  seriesTitle?: string;
 }
 
 interface ShadowVideoProps {
@@ -282,6 +283,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     onToggleMaximize,
     onTimeUpdate,
     seriesCategory,
+    seriesTitle,
   } = props;
 
   const resolvedVideoUrl = React.useMemo(() => {
@@ -343,6 +345,8 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   const useCssRotationFallback = isForceRotated && isIOSDevice;
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [isSeekingState, setIsSeekingState] = useState(false);
+  const seekTrackerRef = useRef<HTMLDivElement>(null);
   const [volume, setVolume] = useState(() => {
     const saved = localStorage.getItem('player_volume');
     return saved !== null ? parseFloat(saved) : 1;
@@ -382,6 +386,74 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
       return () => clearTimeout(timer);
     }
   }, [videoUrl, seriesCategory]);
+
+  // Master Dynamic Media Session Lockscreen Widget Sync
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    const epNum = episodeIndex + 1;
+    const currentEpisodeObj = episodes[episodeIndex];
+    const displayEpTitle = currentEpisodeObj ? (currentEpisodeObj.title || `الحلقة ${epNum}`) : `الحلقة ${epNum}`;
+
+    const formattedSeriesTitle = seriesTitle || "مسلسل";
+    const min = Math.floor(currentTime / 60);
+    const sec = Math.floor(currentTime % 60);
+    const formattedProgress = `${min}:${sec < 10 ? '0' : ''}${sec}`;
+
+    // Ensure the image URL is fully absolute for iOS/Android media session widgets to fetch successfully
+    let absoluteImage = seriesImage || "";
+    if (absoluteImage) {
+      if (!absoluteImage.startsWith('http://') && !absoluteImage.startsWith('https://')) {
+        if (absoluteImage.startsWith('/')) {
+          absoluteImage = `${window.location.origin}${absoluteImage}`;
+        } else {
+          absoluteImage = `${window.location.origin}/${absoluteImage}`;
+        }
+      }
+    } else {
+      absoluteImage = `${window.location.origin}/logo.png`;
+    }
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: `${displayEpTitle} - وصل إلى الدقيقة [ ${formattedProgress} ]`,
+      artist: formattedSeriesTitle,
+      album: "حكايتنا - بث مباشر بجودة عالية 🎬",
+      artwork: [
+        { src: absoluteImage, sizes: "512x512", type: "image/jpeg" },
+        { src: absoluteImage, sizes: "256x256", type: "image/png" },
+        { src: absoluteImage, sizes: "192x192", type: "image/png" }
+      ]
+    });
+
+    navigator.mediaSession.setActionHandler('play', () => {
+      const video = videoRef.current;
+      if (video) {
+        video.play().catch(() => {});
+        setIsPlaying(true);
+      }
+    });
+
+    navigator.mediaSession.setActionHandler('pause', () => {
+      const video = videoRef.current;
+      if (video) {
+        video.pause();
+        setIsPlaying(false);
+      }
+    });
+
+    if (duration > 0) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: duration,
+          playbackRate: 1.0,
+          position: currentTime
+        });
+      } catch (err) {
+        console.warn("MediaSession setPositionState error:", err);
+      }
+    }
+  }, [seriesTitle, episodeIndex, episodes, currentTime, duration, seriesImage]);
+
   const [isVolumeAdjustMode, setIsVolumeAdjustMode] = useState(false);
   const [showResumeNotification, setShowResumeNotification] = useState(false);
   const [resumeTimeText, setResumeTimeText] = useState('');
@@ -1928,6 +2000,72 @@ const SafariNotification = () => {
     }
   };
 
+  const calculateSeekTime = (clientX: number) => {
+    if (!seekTrackerRef.current || isNaN(duration) || duration === 0) return 0;
+    const rect = seekTrackerRef.current.getBoundingClientRect();
+    const clickX = clientX - rect.left;
+    const width = rect.width;
+    const percentage = Math.max(0, Math.min(clickX / width, 1));
+    return percentage * duration;
+  };
+
+  const handleSeekStart = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    setIsSeekingState(true);
+    const clientX = 'touches' in e 
+      ? (e.touches && e.touches[0] ? e.touches[0].clientX : 0) 
+      : (e as React.MouseEvent).clientX;
+    const targetTime = calculateSeekTime(clientX);
+    
+    if (isIframeFallback) {
+      setCurrentTime(targetTime);
+    } else {
+      const video = videoRef.current;
+      if (video) {
+        video.currentTime = targetTime;
+        setCurrentTime(video.currentTime);
+      }
+    }
+    resetControlsTimeout();
+  };
+
+  useEffect(() => {
+    if (!isSeekingState) return;
+
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      const clientX = 'touches' in e 
+        ? (e.touches && e.touches[0] ? e.touches[0].clientX : 0) 
+        : (e as MouseEvent).clientX;
+      const targetTime = calculateSeekTime(clientX);
+      
+      if (isIframeFallback) {
+        setCurrentTime(targetTime);
+      } else {
+        const video = videoRef.current;
+        if (video) {
+          video.currentTime = targetTime;
+          setCurrentTime(video.currentTime);
+        }
+      }
+      resetControlsTimeout();
+    };
+
+    const onEnd = () => {
+      setIsSeekingState(false);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchmove', onMove, { passive: true });
+    window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchend', onEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('mouseup', onEnd);
+      window.removeEventListener('touchend', onEnd);
+    };
+  }, [isSeekingState, duration, isIframeFallback]);
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
@@ -2229,8 +2367,12 @@ const SafariNotification = () => {
         
         {/* Timeline slider row */}
         <div className="flex flex-col gap-0.5 w-full px-1 py-1">
-          <button 
-            onClick={handleSeek}
+          <div 
+            ref={seekTrackerRef}
+            onMouseDown={handleSeekStart}
+            onTouchStart={handleSeekStart}
+            tabIndex={showControls ? 0 : -1}
+            data-tv-focusable={showControls ? "true" : "false"}
             onKeyDown={(e) => {
               if (e.key === 'ArrowLeft') {
                 e.preventDefault(); e.stopPropagation(); skipTime(-10);
@@ -2238,36 +2380,44 @@ const SafariNotification = () => {
                 e.preventDefault(); e.stopPropagation(); skipTime(10);
               }
             }}
-            tabIndex={showControls ? 0 : -1}
-            data-tv-focusable={showControls ? "true" : "false"}
             aria-label="شريط التقدم"
-            className="h-2 w-full bg-zinc-900/90 border border-white/[0.03] rounded-full cursor-pointer relative group/timeline focus:ring-4 focus:ring-primary focus:outline-none focus:scale-y-150 transition-all hover:scale-y-150 block text-left"
+            className="relative flex items-center h-4 w-full cursor-pointer select-none group/timeline focus:outline-none focus:ring-2 focus:ring-primary/50 rounded-lg"
           >
-            {/* Yellow Ad Indicators like YouTube */}
-            {visualAdPoints.length > 0 && visualAdPoints.map((pt: number) => {
-              const totalDuration = duration || (videoRef.current?.duration) || 3600;
-              const ratio = pt / totalDuration;
-              if (ratio > 1) return null;
-              return (
-                <div 
-                  key={pt}
-                  className="absolute w-1 px-0.5 h-full z-[25] top-0 pointer-events-none flex items-center justify-center"
-                  style={{ left: `${ratio * 100}%` }}
-                >
-                   <div className="w-[3px] h-full bg-yellow-400 shadow-[0_0_10px_rgba(234,179,8,1)] border-x border-black/20" />
-                </div>
-              );
-            })}
-            
-            {/* Crimson Progress fill */}
+            {/* The outer track container */}
+            <div className="w-full h-1.5 bg-zinc-800 rounded-full relative overflow-hidden group-hover/timeline:h-2 transition-all duration-200">
+              {/* Yellow Ad Indicators like YouTube */}
+              {visualAdPoints.length > 0 && visualAdPoints.map((pt: number) => {
+                const totalDuration = duration || (videoRef.current?.duration) || 3600;
+                const ratio = pt / totalDuration;
+                if (ratio > 1) return null;
+                return (
+                  <div 
+                    key={pt}
+                    className="absolute w-[3px] h-full z-[25] top-0 pointer-events-none bg-yellow-400 shadow-[0_0_10px_rgba(234,179,8,1)]"
+                    style={{ left: `${ratio * 100}%` }}
+                  />
+                );
+              })}
+              
+              {/* Crimson Progress fill */}
+              <div 
+                className="absolute top-0 left-0 h-full bg-gradient-to-r from-red-600 to-[#E50914] shadow-[0_0_12px_rgba(229,9,20,0.7)] rounded-full"
+                style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+              />
+            </div>
+
+            {/* Glowing drag-indicator thumb (positioned on the right side of progress fill) */}
             <div 
-              className="absolute top-0 left-0 h-full bg-gradient-to-r from-red-600 to-[#E50914] shadow-[0_0_12px_rgba(229,9,20,0.7)] rounded-full transition-all duration-75"
-              style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+              className={cn(
+                "absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-[0_0_10px_rgba(229,9,20,0.9)] transition-transform duration-100 pointer-events-none z-30",
+                isSeekingState ? "scale-125 opacity-100" : "scale-100 opacity-0 group-hover/timeline:opacity-100"
+              )}
+              style={{ left: `${(currentTime / (duration || 1)) * 100}%` }}
             />
-          </button>
+          </div>
 
           {/* Video Duration metrics */}
-          <div className="flex justify-between text-[10px] font-black tracking-wider text-zinc-400 font-mono mt-0.5">
+          <div className="flex justify-between text-[11px] font-black tracking-wider text-zinc-400 font-mono mt-0.5 px-0.5">
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(duration)}</span>
           </div>

@@ -101,6 +101,24 @@ export default function WatchScreen() {
     }
   }, [series, location.search]);
 
+  // Overcome mobile back button black screen/ads-looping issues
+  useEffect(() => {
+    if (!series || !isAdGatePassed) return;
+
+    // Push a dummy history state to intercept the next system/device physical back actions
+    window.history.pushState({ isWatchActive: true }, '', window.location.href);
+
+    const handlePopState = (event: PopStateEvent) => {
+      // Direct replace navigation back to standard home screen
+      navigate('/', { replace: true });
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [series, isAdGatePassed, navigate]);
+
   if (loadingSeries || !series || !isAdGatePassed) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center space-y-4">
@@ -911,6 +929,7 @@ export default function WatchScreen() {
               onToggleMaximize={() => setIsMaximized(!isMaximized)}
               onTimeUpdate={(t) => setPlayerTime(t)}
               seriesCategory={series.category}
+              seriesTitle={series.title}
             />
           </div>
         )}
