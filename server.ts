@@ -1667,6 +1667,8 @@ ${seriesContext}`;
           const statusLower = (statusText || "").trim();
           const timeLower = (time || "").trim();
 
+           const isZeroZero = !result || result.trim().replace(/\s+/g, "") === "0-0";
+
           const hasEndedText = 
             statusLower.includes("انتهت") || 
             statusLower.includes("انتهي") || 
@@ -1691,7 +1693,7 @@ ${seriesContext}`;
             statusLower.includes(indicator) || timeLower.includes(indicator)
           );
 
-          if (hasEndedText) {
+          if (hasEndedText && !isZeroZero) {
             ended = true;
             live = false;
           } else if (
@@ -1701,17 +1703,24 @@ ${seriesContext}`;
           ) {
             live = true;
             ended = false;
+          } else {
+            ended = false;
+            live = false;
           }
 
           // If it ended, ensure statusText indicates that
           if (ended) {
             statusText = "انتهت المباراة";
           } else if (live) {
-            if (!statusText || statusText === "بانتظار البداية") {
+            if (!statusText || statusText === "بانتظار البداية" || statusText === "انتهت المباراة") {
               statusText = "مباراة جارية الآن ⚽";
             }
           } else {
-            statusText = statusText || "لم تبدأ بعد";
+            if (statusText === "انتهت المباراة") {
+              statusText = "بانتظار البداية";
+            } else {
+              statusText = statusText || "لم تبدأ بعد";
+            }
           }
 
           if (team1 && team2) {

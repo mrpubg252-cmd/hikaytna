@@ -35,6 +35,10 @@ export default function MatchesScreen() {
 
   // Helper to determine if a match has ended
   const isMatchEnded = (m: Match) => {
+    // Treat 0-0 score matches as NOT ended (likely upcoming or just starting)
+    const isZeroZero = m.result && m.result.trim().replace(/\s+/g, '') === '0-0';
+    if (isZeroZero) return false;
+
     if (m.ended) return true;
     const txt = (m.statusText || '').trim();
     if (txt.includes('انتهت') || txt.includes('انتهي') || txt.includes('منتهية') || txt.includes('منتهيه')) return true;
@@ -42,11 +46,7 @@ export default function MatchesScreen() {
     return false;
   };
 
-  // Correctly aligned match results: Team 1 (right-team) is displayed first (on the left in LTR UI)
-  // and Team 2 (left-team) is displayed second (on the right in LTR UI).
-  // The scraped string "result" is formatted as "LeftScore - RightScore" (parts[0] - parts[1]).
-  // To ensure the correct score is next to the correct team in LTR layout,
-  // we render parts[1] (RightScore / Team 1) first, and parts[0] (LeftScore / Team 2) second.
+  // Render match results nicely without swapping (aligned: parts[0] is Team 1 score on the left, parts[1] is Team 2 score on the right)
   const renderMatchResult = (result?: string) => {
     if (!result) return null;
     const parts = result.split('-').map(p => p.trim());
@@ -56,9 +56,9 @@ export default function MatchesScreen() {
           className="flex items-center justify-center gap-1.5 font-mono text-xl md:text-2xl font-black text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
           dir="ltr"
         >
-          <span>{parts[1]}</span>
-          <span className="text-zinc-500 font-sans text-lg">-</span>
           <span>{parts[0]}</span>
+          <span className="text-zinc-500 font-sans text-lg">-</span>
+          <span>{parts[1]}</span>
         </div>
       );
     }
@@ -355,25 +355,25 @@ export default function MatchesScreen() {
                     </div>
 
                     <button
-                      onClick={() => m.live && handleWatchStream(m)}
-                      disabled={loadingStream !== null || !m.live}
-                      className={`py-2.5 px-6 rounded-2xl text-[11px] font-black flex items-center gap-2 transition duration-250 shrink-0 ${
+                      onClick={() => handleWatchStream(m)}
+                      disabled={loadingStream !== null}
+                      className={`py-2.5 px-6 rounded-2xl text-[11px] font-black flex items-center gap-2 transition duration-250 shrink-0 cursor-pointer active:scale-95 ${
                         m.live 
-                          ? "bg-red-600 hover:bg-red-500 text-white cursor-pointer shadow-lg shadow-red-600/10 hover:shadow-red-600/25 active:scale-95" 
-                          : "bg-zinc-950 border border-zinc-900 text-zinc-505 cursor-not-allowed"
+                          ? "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/10 hover:shadow-red-600/25" 
+                          : "bg-zinc-900 hover:bg-zinc-800 border border-zinc-850 text-zinc-300 hover:text-white"
                       }`}
                     >
                       {loadingStream === m.id ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
                       ) : (
-                        <Play className={`w-3.5 h-3.5 ${m.live ? 'fill-current text-white' : 'text-zinc-750'}`} />
+                        <Play className={`w-3.5 h-3.5 ${m.live ? 'fill-current text-white' : 'fill-current text-zinc-400'}`} />
                       )}
                       <span>
                         {m.live 
                           ? "شاهد المباراة والدردشة" 
                           : isMatchEnded(m)
-                            ? "انتهت المباراة" 
-                            : "لم تبدأ بعد"}
+                            ? "انتهت - دخول البث والدردشة 💬" 
+                            : "دخول البث والدردشة 💬"}
                       </span>
                     </button>
                   </div>
