@@ -30,7 +30,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "المغرب",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/البرازيل.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/المغرب.webp",
-    matchPageUrl: "",
+    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
     channel: "beIN SPORTS MAX 2",
     commentator: "غير معروف",
     time: "انتهت",
@@ -46,7 +46,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "اسكتلندا",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/هايتي.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/اسكتلندا.webp",
-    matchPageUrl: "",
+    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
     channel: "beIN SPORTS MAX 1",
     commentator: "غير معروف",
     time: "انتهت",
@@ -62,7 +62,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "تركيا",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/استراليا.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/تركيا.webp",
-    matchPageUrl: "",
+    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
     channel: "beIN SPORTS MAX 2",
     commentator: "غير معروف",
     time: "انتهت",
@@ -78,7 +78,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "الوداد الرياضي",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2024/12/4171692205946.png",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2024/12/3131694715431.png",
-    matchPageUrl: "",
+    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
     channel: "الرياضية المغربية (3)",
     commentator: "غير معروف",
     time: "انتهت",
@@ -94,7 +94,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "نهضة بركان",
     logo1: "https://ww2.yalla--live.net/wp-content/uploads/2025/11/8323.png",
     logo2: "https://ar.yalla--live.net/wp-content/uploads/2025/04/1529.png",
-    matchPageUrl: "",
+    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
     channel: "تمازيغت (8)",
     commentator: "غير معروف",
     time: "انتهت",
@@ -110,7 +110,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "اتحاد تواركة",
     logo1: "https://as.yalla--live.net/wp-content/uploads/2025/01/451.png",
     logo2: "https://ar.yalla--live.net/wp-content/uploads/2025/10/14597.png",
-    matchPageUrl: "",
+    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
     channel: "المغربية (5)",
     commentator: "غير معروف",
     time: "انتهت",
@@ -126,7 +126,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "كوراساو",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/المانياا.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/كوراساو.webp",
-    matchPageUrl: "",
+    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
     channel: "beIN SPORTS MAX 1",
     commentator: "غير معروف",
     time: "انتهت",
@@ -142,7 +142,7 @@ const YESTERDAY_FALLBACKS: Match[] = [
     team2: "اليابان",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/هولندا.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/اليابان.webp",
-    matchPageUrl: "",
+    matchPageUrl: "https://www.yalla9live.tv/matches-yesterday/",
     channel: "beIN SPORTS MAX 2",
     commentator: "غير معروف",
     time: "انتهت",
@@ -161,7 +161,7 @@ const TOMORROW_FALLBACKS: Match[] = [
     team2: "أوروغواي",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/السعوديه.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/الاوروجواي.webp",
-    matchPageUrl: "https://worldcup2026go.blogspot.com/2026/06/bein1.html",
+    matchPageUrl: "https://www.yalla9live.tv/matches-tomorrow/",
     channel: "beIN SPORTS MAX 1",
     commentator: "حسن العيدروس",
     time: "1:00 AM",
@@ -177,7 +177,7 @@ const TOMORROW_FALLBACKS: Match[] = [
     team2: "نيوزلندا",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/ايران.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/نيوزيلندا.webp",
-    matchPageUrl: "https://worldcup2026go.blogspot.com/2026/06/iran-nz.html",
+    matchPageUrl: "https://www.yalla9live.tv/matches-tomorrow/",
     channel: "beIN SPORTS MAX 2",
     commentator: "عامر الخوذيري",
     time: "4:00 AM",
@@ -193,7 +193,7 @@ const TOMORROW_FALLBACKS: Match[] = [
     team2: "السنغال",
     logo1: "https://www.yalla9live.tv/wp-content/uploads/2026/06/فرنسا.webp",
     logo2: "https://www.yalla9live.tv/wp-content/uploads/2026/06/السنغال-1.webp",
-    matchPageUrl: "https://worldcup2026go.blogspot.com/2026/06/france-senegal.html",
+    matchPageUrl: "https://www.yalla9live.tv/matches-tomorrow/",
     channel: "beIN SPORTS MAX 1",
     commentator: "خليل البلوشي",
     time: "10:00 PM",
@@ -271,6 +271,32 @@ const TODAY_FALLBACKS: Match[] = [
     ended: false
   }
 ];
+
+const renderMatchResult = (result?: string) => {
+  if (!result) return null;
+  const parts = result.split('-').map(p => p.trim());
+  if (parts.length === 2) {
+    // Left-to-right score rendering order ensures they are next to the appropriate team
+    // Team 1 is displayed on the Right (first in RTL), Team 2 is displayed on the Left (second in RTL).
+    // In dir="ltr", left element (parts[1]) corresponds to Left Team (Team 2),
+    // and right element (parts[0]) corresponds to Right Team (Team 1).
+    return (
+      <div 
+        className="flex items-center justify-center gap-1.5 font-mono text-xl md:text-2xl font-black text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]" 
+        dir="ltr"
+      >
+        <span>{parts[1]}</span>
+        <span className="text-zinc-500 font-sans text-lg">-</span>
+        <span>{parts[0]}</span>
+      </div>
+    );
+  }
+  return (
+    <span className="text-xl md:text-2xl font-black tracking-widest text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 font-mono shadow-[0_0_15px_rgba(239,68,68,0.1)]" dir="ltr">
+      {result}
+    </span>
+  );
+};
 
 export default function MatchesScreen() {
   const [matches, setMatches] = useState<Match[]>([]);
@@ -478,7 +504,6 @@ export default function MatchesScreen() {
                 : "bg-[#0d0d0f]/60 hover:bg-zinc-900/40 text-zinc-400 hover:text-zinc-200 border border-transparent"
             }`}
           >
-            <span className="text-[14px]">📅</span>
             <span>مباريات الأمس</span>
           </button>
 
@@ -490,7 +515,6 @@ export default function MatchesScreen() {
                 : "bg-[#0d0d0f]/60 hover:bg-zinc-900/40 text-zinc-400 hover:text-zinc-200 border border-transparent"
             }`}
           >
-            <span className="text-[14px]">🔥</span>
             <span>مباريات اليوم</span>
           </button>
 
@@ -502,7 +526,6 @@ export default function MatchesScreen() {
                 : "bg-[#0d0d0f]/60 hover:bg-zinc-900/40 text-zinc-400 hover:text-zinc-200 border border-transparent"
             }`}
           >
-            <span className="text-[14px]">🕒</span>
             <span>مباريات الغد</span>
           </button>
         </div>
@@ -554,7 +577,7 @@ export default function MatchesScreen() {
                   {/* Match Header */}
                   <div className="relative z-10 flex items-center justify-between text-[11px] mb-6">
                     <span className="font-black text-zinc-300 bg-zinc-900/60 border border-zinc-850 py-1.5 px-3.5 rounded-full shrink-0">
-                      🏆 {m.league}
+                      {m.league}
                     </span>
                     {m.live ? (
                       <span className="flex items-center gap-1.5 font-bold text-red-400 bg-red-950/40 border border-red-500/25 px-2.5 py-1 rounded-full text-[10px] animate-pulse">
@@ -575,12 +598,12 @@ export default function MatchesScreen() {
                     <div className="flex-1 flex flex-col items-center justify-center text-center space-y-3">
                       <div className="relative w-16 h-16 bg-black/50 border border-zinc-900 rounded-full p-3 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
                         <img 
-                          src={m.logo1 || 'https://via.placeholder.com/70?text=Logo'} 
-                          alt={m.team1}
-                          className="w-full h-full object-contain"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/70?text=No+Logo';
-                          }}
+                           src={m.logo1 || 'https://via.placeholder.com/70?text=Logo'} 
+                           alt={m.team1}
+                           className="w-full h-full object-contain"
+                           onError={(e) => {
+                             (e.target as HTMLImageElement).src = 'https://via.placeholder.com/70?text=No+Logo';
+                           }}
                         />
                       </div>
                       <h4 className="text-xs md:text-sm font-black truncate max-w-[120px] text-white">
@@ -591,9 +614,7 @@ export default function MatchesScreen() {
                     {/* VS Badge */}
                     <div className="shrink-0 flex flex-col items-center justify-center space-y-1.5">
                       {m.result ? (
-                        <span className="text-xl md:text-2xl font-black tracking-widest text-red-500 bg-red-500/10 px-4 py-1.5 rounded-2xl border border-red-500/20 font-mono shadow-[0_0_15px_rgba(239,68,68,0.1)]">
-                          {m.result}
-                        </span>
+                        renderMatchResult(m.result)
                       ) : (
                         <span className="text-xs font-black text-rose-500 bg-rose-500/5 px-3 py-1.5 rounded-2xl border border-rose-500/10">
                           VS
@@ -638,7 +659,7 @@ export default function MatchesScreen() {
                       </div>
                       {m.commentator && m.commentator !== "غير معروف" && (
                         <span className="text-[10px] text-zinc-500 font-bold shrink-0">
-                          🎙️ {m.commentator}
+                          بصوت: {m.commentator}
                         </span>
                       )}
                     </div>
@@ -664,7 +685,7 @@ export default function MatchesScreen() {
                           ? "انتهت المباراة" 
                           : m.live
                             ? "شاهد البث المباشر"
-                            : "دخول صالة البث 📺"}
+                            : "دخول صالة البث"}
                       </span>
                     </button>
                   </div>
@@ -743,7 +764,7 @@ export default function MatchesScreen() {
                             onClick={() => handleWatchStream(activeStream.match, true)}
                             className="bg-red-600 hover:bg-red-500 text-white font-extrabold text-[10px] px-5 py-2.5 rounded-xl transition active:scale-95 cursor-pointer"
                           >
-                            تثبيت الاتصال بالبث 🔄
+                            تثبيت الاتصال بالبث
                           </button>
                           <button
                             onClick={() => setActiveStream(null)}
@@ -781,7 +802,7 @@ export default function MatchesScreen() {
                     <CheckCircle className="w-3.5 h-3.5 fill-red-500/10" />
                     خادم البث آمن وبجودة تلقائية متعددة الاستقرار
                   </span>
-                  <span>الدردشة تخضع للرقابة التلقائية المباشرة، التزم بالتشجيع النظيف 💬</span>
+                  <span>الدردشة تخضع للرقابة التلقائية المباشرة، التزم بالتشجيع النظيف</span>
                 </div>
               </motion.div>
             </motion.div>

@@ -3023,7 +3023,6 @@ const SafariNotification = () => {
                     exit={{ opacity: 0, x: -50 }}
                     className="absolute bottom-20 sm:bottom-24 left-4 sm:left-6 z-[1500] bg-zinc-950/92 backdrop-blur-md rounded-xl border border-red-500/10 text-white px-4 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.8)] flex items-center gap-2.5 font-bold pointer-events-none select-none text-right max-w-xs"
                   >
-                    <span className="text-sm">⏰</span>
                     <div className="flex flex-col text-right">
                       <span className="text-[10px] sm:text-[11px] font-black text-red-500 tracking-wider">تم الاستئناف</span>
                       <span className="text-[11px] sm:text-[12px] text-zinc-200 mt-0.5">{resumeTimeText}</span>
