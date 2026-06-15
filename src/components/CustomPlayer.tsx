@@ -318,6 +318,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
 
   // Native player properties
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isForceRotated, setIsForceRotated] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(() => {
@@ -447,7 +448,7 @@ const SafariNotification = () => {
 
   // Auto-Orient to landscape when maximized + playing
   useEffect(() => {
-    if (isPlaying && isMaximized) {
+    if ((isPlaying && isMaximized) || isForceRotated) {
       if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.lock === 'function') {
         // Attempt to lock to landscape
         (screen as any).orientation.lock('landscape').catch((e: any) => console.warn("Orientation lock unsupported or declined by user gesture", e));
@@ -465,7 +466,31 @@ const SafariNotification = () => {
         (screen as any).orientation.unlock();
       }
     };
-  }, [isPlaying, isMaximized]);
+  }, [isPlaying, isMaximized, isForceRotated]);
+
+  // Turn off manual forced rotation automatically if screen is no longer maximized
+  useEffect(() => {
+    if (!isMaximized) {
+      setIsForceRotated(false);
+    }
+  }, [isMaximized]);
+
+  const toggleForceRotation = () => {
+    const nextState = !isForceRotated;
+    setIsForceRotated(nextState);
+    if (nextState) {
+      if (!isMaximized) {
+        onToggleMaximize();
+      }
+      if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.lock === 'function') {
+        (screen as any).orientation.lock('landscape').catch(() => {});
+      }
+    } else {
+      if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.unlock === 'function') {
+        try { (screen as any).orientation.unlock(); } catch (e) {}
+      }
+    }
+  };
 
   // Dynamic viewport measurement state for iOS landscape maximizes
   const [viewportHeight, setViewportHeight] = useState('100%');
@@ -1925,6 +1950,15 @@ const SafariNotification = () => {
     const container = containerRef.current;
     if (!container) return;
 
+    // Direct lock on direct user interaction (gesture)
+    if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.lock === 'function') {
+      if (!isMaximized) {
+        (screen as any).orientation.lock('landscape').catch(() => {});
+      } else {
+        try { (screen as any).orientation.unlock(); } catch (e) {}
+      }
+    }
+
     const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || 
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     
@@ -2266,6 +2300,22 @@ const SafariNotification = () => {
                 <span>الحلقات</span>
               </button>
             )}
+            {isMobile && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); toggleForceRotation(); }}
+                tabIndex={showControls ? 0 : -1}
+                data-tv-focusable={showControls ? "true" : "false"}
+                title="تدوير الشاشة"
+                className={cn(
+                  "w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg border focus:ring-4 focus:ring-primary focus:scale-110 focus:outline-none shrink-0 transition-colors",
+                  isForceRotated 
+                    ? "bg-primary border-primary text-white" 
+                    : "text-zinc-400 hover:text-white hover:bg-white/5 border-white/10"
+                )}
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button 
               onClick={toggleBrowserFullscreen}
               tabIndex={showControls ? 0 : -1}
@@ -2290,11 +2340,23 @@ const SafariNotification = () => {
       className={cn(
         "relative select-none flex flex-col items-center justify-center bg-black overflow-hidden group w-full h-full text-white cursor-pointer transition-all duration-300 touch-manipulation",
         isSearchOverlayActive ? "z-0 pointer-events-none opacity-0 select-none scale-95" : "",
-        isMaximized 
+        (isMaximized || isForceRotated)
           ? (isSearchOverlayActive ? "fixed inset-0 w-full z-0 opacity-0 pointer-events-none" : "fixed inset-0 w-screen h-[100dvh] z-[99999] p-0 m-0 border-none rounded-none") 
           : "aspect-video rounded-xl border border-white/5"
       )}
-      style={isMaximized ? { height: viewportHeight, width: '100vw', top: 0, left: 0 } : undefined}
+      style={
+        isForceRotated ? {
+          width: '100dvh',
+          height: '100dvw',
+          transform: 'rotate(90deg)',
+          transformOrigin: 'top left',
+          marginLeft: '100vw',
+          position: 'fixed' as const,
+          top: 0,
+          left: 0,
+          zIndex: 99999,
+        } : (isMaximized ? { height: viewportHeight, width: '100vw', top: 0, left: 0 } : undefined)
+      }
     >
       {/* ----------------- BRAND OVERLAY (ON PLAYBACK LOAD) ----------------- */}
       <AnimatePresence>
@@ -2478,6 +2540,21 @@ const SafariNotification = () => {
               <List className="w-4 h-4 text-primary" />
               الحلقات
             </button>
+            {isMobile && (
+              <button
+                onClick={(e) => { e.stopPropagation(); toggleForceRotation(); }}
+                className={cn(
+                  "p-2 rounded-xl border transition-all shadow-2xl flex items-center justify-center gap-1.5 text-xs font-black",
+                  isForceRotated 
+                    ? "bg-primary border-primary text-white" 
+                    : "bg-black/85 border-white/10 text-white hover:text-primary"
+                )}
+                title="تدوير الشاشة"
+              >
+                <RotateCw className="w-4 h-4" />
+                <span className="text-[10px]">تدوير</span>
+              </button>
+            )}
             <button
               onClick={(e) => { e.stopPropagation(); toggleBrowserFullscreen(); }}
               className="p-2 bg-black/85 rounded-xl border border-white/10 hover:bg-black text-white hover:text-primary transition-all shadow-2xl"
@@ -2693,6 +2770,19 @@ const SafariNotification = () => {
                     <List className="w-4 h-4 text-primary" />
                     الحلقات
                   </button>
+                  {isMobile && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleForceRotation(); }}
+                      className={cn(
+                        "p-2 rounded-xl border text-white transition-all shadow-2xl flex items-center justify-center gap-1.5 pointer-events-auto",
+                        isForceRotated ? "bg-primary border-primary" : "bg-black/85 border-white/10"
+                      )}
+                      title="تدوير الشاشة"
+                    >
+                      <RotateCw className="w-4 h-4" />
+                      <span className="text-[10px]">تدوير</span>
+                    </button>
+                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); toggleBrowserFullscreen(); }}
                     className="p-2 bg-black/85 rounded-xl border border-white/10 text-white shadow-2xl pointer-events-auto"
