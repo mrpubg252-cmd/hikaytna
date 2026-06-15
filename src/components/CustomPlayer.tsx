@@ -319,6 +319,10 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   // Native player properties
   const [isPlaying, setIsPlaying] = useState(false);
   const [isForceRotated, setIsForceRotated] = useState(false);
+  const isIOSDevice = typeof window !== 'undefined' ? 
+    (/iPhone|iPad|iPod/.test(window.navigator.userAgent) || 
+     (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1)) : false;
+  const useCssRotationFallback = isForceRotated && isIOSDevice;
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(() => {
@@ -456,14 +460,14 @@ const SafariNotification = () => {
     } else {
       // Unlock when paused or closed
       if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.unlock === 'function') {
-        (screen as any).orientation.unlock();
+        try { (screen as any).orientation.unlock(); } catch (e) {}
       }
     }
     
     // Cleanup on unmount
     return () => {
       if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.unlock === 'function') {
-        (screen as any).orientation.unlock();
+        try { (screen as any).orientation.unlock(); } catch (e) {}
       }
     };
   }, [isPlaying, isMaximized, isForceRotated]);
@@ -474,6 +478,28 @@ const SafariNotification = () => {
       setIsForceRotated(false);
     }
   }, [isMaximized]);
+
+  // Sync state if native browser fullscreen is exited (e.g. by back button, swipe gesture)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
+      // If native fullscreen was exited, make sure we reflect it by unmaximizing
+      if (!isCurrentlyFullscreen && isMaximized) {
+        onToggleMaximize();
+        setIsForceRotated(false);
+        if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.unlock === 'function') {
+          try { (screen as any).orientation.unlock(); } catch (e) {}
+        }
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, [isMaximized, onToggleMaximize]);
 
   const toggleForceRotation = () => {
     const nextState = !isForceRotated;
@@ -1950,45 +1976,48 @@ const SafariNotification = () => {
     const container = containerRef.current;
     if (!container) return;
 
-    // Direct lock on direct user interaction (gesture)
-    if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.lock === 'function') {
-      if (!isMaximized) {
-        (screen as any).orientation.lock('landscape').catch(() => {});
-      } else {
-        try { (screen as any).orientation.unlock(); } catch (e) {}
-      }
-    }
+    // Check if any element is already in fullscreen
+    const isFullscreen = !!(document.fullscreenElement || (document as any).webkitFullscreenElement);
 
     const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || 
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    
-    if (isIOS) {
-      // Allow iPhone to use native video player
-      if (videoRef.current && (videoRef.current as any).webkitEnterFullscreen) {
-        (videoRef.current as any).webkitEnterFullscreen();
-      } else {
-        onToggleMaximize();
+
+    if (isMaximized) {
+      // Exit Maximized
+      onToggleMaximize();
+      setIsForceRotated(false);
+      
+      if (isFullscreen) {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if ((document as any).webkitExitFullscreen) {
+          (document as any).webkitExitFullscreen();
+        }
       }
-      return;
-    }
 
-    // Check if any element is already in fullscreen
-    const isFullscreen = document.fullscreenElement || (document as any).webkitFullscreenElement;
-
-    if (isFullscreen) {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if ((document as any).webkitExitFullscreen) {
-        (document as any).webkitExitFullscreen();
+      if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.unlock === 'function') {
+        try { (screen as any).orientation.unlock(); } catch (e) {}
       }
     } else {
-      // Desktop/Other: Use native Fullscreen
-      if (container.requestFullscreen) {
-        container.requestFullscreen().catch(() => onToggleMaximize());
-      } else if ((container as any).webkitRequestFullscreen) {
-        (container as any).webkitRequestFullscreen();
+      // Enter Maximized
+      onToggleMaximize();
+
+      if (typeof (screen as any).orientation !== 'undefined' && typeof (screen as any).orientation.lock === 'function') {
+        (screen as any).orientation.lock('landscape').catch(() => {});
+      }
+
+      if (isIOS) {
+        // Allow iPhone to use native video player if available
+        if (videoRef.current && (videoRef.current as any).webkitEnterFullscreen) {
+          try { (videoRef.current as any).webkitEnterFullscreen(); } catch (e) {}
+        }
       } else {
-        onToggleMaximize();
+        // Desktop/Other: Try native Fullscreen
+        if (container.requestFullscreen) {
+          container.requestFullscreen().catch(() => {});
+        } else if ((container as any).webkitRequestFullscreen) {
+          try { (container as any).webkitRequestFullscreen(); } catch (e) {}
+        }
       }
     }
   };
@@ -2307,13 +2336,14 @@ const SafariNotification = () => {
                 data-tv-focusable={showControls ? "true" : "false"}
                 title="تدوير الشاشة"
                 className={cn(
-                  "w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg border focus:ring-4 focus:ring-primary focus:scale-110 focus:outline-none shrink-0 transition-colors",
+                  "px-2 h-7 sm:h-8 flex items-center justify-center gap-1 rounded-lg border focus:ring-4 focus:ring-primary focus:scale-110 focus:outline-none shrink-0 transition-colors text-[10px] font-bold",
                   isForceRotated 
                     ? "bg-primary border-primary text-white" 
                     : "text-zinc-400 hover:text-white hover:bg-white/5 border-white/10"
                 )}
               >
                 <RotateCw className="w-3.5 h-3.5" />
+                <span>تدوير</span>
               </button>
             )}
             <button 
@@ -2345,7 +2375,7 @@ const SafariNotification = () => {
           : "aspect-video rounded-xl border border-white/5"
       )}
       style={
-        isForceRotated ? {
+        useCssRotationFallback ? {
           width: '100dvh',
           height: '100dvw',
           transform: 'rotate(90deg)',
@@ -2355,7 +2385,7 @@ const SafariNotification = () => {
           top: 0,
           left: 0,
           zIndex: 99999,
-        } : (isMaximized ? { height: viewportHeight, width: '100vw', top: 0, left: 0 } : undefined)
+        } : ((isMaximized || isForceRotated) ? { height: viewportHeight, width: '100vw', top: 0, left: 0 } : undefined)
       }
     >
       {/* ----------------- BRAND OVERLAY (ON PLAYBACK LOAD) ----------------- */}
