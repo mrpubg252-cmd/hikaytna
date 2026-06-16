@@ -660,20 +660,6 @@ async function startServer() {
     API_BASE = 'https://series.albesriali03.workers.dev/';
   }
 
-  // Load manual series data for professional injection
-  function getManualSeries() {
-    try {
-      const filePath = path.join(process.cwd(), 'data', 'manual_series.json');
-      if (fs.existsSync(filePath)) {
-        const raw = fs.readFileSync(filePath, 'utf8');
-        return JSON.parse(raw);
-      }
-    } catch (e) {
-      console.error("Error loading manual series:", e);
-    }
-    return [];
-  }
-
   // Resilient Axios helper for backend stability
   async function axiosFetch(url: string, retries = 1) {
     for (let i = 0; i <= retries; i++) {
@@ -776,16 +762,6 @@ async function startServer() {
 
       const response = await axiosFetch(`${API_BASE}?action=series&url=${encodeURIComponent(realUrl)}`);
       if (response.data && response.data.status) {
-        // Professional injection of manual series
-        const manual = getManualSeries();
-        if (manual.length > 0 && Array.isArray(response.data.data)) {
-          // If the URL matches a category known to contain these series, or if it's a general fetch
-          // For simplicity, we add them if the category name matches or if it's a "Turkish" related URL
-          const isTurki = realUrl.includes('turki') || realUrl.includes('turkish') || realUrl.includes('121'); 
-          if (isTurki) {
-            response.data.data = [...manual, ...response.data.data];
-          }
-        }
         setCachedData(cacheKey, response.data, 4 * 60 * 60 * 1000); // Cache for 4 hours
       }
       res.json(response.data);
