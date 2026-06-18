@@ -1990,16 +1990,25 @@ document.head.appendChild(s);
         <div class="counter" id="countdown">6</div>
         
         <div id="btn-container">
-            <button class="btn btn-disabled" id="main-btn" disabled>الرجاء الانتظار 6 ثوانٍ لمتابعة المشاهدة...</button>
+            <button class="btn btn-disabled" id="main-btn" onclick="triggerRedirect()" disabled>الرجاء الانتظار 6 ثوانٍ لمتابعة المشاهدة...</button>
         </div>
 
         <div class="footer-text">شبكة البث الآمنة المعززة تضمن لك مشاهدة سلسة وذات دقة عالية.</div>
     </div>
 
     <script>
-        // Check for ad-free state instantly to bypass loading screen if possible
         var redirectUrl = "${redirectUrl}";
         var seriesId = "${seriesId}";
+
+        function triggerRedirect() {
+            if (redirectUrl) {
+                window.location.replace(redirectUrl);
+            } else {
+                window.location.replace('/watch?id=' + encodeURIComponent(seriesId) + '&unlocked=true');
+            }
+        }
+
+        // Check for ad-free state instantly to bypass loading screen if possible
         var isPremium = localStorage.getItem('ads_removed_forever') === 'true' || (function() {
             var adUntil = localStorage.getItem('ad_free_until');
             if (!adUntil) return false;
@@ -2008,11 +2017,7 @@ document.head.appendChild(s);
         })();
 
         if (isPremium) {
-            if (redirectUrl) {
-                window.location.replace(redirectUrl);
-            } else {
-                window.location.replace('/watch?id=' + encodeURIComponent(seriesId) + '&unlocked=true');
-            }
+            triggerRedirect();
         }
 
         var countdown = 6;
@@ -2025,14 +2030,9 @@ document.head.appendChild(s);
                 var btn = document.getElementById('main-btn');
                 btn.className = 'btn';
                 btn.removeAttribute('disabled');
-                btn.innerText = 'جاري توجيهك الآن تلقائياً... 🚀';
+                btn.innerText = 'تفضل بالدخول ومتابعة المشاهدة 🍿🚀';
                 
-                var redirect = "${redirectUrl}";
-                if (redirect) {
-                    window.location.replace(redirect);
-                } else {
-                    window.location.replace('/watch?id=' + encodeURIComponent("${seriesId}") + '&unlocked=true');
-                }
+                triggerRedirect();
             } else {
                 document.getElementById('countdown').innerText = countdown;
                 document.getElementById('main-btn').innerText = 'الرجاء الانتظار ' + countdown + ' ثوانٍ لمتابعة المشاهدة...';

@@ -191,8 +191,8 @@ export default function ProfileScreen() {
             <div className="absolute top-0 left-0 w-80 h-80 bg-red-600/5 blur-[120px] rounded-full pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-60 h-60 bg-red-800/5 blur-[100px] rounded-full pointer-events-none" />
 
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-6 border-b border-white/5 relative z-10 text-right w-full">
-              <div className="flex items-start md:items-center gap-4 flex-row-reverse w-full md:w-auto">
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-6 pb-6 border-b border-white/5 relative z-10 text-right w-full">
+              <div className="flex items-center gap-4 flex-row-reverse w-full md:w-auto">
                 <div className="p-4 rounded-3xl bg-red-500/10 border border-red-500/20 text-primary shadow-[0_0_20px_rgba(239,68,68,0.15)] flex-shrink-0">
                   <Gift className="w-8 h-8 animate-bounce" />
                 </div>
@@ -203,7 +203,7 @@ export default function ProfileScreen() {
               </div>
 
               {/* POINTS REWARD PILL */}
-              <div className="bg-zinc-900 border border-white/5 px-6 py-4 rounded-3xl flex items-center gap-4 flex-row-reverse shadow-inner mr-auto">
+              <div className="bg-zinc-900 border border-white/5 px-6 py-4 rounded-3xl flex items-center gap-4 flex-row-reverse shadow-inner w-full md:w-auto md:mr-auto justify-center md:justify-start">
                 <div className="text-right">
                   <span className="block text-[9px] text-zinc-500 font-black uppercase tracking-wider">رصيد نقاطك الحالي</span>
                   <span className="text-2xl font-black text-primary font-mono tracking-tight">{points}</span>
@@ -216,9 +216,9 @@ export default function ProfileScreen() {
 
             {/* AD-FREE ACTIVE TICKER */}
             {adFreeExpiry > Date.now() ? (
-              <div className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-3xl flex items-center justify-between flex-row-reverse relative z-10">
-                <div className="flex items-center gap-3 flex-row-reverse text-right">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20">
+              <div className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 text-center sm:text-right">
+                <div className="flex flex-col sm:flex-row items-center gap-3 text-center sm:text-right">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20 mb-2 sm:mb-0">
                     👑
                   </div>
                   <div>
@@ -237,22 +237,22 @@ export default function ProfileScreen() {
                     </p>
                   </div>
                 </div>
-                <span className="hidden sm:inline-block px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-wider border border-emerald-500/30">
+                <span className="px-4 py-2 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-wider border border-emerald-500/30">
                   نشط ومفعّل
                 </span>
               </div>
             ) : (
-              <div className="bg-zinc-900/65 border border-white/5 p-5 rounded-3xl flex items-center justify-between flex-row-reverse relative z-10">
-                <div className="flex items-center gap-3 flex-row-reverse text-right">
-                  <div className="w-10 h-10 rounded-2xl bg-zinc-800 flex items-center justify-center text-zinc-400">
+              <div className="bg-zinc-900/65 border border-white/5 p-5 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 relative z-10 text-center sm:text-right">
+                <div className="flex flex-col sm:flex-row items-center gap-3 text-center sm:text-right">
+                  <div className="w-10 h-10 rounded-2xl bg-zinc-800 flex items-center justify-center text-zinc-400 mb-2 sm:mb-0">
                     🍿
                   </div>
-                  <div className="space-y-0.5 block text-right">
+                  <div className="space-y-0.5 block">
                     <h4 className="text-sm font-black text-zinc-300">العضوية العادية الحالية</h4>
-                    <p className="text-xs text-zinc-550 mt-0.5 leading-relaxed font-bold">كل 5 نقاط تتيح لك إزالة الفواصل الإعلانية لمدة أسبوع كامل فورياً.</p>
+                    <p className="text-xs text-zinc-500 mt-0.5 leading-relaxed font-bold">كل 5 نقاط تتيح لك إزالة الفواصل الإعلانية لمدة أسبوع كامل فورياً.</p>
                   </div>
                 </div>
-                <span className="hidden sm:inline-block px-3 py-1.5 rounded-full bg-zinc-800 text-zinc-500 text-[10px] font-bold tracking-wider">
+                <span className="px-4 py-2 rounded-full bg-zinc-800 text-zinc-500 text-[10px] font-bold tracking-wider">
                   محدودة بـ 6 ثوانٍ من الانتظار
                 </span>
               </div>

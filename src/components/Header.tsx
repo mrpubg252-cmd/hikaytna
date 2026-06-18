@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, MessageSquare, User, X, Mic, Wand2, ArrowLeft } from 'lucide-react';
+import { Search, MessageSquare, User, X, Mic, Wand2, ArrowLeft, Smartphone } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -133,7 +133,25 @@ export default function Header() {
     <>
       <header className="sticky top-0 z-40 flex items-center justify-between px-4 sm:px-8 py-4 sm:py-6 bg-black/40 backdrop-blur-xl border-b border-white/5">
         <div className="flex items-center gap-2">
-            {location.pathname === '/' && <SettingsMenu />}
+            {location.pathname === '/' && (
+              <>
+                <SettingsMenu />
+                <button
+                  onClick={() => window.dispatchEvent(new Event('trigger-install-wizard'))}
+                  className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-black hover:bg-white/10 active:scale-95 text-zinc-300 hover:text-white transition-all cursor-pointer shadow-lg shadow-black/20"
+                >
+                  <Smartphone className="w-3.5 h-3.5 text-primary" />
+                  <span>تثبيت التطبيق / اختصار 🍿</span>
+                </button>
+                <button
+                  onClick={() => window.dispatchEvent(new Event('trigger-install-wizard'))}
+                  className="flex sm:hidden items-center justify-center p-2.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 text-zinc-400 hover:text-white transition-all cursor-pointer shadow-lg shadow-black/20"
+                  title="تحميل التطبيق أو الاختصار"
+                >
+                  <Smartphone className="w-4 h-4 text-primary animate-pulse" />
+                </button>
+              </>
+            )}
           </div>
 
         <Link to="/" className="flex items-center gap-2 sm:gap-3">

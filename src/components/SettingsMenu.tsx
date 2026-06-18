@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Settings as SettingsIcon, Moon, Sun, Monitor, 
-  Palette, Shield, Info, Smartphone, Eye, Sparkles, Check
+  Palette, Shield, Info, Smartphone, Eye, Sparkles, Check, ArrowLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDevice } from '../context/DeviceAndNavigationContext';
@@ -177,6 +177,28 @@ export default function SettingsMenu() {
                         />
                       </div>
                    </button>
+                </div>
+
+                {/* Premium install/shortcut action */}
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      setIsOpen(false);
+                      window.dispatchEvent(new Event('trigger-install-wizard'));
+                    }}
+                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-gradient-to-r from-red-950/20 to-zinc-900/65 border border-red-500/10 hover:border-red-500/30 hover:bg-red-950/10 text-right transition-all cursor-pointer group active:scale-[0.98]"
+                  >
+                    <div className="flex items-center gap-3 flex-row-reverse text-right">
+                       <div className="p-2.5 rounded-xl bg-red-500/10 text-primary border border-red-500/20 group-hover:scale-110 transition-transform">
+                         <Smartphone className="w-4 h-4" />
+                       </div>
+                       <div>
+                         <span className="text-xs font-black text-white block">إضافة حكايتنا للشاشة</span>
+                         <span className="text-[9px] text-zinc-500 block font-bold mt-0.5">ثبته كتطبيق مستقل أو كاختصار سريع</span>
+                       </div>
+                    </div>
+                    <ArrowLeft className="w-3.5 h-3.5 text-zinc-500 group-hover:-translate-x-1 transition-transform" />
+                  </button>
                 </div>
 
                 <div className="pt-2">

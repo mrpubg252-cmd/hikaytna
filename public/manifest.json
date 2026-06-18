@@ -10,10 +10,15 @@
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png",
+      "src": "/logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png",
+      "sizes": "512x512",
+      "type": "image/png"
     }
   ]
 }

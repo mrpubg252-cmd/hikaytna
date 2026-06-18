@@ -16,12 +16,25 @@ import ShortsScreen from './screens/ShortsScreen';
 import AdminScreen from './screens/AdminScreen';
 import MatchesScreen from './screens/MatchesScreen';
 import { getApiUrl } from './lib/apiConfig';
+import AppIntro from './components/AppIntro';
+import InstallWizard from './components/InstallWizard';
 
 function AppLayout() {
   const { deviceMode, isTV } = useDevice();
   const [showTvBadge, setShowTvBadge] = React.useState(true);
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
   const [toastType, setToastType] = React.useState<'success' | 'info'>('success');
+  const [isInstallOpen, setIsInstallOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleTriggerInstall = () => {
+      setIsInstallOpen(true);
+    };
+    window.addEventListener('trigger-install-wizard', handleTriggerInstall);
+    return () => {
+      window.removeEventListener('trigger-install-wizard', handleTriggerInstall);
+    };
+  }, []);
 
   React.useEffect(() => {
     if (deviceMode === 'tv') {
@@ -85,11 +98,20 @@ function AppLayout() {
         localStorage.setItem('cheated_detector_alert', 'true');
         sessionStorage.setItem('cheated_detector_alert', 'true');
         window.dispatchEvent(new Event('cheated-alert-updated'));
+        
+        // Clean URL parameter
+        const url = new URL(window.location.href);
+        url.searchParams.delete('ref');
+        window.history.replaceState({}, '', url.pathname + url.search);
       } else {
         // Check if this browser already completed a referral to exclude self-referrals or re-entries
         const alreadyReferred = localStorage.getItem('referred_registered');
         if (alreadyReferred) {
           console.log("User has already completed a referral.");
+          // Clean URL parameter
+          const url = new URL(window.location.href);
+          url.searchParams.delete('ref');
+          window.history.replaceState({}, '', url.pathname + url.search);
         } else {
           // Wait for real-person telemetry signatures before counting referrals
           const handleHumanActivity = () => {
@@ -108,6 +130,11 @@ function AppLayout() {
             })
             .then(res => res.json())
             .then(data => {
+              // Clean URL parameter
+              const url = new URL(window.location.href);
+              url.searchParams.delete('ref');
+              window.history.replaceState({}, '', url.pathname + url.search);
+
               if (data.status) {
                 localStorage.setItem('referred_registered', 'true');
                 setToastType('success');
@@ -126,6 +153,10 @@ function AppLayout() {
             })
             .catch(err => {
               console.warn("Failed sending verified telemetry request", err);
+              // Clean URL parameter on error
+              const url = new URL(window.location.href);
+              url.searchParams.delete('ref');
+              window.history.replaceState({}, '', url.pathname + url.search);
             });
           };
 
@@ -171,6 +202,7 @@ function AppLayout() {
 
   return (
     <>
+      <AppIntro />
       <Routes>
         <Route path="/" element={<HomeScreen />} />
         <Route path="/watch" element={<WatchScreen />} />
@@ -213,6 +245,8 @@ function AppLayout() {
           </button>
         </div>
       )}
+
+      <InstallWizard isOpen={isInstallOpen} onClose={() => setIsInstallOpen(false)} />
     </>
   );
 }
