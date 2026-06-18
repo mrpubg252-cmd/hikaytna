@@ -1230,12 +1230,14 @@ async function startServer() {
         parsed.visitedIPs = parsed.visitedIPs || [];
         parsed.referrers = parsed.referrers || {};
         parsed.users = parsed.users || {};
+        parsed.creatorIPs = parsed.creatorIPs || {};
+        parsed.adFreeExpiry = parsed.adFreeExpiry || {};
         return parsed;
       }
     } catch (e) {
       console.error("Error reading referrals file:", e);
     }
-    return { visitedIPs: [], referrers: {}, users: {} };
+    return { visitedIPs: [], referrers: {}, users: {}, creatorIPs: {}, adFreeExpiry: {} };
   }
 
   // Helper to save referrals database
@@ -1244,6 +1246,8 @@ async function startServer() {
       data.visitedIPs = data.visitedIPs || [];
       data.referrers = data.referrers || {};
       data.users = data.users || {};
+      data.creatorIPs = data.creatorIPs || {};
+      data.adFreeExpiry = data.adFreeExpiry || {};
       fs.writeFileSync(REFERRALS_FILE, JSON.stringify(data, null, 2), "utf-8");
     } catch (e) {
       console.error("Error writing referrals file:", e);
@@ -1310,6 +1314,19 @@ async function startServer() {
         db.referrers = {};
       }
 
+      const cleanedRefId = referrerId.trim();
+
+      // Check if IP matches the creator of this referrer ID (Self-referral cheating prevention)
+      const creatorIp = db.creatorIPs?.[cleanedRefId];
+      if (creatorIp && creatorIp === clientIp) {
+        console.warn(`[Self Referral Attempted] IP: ${clientIp} tried to self-refer to ID: ${cleanedRefId}`);
+        return res.json({ 
+          status: false, 
+          selfReferral: true, 
+          message: "إذا قمت بدخول نفس رابط الإحالة الخاص بك قد يتم حظرك من مشاهدة المسلسلات، لذا قم بمشاركة رابط إحالتك إلى أشخاص حقيقيين فقط!" 
+        });
+      }
+
       // Check if this visitor's IP has already clicked a referral before to avoid spamming
       const isLocalhost = clientIp === "127.0.0.1" || clientIp === "::1" || clientIp === "::ffff:127.0.0.1" || !clientIp;
       
@@ -1318,7 +1335,7 @@ async function startServer() {
         return res.json({ 
           status: false, 
           message: "عذراً! تم احتساب إحالتك من هذا الجهاز مسبقاً لمنع التلاعب بالنظام.", 
-          points: db.referrers[referrerId.trim()] || 0 
+          points: db.referrers[cleanedRefId] || 0 
         });
       }
 
@@ -1328,7 +1345,6 @@ async function startServer() {
       }
 
       // Increment points
-      const cleanedRefId = referrerId.trim();
       const currentPoints = db.referrers[cleanedRefId] || 0;
       const newPoints = currentPoints + 1;
       db.referrers[cleanedRefId] = newPoints;
@@ -1347,7 +1363,7 @@ async function startServer() {
     }
   });
 
-  // Endpoint to obtain point totals for a given referrer ID
+  // Endpoint to obtain point totals and ad-free status for a given referrer ID
   app.get("/api/v1/referral/points", (req, res) => {
     try {
       const { id } = req.query;
@@ -1358,10 +1374,63 @@ async function startServer() {
       const db = loadReferrals();
       const cleanedId = id.trim();
       const points = db.referrers?.[cleanedId] || 0;
+      const adFreeExpiry = db.adFreeExpiry?.[cleanedId] || 0;
+
+      // Associate IP with this referral ID creator
+      let clientIp = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "").split(",")[0].trim();
+      if (clientIp) {
+        db.creatorIPs = db.creatorIPs || {};
+        db.creatorIPs[cleanedId] = clientIp;
+        saveReferrals(db);
+      }
       
-      return res.json({ status: true, points });
+      return res.json({ status: true, points, adFreeExpiry });
     } catch (err) {
       console.error("Error reading points:", err);
+      res.status(500).json({ status: false, message: "Internal server error" });
+    }
+  });
+
+  // Endpoint to redeem points for ad-free weeks
+  app.post("/api/v1/referral/redeem", (req, res) => {
+    try {
+      const { id } = req.body;
+      if (!id || !id.trim()) {
+        return res.status(400).json({ status: false, message: "معرّف الإحالة مفقود" });
+      }
+
+      const db = loadReferrals();
+      const cleanedId = id.trim();
+      const currentPoints = db.referrers?.[cleanedId] || 0;
+
+      if (currentPoints < 5) {
+        return res.status(400).json({ status: false, message: "النقاط غير كافية لمقايضتها!" });
+      }
+
+      // Deduct 5 points
+      const newPoints = currentPoints - 5;
+      db.referrers[cleanedId] = newPoints;
+
+      // Extend expiration by 1 week (7 days)
+      const ON_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+      let currentExpiry = db.adFreeExpiry?.[cleanedId] || 0;
+      if (currentExpiry < Date.now()) {
+        currentExpiry = Date.now();
+      }
+      const newExpiry = currentExpiry + ON_WEEK_MS;
+      db.adFreeExpiry[cleanedId] = newExpiry;
+
+      saveReferrals(db);
+
+      console.log(`[Referral Redeem] Code ${cleanedId} spent 5 points. Remaining: ${newPoints}. Expiry extended to: ${new Date(newExpiry).toISOString()}`);
+      return res.json({ 
+        status: true, 
+        message: "تم تفعيل الإزالة الفورية وثق بمشاهدة أسبوع كامل خالية من أي إعلانات فاصلة بنجاح! 👑", 
+        points: newPoints, 
+        adFreeExpiry: newExpiry 
+      });
+    } catch (err) {
+      console.error("Error in redeem point:", err);
       res.status(500).json({ status: false, message: "Internal server error" });
     }
   });

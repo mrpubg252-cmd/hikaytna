@@ -452,7 +452,12 @@ export default function WatchScreen() {
       return;
     }
 
-    const isPremium = localStorage.getItem('ads_removed_forever') === 'true';
+    const isPremium = localStorage.getItem('ads_removed_forever') === 'true' || (() => {
+      const adUntil = localStorage.getItem('ad_free_until');
+      if (!adUntil) return false;
+      const adUntilNum = parseInt(adUntil, 10);
+      return !isNaN(adUntilNum) && adUntilNum > Date.now();
+    })();
 
     if (!bypassAd && !isPremium) {
       setAdCountdown(10);
