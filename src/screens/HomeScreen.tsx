@@ -242,41 +242,42 @@ export default function HomeScreen() {
       <AnimatePresence>
         {showCheatedAlert && (
           <motion.div
-            initial={{ x: 150, opacity: 0 }}
+            initial={{ x: 320, opacity: 0 }}
             animate={{
-              x: [150, 0, 0, 0, 50, 150],
+              x: [320, 0, 0, 0, 100, 320],
               opacity: [0, 1, 1, 1, 0.4, 0],
             }}
             transition={{
-              duration: 15,
+              duration: 12,
               repeat: Infinity,
-              repeatDelay: 3,
+              repeatDelay: 4,
               ease: "easeInOut",
               times: [0, 0.08, 0.5, 0.85, 0.95, 1]
             }}
-            className="fixed top-24 left-1/2 -translate-x-1/2 w-[90%] max-w-xl z-[200]"
+            className="fixed top-24 right-4 md:right-8 w-[92%] sm:w-[480px] z-[200] max-w-full"
           >
-            <div className="bg-[#0f0202]/95 backdrop-blur-2xl border border-red-500/20 shadow-[0_20px_50px_rgba(239,68,68,0.25)] rounded-3xl p-5 md:p-6 text-right relative overflow-hidden">
+            <div className="bg-[#0f0202]/95 backdrop-blur-2xl border border-red-500/25 shadow-[0_20px_50px_rgba(239,68,68,0.3)] rounded-[2rem] p-5 md:p-6 text-right relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/10 blur-3xl rounded-full" />
               
               <button 
                 onClick={() => {
                   localStorage.removeItem('cheated_detector_alert');
+                  sessionStorage.removeItem('cheated_detector_alert');
                   setShowCheatedAlert(false);
                 }}
-                className="absolute top-4 left-4 p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-all cursor-pointer"
+                className="absolute top-4 left-4 p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-all cursor-pointer z-50 animate-pulse"
                 title="إغلاق التحذير"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
 
-              <div className="flex items-start gap-3.5 flex-row-reverse relative z-10 pl-6 text-right">
-                <div className="p-3 bg-red-500/15 border border-red-500/25 rounded-2xl text-red-500 max-h-[46px]">
+              <div className="flex items-start gap-4 flex-row-reverse relative z-10 pl-6 text-right">
+                <div className="p-3 bg-red-500/15 border border-red-500/20 rounded-2xl text-red-500 max-h-[46px] flex-shrink-0">
                   <AlertTriangle className="w-5 h-5 animate-pulse" />
                 </div>
                 <div className="space-y-1.5 flex-1 select-none">
                   <h4 className="text-xs sm:text-sm font-black text-red-500 tracking-tight italic">إشعار أمني: تم رصد محاولة تلاعب بالدعوات ⚠️</h4>
-                  <p className="text-[10px] sm:text-xs text-zinc-300 leading-relaxed font-bold">
+                  <p className="text-[10px] sm:text-xs text-zinc-350 leading-relaxed font-bold">
                     إذا قمت بدخول نفس رابط الإحالة الخاص بك قد يتم حظرك من مشاهدة المسلسلات، لذا قم بمشاركة رابط إحالتك إلى أشخاص حقيقيين فقط!
                   </p>
                 </div>

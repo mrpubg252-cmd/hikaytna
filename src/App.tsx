@@ -67,6 +67,14 @@ function AppLayout() {
     const params = new URLSearchParams(window.location.search);
     const refCode = params.get('ref');
     
+    // Clear the cheat alert on normal access to avoid showing it to regular visitors
+    const isUrlSelfReferral = refCode && storedRefId && refCode.trim() === storedRefId.trim();
+    if (!isUrlSelfReferral && !params.get('admin_test_scare')) {
+      localStorage.removeItem('cheated_detector_alert');
+      sessionStorage.removeItem('cheated_detector_alert');
+      window.dispatchEvent(new Event('cheated-alert-updated'));
+    }
+    
     if (refCode) {
       const trimmedRefCode = refCode.trim();
       const myRefId = localStorage.getItem('my_referral_id');
@@ -75,6 +83,7 @@ function AppLayout() {
       if (myRefId && trimmedRefCode === myRefId.trim()) {
         console.warn("Self referral click detected!");
         localStorage.setItem('cheated_detector_alert', 'true');
+        sessionStorage.setItem('cheated_detector_alert', 'true');
         window.dispatchEvent(new Event('cheated-alert-updated'));
       } else {
         // Check if this browser already completed a referral to exclude self-referrals or re-entries
@@ -107,6 +116,7 @@ function AppLayout() {
               } else {
                 if (data.selfReferral) {
                   localStorage.setItem('cheated_detector_alert', 'true');
+                  sessionStorage.setItem('cheated_detector_alert', 'true');
                   window.dispatchEvent(new Event('cheated-alert-updated'));
                 }
                 setToastType('info');

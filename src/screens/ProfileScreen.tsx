@@ -261,24 +261,24 @@ export default function ProfileScreen() {
             {/* THREE-STEP HOW IT WORKS */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10 text-right">
               {/* STEP 1: INVITE */}
-              <div className="bg-zinc-900/40 border border-white/5 rounded-3xl p-6 space-y-4">
+              <div className="bg-zinc-900/40 border border-white/5 rounded-3xl p-5 md:p-6 space-y-4 text-right">
                 <div className="flex items-center gap-3 flex-row-reverse">
                   <div className="w-8 h-8 rounded-xl bg-red-500/10 flex items-center justify-center text-primary font-black font-mono">1</div>
                   <h3 className="text-sm font-black text-white">انسخ رابط إحالتك الفريد</h3>
                 </div>
-                <p className="text-xs text-zinc-400 leading-relaxed pr-11 text-right">
+                <p className="text-xs text-zinc-400 leading-relaxed md:pr-11 pr-0 text-right">
                   قم بمشاركة الرابط الخاص بك مع أصدقائك أو على أي من شبكات التواصل الاجتماعي (تيك توك، واتساب، تليجرام).
                 </p>
 
                 {/* COPY LINK WIDGET */}
-                <div className="pt-2">
-                  <div className="bg-black/60 border border-white/5 rounded-2xl p-2.5 flex items-center justify-between gap-3 flex-row-reverse relative">
-                    <span className="text-[10px] md:text-xs font-mono text-zinc-400 truncate text-left max-w-[140px] md:max-w-xs pl-2 select-all">
+                <div className="pt-2 md:pr-11 pr-0">
+                  <div className="bg-black/60 border border-white/5 rounded-2xl p-2.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 relative">
+                    <span className="text-[10px] md:text-xs font-mono text-zinc-450 truncate text-center sm:text-left select-all px-2.5 py-1.5 bg-black/40 rounded-xl border border-white/[0.03]">
                       {window.location.origin}/?ref={referrerId}
                     </span>
                     <button
                       onClick={handleCopyLink}
-                      className="flex items-center gap-1.5 bg-primary hover:bg-red-700 text-white px-4 py-2 rounded-xl text-xs font-black transition-all shadow-lg active:scale-95 flex-shrink-0 cursor-pointer"
+                      className="flex items-center justify-center gap-1.5 bg-primary hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-xs font-black transition-all shadow-lg active:scale-95 flex-shrink-0 cursor-pointer"
                     >
                       {isCopied ? (
                         <>
@@ -297,19 +297,19 @@ export default function ProfileScreen() {
               </div>
 
               {/* STEP 2: COLLECT POINTS */}
-              <div className="bg-zinc-900/40 border border-white/5 rounded-3xl p-6 space-y-4 flex flex-col justify-between">
+              <div className="bg-zinc-900/40 border border-white/5 rounded-3xl p-5 md:p-6 space-y-4 flex flex-col justify-between text-right">
                 <div className="space-y-4">
                   <div className="flex items-center gap-3 flex-row-reverse">
                     <div className="w-8 h-8 rounded-xl bg-red-500/10 flex items-center justify-center text-primary font-black font-mono">2</div>
                     <h3 className="text-sm font-black text-white">مقايضة النقاط وتفعيل الإزالة 👑</h3>
                   </div>
-                  <p className="text-xs text-zinc-400 leading-relaxed pr-11 text-right">
+                  <p className="text-xs text-zinc-400 leading-relaxed md:pr-11 pr-0 text-right">
                     جمّع 5 نقاط على الأقل من دعوة أصدقاء حقيقيين، وسيتاح لك مقايضتها وتفعيل أسبوع كامل بدون انتظار مباشرة!
                   </p>
                 </div>
 
                 {/* REDEEM ACTION BUTTON */}
-                <div className="pt-4 pr-11 text-right">
+                <div className="pt-4 md:pr-11 pr-0 text-right">
                   <button
                     onClick={handleRedeemPoints}
                     disabled={points < 5 || isRedeeming}

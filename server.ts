@@ -2025,19 +2025,14 @@ document.head.appendChild(s);
                 var btn = document.getElementById('main-btn');
                 btn.className = 'btn';
                 btn.removeAttribute('disabled');
-                btn.innerText = 'العودة للموقع ومتابعة المشاهدة 🚀';
-                btn.onclick = function() {
-                    btn.innerText = 'الرجاء الانتظار...';
-                    btn.className = 'btn btn-disabled';
-                    btn.setAttribute('disabled', 'true');
-                    
-                    var redirect = "${redirectUrl}";
-                    if (redirect) {
-                        window.location.replace(redirect);
-                    } else {
-                        window.location.replace('/watch?id=' + encodeURIComponent("${seriesId}") + '&unlocked=true');
-                    }
-                };
+                btn.innerText = 'جاري توجيهك الآن تلقائياً... 🚀';
+                
+                var redirect = "${redirectUrl}";
+                if (redirect) {
+                    window.location.replace(redirect);
+                } else {
+                    window.location.replace('/watch?id=' + encodeURIComponent("${seriesId}") + '&unlocked=true');
+                }
             } else {
                 document.getElementById('countdown').innerText = countdown;
                 document.getElementById('main-btn').innerText = 'الرجاء الانتظار ' + countdown + ' ثوانٍ لمتابعة المشاهدة...';
