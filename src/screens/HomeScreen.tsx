@@ -72,28 +72,44 @@ export default function HomeScreen() {
       }
 
       try {
-        // Fetch the first 4 pages for thorough coverage (especially for Turkish series)
-        const pagePromises = [0, 1, 2, 3].map(page => 
+        // Step 1: Fetch Page 0 first for instant response
+        const page0Results = await fetchCategoryPage(selectedCategory, 0, controller.signal);
+        
+        if (isMounted) {
+          if (page0Results.length > 0) {
+            initializeEpisodeTracking(page0Results);
+            // Get freshly merged view for this category
+            const currentCatSeries = getCachedSeriesByCategory(selectedCategory);
+            setAllSeriesRaw(currentCatSeries.length > 0 ? currentCatSeries : page0Results);
+            setLoading(false);
+          }
+        }
+
+        // Step 2: Fetch subsequent pages in background to provide thorough Turkish category index
+        const nextPages = [1, 2, 3];
+        const nextPromises = nextPages.map(page => 
           fetchCategoryPage(selectedCategory, page, controller.signal)
         );
-        
-        const results = await Promise.allSettled(pagePromises);
-        let allFetched: Series[] = [];
-        results.forEach(res => {
-          if (res.status === 'fulfilled' && res.value.length > 0) {
-            allFetched = [...allFetched, ...res.value];
-          }
-        });
 
-        if (isMounted && allFetched.length > 0) {
-          initializeEpisodeTracking(allFetched);
-          setAllSeriesRaw(allFetched);
+        const results = await Promise.allSettled(nextPromises);
+        
+        if (isMounted) {
+          const freshCatSeries = getCachedSeriesByCategory(selectedCategory);
+          if (freshCatSeries.length > 0) {
+            initializeEpisodeTracking(freshCatSeries);
+            setAllSeriesRaw(freshCatSeries);
+          }
           setLoading(false);
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
         console.error("Error loading category", err);
-        if (isMounted && cached.length === 0) setError("تعذر تحميل قائمة المسلسلات حالياً.");
+        if (isMounted && cached.length === 0) {
+          const fallbackView = getCachedSeriesByCategory(selectedCategory);
+          if (fallbackView.length === 0) {
+            setError("تعذر تحميل قائمة المسلسلات حالياً.");
+          }
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
