@@ -11,7 +11,7 @@ import { applyPrioritySort, sliderSelections, syncSliderSelections } from "../se
 import { useAuth } from "../context/AuthContext";
 import { Series } from "../services/firebase";
 import { motion, AnimatePresence } from "motion/react";
-import { ChevronLeft, ChevronRight, ArrowLeft, AlertCircle, AlertTriangle, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowLeft, AlertCircle } from "lucide-react";
 import NoticeAndSupportBubble from "../components/NoticeAndSupportBubble";
 import { fuzzyMatchArabic } from "../lib/utils";
 import {
@@ -72,44 +72,28 @@ export default function HomeScreen() {
       }
 
       try {
-        // Step 1: Fetch Page 0 first for instant response
-        const page0Results = await fetchCategoryPage(selectedCategory, 0, controller.signal);
-        
-        if (isMounted) {
-          if (page0Results.length > 0) {
-            initializeEpisodeTracking(page0Results);
-            // Get freshly merged view for this category
-            const currentCatSeries = getCachedSeriesByCategory(selectedCategory);
-            setAllSeriesRaw(currentCatSeries.length > 0 ? currentCatSeries : page0Results);
-            setLoading(false);
-          }
-        }
-
-        // Step 2: Fetch subsequent pages in background to provide thorough Turkish category index
-        const nextPages = [1, 2, 3];
-        const nextPromises = nextPages.map(page => 
+        // Fetch the first 4 pages for thorough coverage (especially for Turkish series)
+        const pagePromises = [0, 1, 2, 3].map(page => 
           fetchCategoryPage(selectedCategory, page, controller.signal)
         );
-
-        const results = await Promise.allSettled(nextPromises);
         
-        if (isMounted) {
-          const freshCatSeries = getCachedSeriesByCategory(selectedCategory);
-          if (freshCatSeries.length > 0) {
-            initializeEpisodeTracking(freshCatSeries);
-            setAllSeriesRaw(freshCatSeries);
+        const results = await Promise.allSettled(pagePromises);
+        let allFetched: Series[] = [];
+        results.forEach(res => {
+          if (res.status === 'fulfilled' && res.value.length > 0) {
+            allFetched = [...allFetched, ...res.value];
           }
+        });
+
+        if (isMounted && allFetched.length > 0) {
+          initializeEpisodeTracking(allFetched);
+          setAllSeriesRaw(allFetched);
           setLoading(false);
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
         console.error("Error loading category", err);
-        if (isMounted && cached.length === 0) {
-          const fallbackView = getCachedSeriesByCategory(selectedCategory);
-          if (fallbackView.length === 0) {
-            setError("تعذر تحميل قائمة المسلسلات حالياً.");
-          }
-        }
+        if (isMounted && cached.length === 0) setError("تعذر تحميل قائمة المسلسلات حالياً.");
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -240,67 +224,9 @@ export default function HomeScreen() {
     );
   }
 
-  const [showCheatedAlert, setShowCheatedAlert] = useState(false);
-
-  useEffect(() => {
-    const checkAlert = () => {
-      setShowCheatedAlert(localStorage.getItem('cheated_detector_alert') === 'true');
-    };
-    checkAlert();
-    window.addEventListener('cheated-alert-updated', checkAlert);
-    return () => window.removeEventListener('cheated-alert-updated', checkAlert);
-  }, []);
-
   return (
     <div className="min-h-screen bg-[#050505]">
       <Header />
-
-      <AnimatePresence>
-        {showCheatedAlert && (
-          <motion.div
-            initial={{ x: 200, opacity: 0 }}
-            animate={{
-              x: [200, 0, 0, 0, 100, 200],
-              opacity: [0, 1, 1, 1, 0.4, 0],
-            }}
-            transition={{
-              duration: 14,
-              repeat: Infinity,
-              repeatDelay: 2,
-              ease: "easeInOut",
-              times: [0, 0.08, 0.45, 0.85, 0.95, 1]
-            }}
-            className="fixed top-28 left-1/2 -translate-x-1/2 w-[90%] max-w-xl z-[200]"
-          >
-            <div className="bg-[#0f0505]/92 backdrop-blur-xl border border-red-500/20 shadow-[0_20px_50px_rgba(239,68,68,0.15)] rounded-3xl p-5 md:p-6 text-right relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/10 blur-3xl rounded-full" />
-              
-              <button 
-                onClick={() => {
-                  localStorage.removeItem('cheated_detector_alert');
-                  setShowCheatedAlert(false);
-                }}
-                className="absolute top-4 left-4 p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-all cursor-pointer"
-                title="إغلاق التحذير"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-
-              <div className="flex items-start gap-3.5 flex-row-reverse relative z-10 pl-6 text-right">
-                <div className="p-3 bg-red-500/15 border border-red-500/25 rounded-2xl text-red-500 max-h-[46px]">
-                  <AlertTriangle className="w-5 h-5 animate-pulse" />
-                </div>
-                <div className="space-y-1.5 flex-1 select-none">
-                  <h4 className="text-sm font-black text-red-500 tracking-tight italic">إشعار أمني: تم رصد محاولة تلاعب بالدعوات ⚠️</h4>
-                  <p className="text-xs text-zinc-300 leading-relaxed font-bold">
-                    إذا قمت بدخول نفس رابط الإحالة الخاص بك قد يتم حظرك من مشاهدة المسلسلات، لذا قم بمشاركة رابط إحالتك إلى أشخاص حقيقيين فقط!
-                  </p>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <main className="pb-20">
         <Slider 
