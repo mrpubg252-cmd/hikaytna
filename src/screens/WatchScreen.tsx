@@ -850,7 +850,7 @@ export default function WatchScreen() {
           setCurrentEpisode(index);
           localStorage.setItem(`mo_play_last_ep_${series.id}`, index.toString());
           try {
-            const cleanUrl = `/watch/${encodeURIComponent(series.id)}/${index}`;
+            const cleanUrl = `/watch/${encodeURIComponent(series.title || series.id)}/${index}`;
             window.history.replaceState({ ...window.history.state }, '', cleanUrl);
           } catch (e) {
             console.warn("Unable to push clean state offline", e);
@@ -898,7 +898,7 @@ export default function WatchScreen() {
     
     // Gracefully update browser address bar with the clean URL without reloading!
     try {
-      const cleanUrl = `/watch/${encodeURIComponent(series.id)}/${index}`;
+      const cleanUrl = `/watch/${encodeURIComponent(series.title || series.id)}/${index}`;
       window.history.replaceState({ ...window.history.state }, '', cleanUrl);
     } catch (e) {
       console.warn("Unable to push clean state", e);
