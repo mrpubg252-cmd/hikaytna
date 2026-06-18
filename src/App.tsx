@@ -15,7 +15,6 @@ import ChatScreen from './screens/ChatScreen';
 import ShortsScreen from './screens/ShortsScreen';
 import AdminScreen from './screens/AdminScreen';
 import MatchesScreen from './screens/MatchesScreen';
-import CookieConsent from './components/CookieConsent';
 import { getApiUrl } from './lib/apiConfig';
 
 function AppLayout() {
@@ -39,90 +38,71 @@ function AppLayout() {
   }, [deviceMode]);
 
   React.useEffect(() => {
-    // 0. Ensure user has a referral ID initialized immediately on startup
-    let refId = localStorage.getItem('my_referral_id');
-    if (!refId) {
-      refId = 'user_' + Math.random().toString(36).substring(2, 10);
-      localStorage.setItem('my_referral_id', refId);
-    }
-
     // 1. Sync user's premium gold ad-free state globally on mount
-    fetch(`/api/v1/referral/points?id=${refId}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.status) {
-          localStorage.setItem('my_points', String(data.points || 0));
-          if (data.adFreeExpiry) {
-            localStorage.setItem('ad_free_until', String(data.adFreeExpiry));
-          } else {
-            localStorage.removeItem('ad_free_until');
+    const storedRefId = localStorage.getItem('my_referral_id');
+    if (storedRefId) {
+      fetch(`/api/v1/referral/points?id=${storedRefId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.status) {
+            if (data.points >= 10) {
+              localStorage.setItem('ads_removed_forever', 'true');
+            } else {
+              localStorage.removeItem('ads_removed_forever');
+            }
           }
-        }
-      })
-      .catch(err => console.warn('Could not sync points globally:', err));
+        })
+        .catch(err => console.warn('Could not sync points globally:', err));
+    }
 
     // 2. Check for referral code in url parameter directly from window.location
     const params = new URLSearchParams(window.location.search);
     const refCode = params.get('ref');
     
     if (refCode) {
-      const trimmedRefCode = refCode.trim();
-      const myRefId = localStorage.getItem('my_referral_id');
-
-      // Immediate self-click check
-      if (myRefId && trimmedRefCode === myRefId.trim()) {
-        console.warn("Self referral click detected!");
-        localStorage.setItem('cheated_detector_alert', 'true');
-        window.dispatchEvent(new Event('cheated-alert-updated'));
+      // Check if this browser already completed a referral to exclude self-referrals or re-entries
+      const alreadyReferred = localStorage.getItem('referred_registered');
+      if (alreadyReferred) {
+        console.log("User has already completed a referral.");
       } else {
-        // Check if this browser already completed a referral to exclude self-referrals or re-entries
-        const alreadyReferred = localStorage.getItem('referred_registered');
-        if (alreadyReferred) {
-          console.log("User has already completed a referral.");
-        } else {
-          // Wait for real-person telemetry signatures before counting referrals
-          const handleHumanActivity = () => {
-            window.removeEventListener('scroll', handleHumanActivity);
-            window.removeEventListener('click', handleHumanActivity);
-            window.removeEventListener('touchstart', handleHumanActivity);
-            window.removeEventListener('mousemove', handleHumanActivity);
-            window.removeEventListener('keydown', handleHumanActivity);
+        // Wait for real-person telemetry signatures before counting referrals
+        const handleHumanActivity = () => {
+          window.removeEventListener('scroll', handleHumanActivity);
+          window.removeEventListener('click', handleHumanActivity);
+          window.removeEventListener('touchstart', handleHumanActivity);
+          window.removeEventListener('mousemove', handleHumanActivity);
+          window.removeEventListener('keydown', handleHumanActivity);
 
-            console.log("⚡ [Telemetry Verification] Human actions detected. Registering referral for:", trimmedRefCode);
+          console.log("⚡ [Telemetry Verification] Human actions detected. Registering referral for:", refCode);
 
-            fetch(getApiUrl('/api/v1/referral/register'), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ referrerId: trimmedRefCode })
-            })
-            .then(res => res.json())
-            .then(data => {
-              if (data.status) {
-                localStorage.setItem('referred_registered', 'true');
-                setToastType('success');
-                setToastMessage(`🎉 تم احتساب إحالتك بنجاح! بفضل تفاعلك الحقيقي، ساعدت صديقك في إلغاء إعلاناته كلياً. شكراً لك!`);
-                setTimeout(() => setToastMessage(null), 8500);
-              } else {
-                if (data.selfReferral) {
-                  localStorage.setItem('cheated_detector_alert', 'true');
-                  window.dispatchEvent(new Event('cheated-alert-updated'));
-                }
-                setToastType('info');
-                setToastMessage(data.message || `لقد قمت مسبقاً بدعم صديقك عبر هذا الجهاز، شكراً لرالقيّ تفاعلك ونبل أخلاقك! ❤️`);
-                setTimeout(() => setToastMessage(null), 7000);
-              }
-            })
-            .catch(err => {
-              console.warn("Failed sending verified telemetry request", err);
-            });
-          };
+          fetch(getApiUrl('/api/v1/referral/register'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ referrerId: refCode })
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.status) {
+              localStorage.setItem('referred_registered', 'true');
+              setToastType('success');
+              setToastMessage(`🎉 تم احتساب إحالتك بنجاح! بفضل تفاعلك الحقيقي، ساعدت صديقك في إلغاء إعلاناته كلياً. شكراً لك!`);
+              setTimeout(() => setToastMessage(null), 8500);
+            } else {
+              setToastType('info');
+              setToastMessage(data.message || `لقد قمت مسبقاً بدعم صديقك عبر هذا الجهاز، شكراً لرالقيّ تفاعلك ونبل أخلاقك! ❤️`);
+              setTimeout(() => setToastMessage(null), 7000);
+            }
+          })
+          .catch(err => {
+            console.warn("Failed sending verified telemetry request", err);
+          });
+        };
 
-          window.addEventListener('scroll', handleHumanActivity, { passive: true });
-          window.addEventListener('click', handleHumanActivity);
-          window.addEventListener('touchstart', handleHumanActivity, { passive: true });
-          window.addEventListener('mousemove', handleHumanActivity, { passive: true });
-          window.addEventListener('keydown', handleHumanActivity);
-        }
+        window.addEventListener('scroll', handleHumanActivity, { passive: true });
+        window.addEventListener('click', handleHumanActivity);
+        window.addEventListener('touchstart', handleHumanActivity, { passive: true });
+        window.addEventListener('mousemove', handleHumanActivity, { passive: true });
+        window.addEventListener('keydown', handleHumanActivity);
       }
     }
 
@@ -169,8 +149,6 @@ function AppLayout() {
         <Route path="/matches" element={<MatchesScreen />} />
         <Route path="/admin" element={<AdminScreen />} />
       </Routes>
-
-      <CookieConsent />
 
       {isTV && showTvBadge && (
         <div className="fixed top-4 left-4 z-[9999] bg-gradient-to-r from-red-600 to-red-800 text-white px-3 py-1.5 rounded-full text-[10px] sm:text-xs font-black shadow-[0_0_20px_rgba(229,9,20,0.6)] border border-white/10 flex items-center gap-2 select-none animate-bounce">
