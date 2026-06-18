@@ -22,6 +22,10 @@ export default function NoticeAndSupportBubble() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [activeDb, setActiveDb] = useState<any>(fallbackDb);
 
+  // Personal referral alerts & unread states
+  const [personalAlerts, setPersonalAlerts] = useState<Notice[]>([]);
+  const [personalUnreadCount, setPersonalUnreadCount] = useState(0);
+
   // Support section form state
   const [guestName, setGuestName] = useState(localStorage.getItem('guest_chat_name') || '');
   const [message, setMessage] = useState('');
@@ -168,6 +172,38 @@ export default function NoticeAndSupportBubble() {
     }
   }, [activeDb]);
 
+  const fetchPersonalAlerts = () => {
+    const myId = localStorage.getItem('my_referral_id');
+    if (!myId) return;
+    
+    fetch(`/api/v1/referral/alerts?id=${myId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.status && data.alerts) {
+          const formatted: Notice[] = data.alerts.map((a: any) => ({
+            id: a.id,
+            text: a.text,
+            timestamp: a.timestamp,
+            type: a.type || 'success'
+          }));
+          setPersonalAlerts(formatted);
+          
+          // Count unread personal alerts (compare against last read alert timestamp)
+          const lastReadAlertTime = Number(localStorage.getItem('last_read_alert_time') || 0);
+          const unreadAlerts = formatted.filter((a: any) => a.timestamp > lastReadAlertTime).length;
+          setPersonalUnreadCount(unreadAlerts);
+        }
+      })
+      .catch(err => console.warn("Fetch personal alerts bypassed:", err));
+  };
+
+  // Poll for personal alerts every 25 seconds for real-time feel
+  useEffect(() => {
+    fetchPersonalAlerts();
+    const interval = setInterval(fetchPersonalAlerts, 25000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Check for the referral enter link logic on initial mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -189,11 +225,18 @@ export default function NoticeAndSupportBubble() {
   const handleOpenWidget = () => {
     setIsOpen(true);
     setUnreadCount(0);
+    setPersonalUnreadCount(0);
+    
     // Mark announcements as read
     if (notices.length > 0) {
       const highestTimestamp = Math.max(...notices.map(n => n.timestamp));
       localStorage.setItem('last_read_notice_time', String(highestTimestamp));
     }
+    
+    // Mark personal alerts as read
+    const highestAlertTimestamp = Date.now();
+    localStorage.setItem('last_read_alert_time', String(highestAlertTimestamp));
+    
     // Mark replies as read
     if (Object.keys(replies).length > 0) {
         const storedReplies = JSON.parse(localStorage.getItem('seen_replies') || '{}');
@@ -201,6 +244,9 @@ export default function NoticeAndSupportBubble() {
         localStorage.setItem('seen_replies', JSON.stringify(storedReplies));
         setUnreadReplies(0);
     }
+
+    // Refresh immediately on opening
+    fetchPersonalAlerts();
   };
 
   const handleSendSupport = async (e: React.FormEvent) => {
@@ -265,9 +311,9 @@ export default function NoticeAndSupportBubble() {
           <MessageSquare className="w-5.5 h-5.5 relative z-10" />
           
           {/* Unread badge alert */}
-          {(unreadCount > 0 || unreadReplies > 0) && (
+          {(unreadCount + unreadReplies + personalUnreadCount) > 0 && (
             <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 text-black text-[9px] font-black rounded-full flex items-center justify-center border-2 border-zinc-950 animate-pulse">
-              {(unreadCount + unreadReplies) > 9 ? '9+' : (unreadCount + unreadReplies)}
+              {(unreadCount + unreadReplies + personalUnreadCount) > 9 ? '9+' : (unreadCount + unreadReplies + personalUnreadCount)}
             </span>
           )}
 
@@ -333,52 +379,94 @@ export default function NoticeAndSupportBubble() {
               
               {/* Notices list page */}
               {activeTab === 'notices' && (
-                <div className="space-y-4 text-right">
-                  <div className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-2">التحديثات المباشرة وحالة السيرفرات</div>
-                  
-                  {notices.length === 0 ? (
-                    <div className="h-48 flex flex-col items-center justify-center text-center gap-2">
-                      <AlertCircle className="w-8 h-8 text-zinc-600 animate-pulse" />
-                      <p className="text-xs text-zinc-400 font-bold">لا توجد رسائل إدارية نشطة حالياً.</p>
-                    </div>
-                  ) : (
-                    notices.map((not) => (
-                      <div 
-                        key={not.id} 
-                        className={`p-4 rounded-2xl border flex items-start gap-3.5 ${
-                          not.type === 'warning'
-                            ? 'bg-amber-500/10 border-amber-500/20 text-amber-200'
-                            : not.type === 'success'
-                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200'
-                            : 'bg-zinc-900/80 border-white/5 text-zinc-300'
-                        }`}
-                      >
-                        <div className="flex-1 space-y-2">
-                          {not.image && (
-                            <img 
-                              src={not.image} 
-                              alt="Notice" 
-                              className="w-full h-32 object-cover rounded-xl border border-white/10 mb-2 shadow-lg"
-                              referrerPolicy="no-referrer"
-                            />
-                          )}
-                          <p className="text-xs font-bold leading-relaxed">{not.text}</p>
-                          <span className="text-[9px] text-zinc-500 block font-mono">
-                            {new Date(not.timestamp).toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                        <div className={`p-2 rounded-lg ${
-                          not.type === 'warning' 
-                            ? 'bg-amber-500/20 text-amber-400' 
-                            : not.type === 'success'
-                            ? 'bg-emerald-500/20 text-emerald-400'
-                            : 'bg-zinc-800 text-zinc-400'
-                        }`}>
-                          <AlertCircle className="w-3.5 h-3.5" />
-                        </div>
+                <div className="space-y-4 text-right animate-fade-in">
+                  {/* Section A: Personal Referral Link Alerts (النقاط وتنبيهات الإحالة) */}
+                  <div className="bg-amber-500/[0.03] border border-amber-500/15 rounded-[2rem] p-4 text-right">
+                    <div className="flex items-center justify-between border-b border-amber-500/10 pb-2 mb-3">
+                      <div className="flex items-center gap-1.5 font-black text-[11px] text-amber-400">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                        </span>
+                        <span>إشعارات نقاط الإحالة الخاصة بك</span>
                       </div>
-                    ))
-                  )}
+                      <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                    </div>
+
+                    {personalAlerts.length === 0 ? (
+                      <div className="py-6 text-center text-zinc-500 text-xs">
+                        <p className="font-bold">لا توجد تنبيهات إحالة جديدة مضافة حالياً.</p>
+                        <p className="text-[10px] text-zinc-600 mt-1 leading-relaxed">شارك رابط الإحالة الخاص بك مع أصدقائك واكسب نقاط ذهبية فوراً لتصفح بدون إعلانات!</p>
+                      </div>
+                    ) : (
+                      /* Set capped and accelerated scrollable viewport to avoid layout lag */
+                      <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1 scrollbar-thin scroll-smooth select-none" style={{ contentVisibility: 'auto' }}>
+                        {personalAlerts.slice(0, 15).map((a) => (
+                          <div 
+                            key={a.id}
+                            className="bg-zinc-900/60 border border-white/5 p-3.5 rounded-2xl flex items-start gap-3 transition active:scale-[0.98] hover:bg-zinc-900 duration-150"
+                          >
+                            <div className="flex-grow flex flex-col space-y-1">
+                              <p className="text-[11px] text-zinc-200 font-bold leading-relaxed">{a.text}</p>
+                              <span className="text-[9px] text-zinc-500 block font-mono">
+                                {new Date(a.timestamp).toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <span className="text-base shrink-0">🎁</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Section B: System Announcements (أخبار وتحديثات الإدارة العامة) */}
+                  <div className="space-y-3">
+                    <div className="text-zinc-500 text-[10px] font-black uppercase tracking-wider mb-2">التحديثات المباشرة وحالة السيرفرات الإدارية</div>
+                    
+                    {notices.length === 0 ? (
+                      <div className="h-28 flex flex-col items-center justify-center text-center gap-2">
+                        <AlertCircle className="w-6 h-6 text-zinc-600 animate-pulse" />
+                        <p className="text-xs text-zinc-500 font-bold">لا توجد رسائل إدارية نشطة حالياً.</p>
+                      </div>
+                    ) : (
+                      notices.slice(0, 10).map((not) => (
+                        <div 
+                          key={not.id} 
+                          className={`p-4 rounded-2xl border flex items-start gap-3.5 ${
+                            not.type === 'warning'
+                              ? 'bg-amber-500/10 border-amber-500/20 text-amber-200'
+                              : not.type === 'success'
+                              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200'
+                              : 'bg-zinc-900/80 border-white/5 text-zinc-300'
+                          }`}
+                        >
+                          <div className="flex-1 space-y-2">
+                            {not.image && (
+                              <img 
+                                src={not.image} 
+                                alt="Notice" 
+                                className="w-full h-32 object-cover rounded-xl border border-white/10 mb-2 shadow-lg"
+                                referrerPolicy="no-referrer"
+                              />
+                            )}
+                            <p className="text-xs font-bold leading-relaxed">{not.text}</p>
+                            <span className="text-[9px] text-zinc-500 block font-mono">
+                              {new Date(not.timestamp).toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <div className={`p-2 rounded-lg shrink-0 ${
+                            not.type === 'warning' 
+                              ? 'bg-amber-500/20 text-amber-400' 
+                              : not.type === 'success'
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : 'bg-zinc-800 text-zinc-400'
+                          }`}>
+                            <AlertCircle className="w-3.5 h-3.5" />
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
 

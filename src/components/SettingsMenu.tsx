@@ -8,29 +8,18 @@ import { useDevice } from '../context/DeviceAndNavigationContext';
 
 export default function SettingsMenu() {
   const [isOpen, setIsOpen] = useState(false);
-  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
   const [reduceMotion, setReduceMotion] = useState(localStorage.getItem('reduceMotion') === 'true');
   const [mobileMode, setMobileMode] = useState(localStorage.getItem('mobileMode') === 'true');
   const { displayMode, setDisplayMode } = useDevice();
   const menuRef = useRef<HTMLDivElement>(null);
 
-
   useEffect(() => {
+    // Lock app permanently to professional dark mode
     const root = window.document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-      root.style.colorScheme = 'dark';
-    } else if (theme === 'light') {
-      root.classList.remove('dark');
-      root.style.colorScheme = 'light';
-    } else {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      if (systemTheme === 'dark') root.classList.add('dark');
-      else root.classList.remove('dark');
-      root.style.colorScheme = systemTheme;
-    }
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+    root.classList.add('dark');
+    root.style.colorScheme = 'dark';
+    localStorage.setItem('theme', 'dark');
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -54,12 +43,6 @@ export default function SettingsMenu() {
     localStorage.setItem('mobileMode', String(newState));
   };
 
-  const appearanceOptions = [
-    { id: 'dark', icon: Moon, label: 'داكن' },
-    { id: 'light', icon: Sun, label: 'فاتح' },
-    { id: 'system', icon: Monitor, label: 'تلقائي' },
-  ];
-
   return (
     <div className="relative" ref={menuRef}>
       <button 
@@ -75,7 +58,7 @@ export default function SettingsMenu() {
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="absolute top-full mt-3 right-0 w-80 bg-zinc-950/95 backdrop-blur-3xl border border-white/10 rounded-3xl overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,0.6)] z-[110]"
+            className="absolute top-full mt-3 right-0 w-80 bg-zinc-950/98 border border-white/10 rounded-3xl overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,0.6)] z-[110]"
           >
             <div className="p-6">
               <h3 className="text-sm font-black italic flex items-center gap-2 mb-6">
@@ -84,29 +67,6 @@ export default function SettingsMenu() {
               </h3>
 
               <div className="space-y-6">
-                {/* Theme Options */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-[10px] font-black uppercase text-zinc-500 tracking-widest">
-                    <span>المظهر</span>
-                    <Palette className="w-3 h-3" />
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {appearanceOptions.map((opt) => (
-                      <button 
-                        key={opt.id}
-                        onClick={() => setTheme(opt.id)}
-                        className={`flex flex-col items-center gap-2 p-3 rounded-2xl border transition-all ${
-                          theme === opt.id ? 'bg-primary/10 border-primary text-primary' : 'bg-black/40 border-white/5 text-zinc-500 hover:bg-white/5'
-                        }`}
-                      >
-                        <opt.icon className="w-4 h-4" />
-                        <span className="text-[9px] font-bold">{opt.label}</span>
-                        {theme === opt.id && <Check className="w-2.5 h-2.5 absolute top-2 right-2" />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Device Display Scaling Options */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-[10px] font-black uppercase text-zinc-500 tracking-widest">

@@ -516,8 +516,18 @@ const ShortCard = memo(({
           </div>
         )}
 
+        {/* Fiery Series Name Display */}
+        {!item.isAd && item.seriesName && (
+          <div className="flex items-center gap-1 ml-auto text-right mb-0.5 select-none pointer-events-none">
+            <span className="text-[12px] sm:text-[13px] font-extrabold bg-gradient-to-r from-amber-400 via-orange-500 to-yellow-300 bg-clip-text text-transparent drop-shadow-[0_2px_8px_rgba(249,115,22,0.6)] animate-pulse">
+              {item.seriesName}
+            </span>
+            <span className="text-[10px] text-yellow-400">🔥</span>
+          </div>
+        )}
+
         {/* Title details */}
-        <h2 className="text-white text-[14px] sm:text-[15px] font-black leading-relaxed drop-shadow-[0_2px_12px_rgba(0,0,0,0.95)] max-w-sm ml-auto mr-0 text-right [text-wrap:balance]">
+        <h2 className="text-white text-[13px] sm:text-[14px] font-black leading-relaxed drop-shadow-[0_2px_12px_rgba(0,0,0,0.95)] max-w-sm ml-auto mr-0 text-right [text-wrap:balance]">
           {item.title}
         </h2>
       </div>

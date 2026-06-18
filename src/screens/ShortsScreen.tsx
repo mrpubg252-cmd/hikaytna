@@ -369,22 +369,35 @@ export default function ShortsScreen() {
   const [comments, setComments] = useState<ShortComment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [authorName, setAuthorName] = useState(() => {
-    const s = localStorage.getItem('comment_author_name') || '';
+    let s = localStorage.getItem('guest_chat_name') || localStorage.getItem('comment_author_name') || '';
     if (s === 'bewCew,iDYgC@K6') {
       localStorage.setItem('comment_author_name', 'المدير 🛡️');
       localStorage.setItem('guest_chat_name', 'المدير 🛡️');
       localStorage.setItem('short_admin_access', 'true');
       return 'المدير 🛡️';
     }
+    if (!s) {
+      // Auto-assign random beautiful user guest name so we never prompt them and interrupt their viewing!
+      const randomId = Math.floor(Math.random() * 900) + 100;
+      const defaultNames = ["متابع حكايتنا", "عاشق الدراما", "عاشق الحكايات", "محب المسلسلات"];
+      const chosenPrefix = defaultNames[Math.floor(Math.random() * defaultNames.length)];
+      s = `${chosenPrefix} ${randomId}`;
+      localStorage.setItem('guest_chat_name', s);
+      localStorage.setItem('comment_author_name', s);
+    }
     return s;
   });
   const [isAdmin, setIsAdmin] = useState(() => {
-    return localStorage.getItem('short_admin_access') === 'true' || localStorage.getItem('comment_author_name') === 'bewCew,iDYgC@K6';
+    return localStorage.getItem('short_admin_access') === 'true' || localStorage.getItem('guest_chat_name') === 'bewCew,iDYgC@K6' || localStorage.getItem('guest_chat_name') === 'المدير 🛡️';
   });
   const [rtdbDeletedShorts, setRtdbDeletedShorts] = useState<Record<string, boolean>>({});
   const [rtdbEditedShorts, setRtdbEditedShorts] = useState<Record<string, {title: string, timeRange: string, videoUrl: string}>>({});
   const [visitorNameInput, setVisitorNameInput] = useState('');
-  const [showIdentityModal, setShowIdentityModal] = useState(!authorName);
+  const [showIdentityModal, setShowIdentityModal] = useState(false); // ALWAYS false by default now! UX is pure magic!
+
+  // TikTok-style Share Drawer state
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [shareShortData, setShareShortData] = useState<any>(null);
 
   // Custom modal/dialog states to replace raw prompts and confirms
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -1270,19 +1283,8 @@ export default function ShortsScreen() {
   const handleShareShort = () => {
     const currentShort = filteredShorts[activeIndex];
     if (!currentShort) return;
-    const shareUrl = `${window.location.origin}/shorts?id=${currentShort.id}`;
-    
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(shareUrl)
-        .then(() => {
-          showToast("⚡ تم نسخ رابط شورت حكايتنا المباشر بنجاح! شاركه الآن.", "success");
-        })
-        .catch(() => {
-          showToast("رابط اللقطة المباشر: " + shareUrl, "info");
-        });
-    } else {
-      showToast("رابط اللقطة المباشر: " + shareUrl, "info");
-    }
+    setShareShortData(currentShort);
+    setIsShareOpen(true);
   };
 
   const handleSelectSeries = (seriesName: string, episodeNumStr: string) => {
@@ -1724,13 +1726,30 @@ export default function ShortsScreen() {
       {/* 3. Realtime Live Discussion Comments Panel (Bottom Drawer) */}
       <AnimatePresence>
         {isCommentsOpen && currentShort && (
-          <div className="fixed inset-0 z-[250000] bg-black/80 backdrop-blur-sm flex items-end justify-center pb-0">
-             <SeriesChat 
-               seriesId={currentShort.id} 
-               seriesTitle={currentShort.seriesName} 
-               seriesImage={currentShort.thumbnail}
-               onClose={() => setIsCommentsOpen(false)} 
-             />
+          <div className="fixed inset-0 z-[250000] bg-black/70 backdrop-blur-xs flex items-end justify-center pb-0">
+             {/* Backdrop closer */}
+             <div className="absolute inset-0 cursor-pointer" onClick={() => setIsCommentsOpen(false)} />
+             
+             {/* Slide-up Container */}
+             <motion.div
+               initial={{ y: "100%" }}
+               animate={{ y: 0 }}
+               exit={{ y: "100%" }}
+               transition={{ type: "spring", damping: 28, stiffness: 320 }}
+               className="relative w-full max-w-md h-[78vh] bg-[#0c0d12] border-t border-white/10 rounded-t-[2.5rem] overflow-hidden shadow-[0_-20px_50px_rgba(0,0,0,0.8)] z-10 flex flex-col select-none"
+             >
+                {/* Drag handle bar */}
+                <div className="w-12 h-1 bg-zinc-800 rounded-full mx-auto mt-3.5 mb-1.5 flex-shrink-0" />
+                
+                <div className="flex-grow overflow-hidden">
+                  <SeriesChat 
+                    seriesId={currentShort.id} 
+                    seriesTitle={currentShort.title} 
+                    seriesImage={currentShort.thumbnail}
+                    onClose={() => setIsCommentsOpen(false)} 
+                  />
+                </div>
+             </motion.div>
           </div>
         )}
       </AnimatePresence>
@@ -2074,6 +2093,135 @@ export default function ShortsScreen() {
                   className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-black py-3 rounded-xl text-xs transition active:scale-95 border border-white/5"
                 >
                   إلغاء التعديل
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* TikTok-style Share Overlay Modal */}
+        {isShareOpen && shareShortData && (
+          <div className="fixed inset-0 z-[310000] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div className="absolute inset-0 cursor-pointer" onClick={() => setIsShareOpen(false)} />
+            
+            <motion.div
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              className="relative w-full sm:max-w-md bg-[#0b0c10]/98 border-t sm:border border-white/10 rounded-t-[2rem] sm:rounded-[2.5rem] p-6 pb-8 text-right overflow-hidden shadow-2xl z-20 select-none"
+            >
+              <div className="w-12 h-1 bg-zinc-800 rounded-full mx-auto mb-5 sm:hidden" />
+              
+              <div className="flex items-center justify-between pb-3 border-b border-white/5 mb-5">
+                <button 
+                  onClick={() => setIsShareOpen(false)}
+                  className="p-1.5 bg-zinc-900 hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition active:scale-90"
+                >
+                  <X className="w-4 h-4 text-white" />
+                </button>
+                <h3 className="text-sm font-black text-white">مشاركة هذه اللقطة المميزة 🚀</h3>
+              </div>
+
+              {/* Series Details Floating Card inside Share Drawer */}
+              <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/5 mb-6">
+                <div className="w-12 h-12 rounded-xl overflow-hidden border border-white/10 flex-shrink-0">
+                  <img 
+                    src={shareShortData.seriesImage || shareShortData.thumbnail} 
+                    className="w-full h-full object-cover" 
+                    onError={(e) => {
+                      e.currentTarget.src = 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png';
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col text-right justify-center">
+                  <span className="text-[10px] text-zinc-400 font-bold block">{shareShortData.seriesName} - الحلقة {shareShortData.episodeNum || '1'}</span>
+                  <span className="text-[11px] text-white font-extrabold block truncate max-w-[240px] mt-0.5">{shareShortData.title}</span>
+                </div>
+              </div>
+
+              {/* Platform grids */}
+              <div className="grid grid-cols-4 gap-4 mb-6">
+                {[
+                  {
+                    name: 'واتساب',
+                    icon: '🟢',
+                    color: 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/15',
+                    action: () => {
+                      const text = encodeURIComponent(`شاهد هذه اللقطة الحاسمة من مسلسل "${shareShortData.seriesName}": ${window.location.origin}/shorts?id=${shareShortData.id}`);
+                      window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+                      setIsShareOpen(false);
+                    }
+                  },
+                  {
+                    name: 'تلجرام',
+                    icon: '🔵',
+                    color: 'bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/15',
+                    action: () => {
+                      const url = encodeURIComponent(`${window.location.origin}/shorts?id=${shareShortData.id}`);
+                      const text = encodeURIComponent(`شاهد لقطة "${shareShortData.title}" من مسلسل "${shareShortData.seriesName}" على حكايتنا 🍿🍿`);
+                      window.open(`https://t.me/share/url?url=${url}&text=${text}`, '_blank');
+                      setIsShareOpen(false);
+                    }
+                  },
+                  {
+                    name: 'فيسبوك',
+                    icon: '📘',
+                    color: 'bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-600/15',
+                    action: () => {
+                      const url = encodeURIComponent(`${window.location.origin}/shorts?id=${shareShortData.id}`);
+                      window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, '_blank');
+                      setIsShareOpen(false);
+                    }
+                  },
+                  {
+                    name: 'سناب شات',
+                    icon: '🟡',
+                    color: 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 border border-yellow-500/15',
+                    action: () => {
+                      navigator.clipboard.writeText(`${window.location.origin}/shorts?id=${shareShortData.id}`);
+                      showToast("⚡ تم نسخ الرابط! يمكنك الآن نشره مباشرة في سناب شات ✨", "success");
+                      setIsShareOpen(false);
+                    }
+                  }
+                ].map((plat) => (
+                  <button
+                    key={plat.name}
+                    onClick={plat.action}
+                    className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all cursor-pointer active:scale-95 ${plat.color}`}
+                  >
+                    <span className="text-xl mb-1.5">{plat.icon}</span>
+                    <span className="text-[10px] font-extrabold text-zinc-300">{plat.name}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Copy actions */}
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/shorts?id=${shareShortData.id}`);
+                    showToast("📋 تم نسخ الرابط المباشر للقطة بنجاح!", "success");
+                    setIsShareOpen(false);
+                  }}
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-right cursor-pointer border border-white/5 active:scale-95 transition-colors"
+                >
+                  <span className="text-[10px] text-zinc-500">Copy Link</span>
+                  <span className="text-xs font-extrabold text-white">نسخ الرابط المباشر للمقاطع</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`شاهد مسلسل "${shareShortData.seriesName}" على تطبيق حكايتنا 🍿✨`);
+                    showToast("📋 تم نسخ اسم المسلسل بنجاح!", "success");
+                    setIsShareOpen(false);
+                  }}
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-right cursor-pointer border border-white/5 active:scale-95 transition-colors"
+                >
+                  <span className="text-[10px] text-zinc-500">Copy Series Title</span>
+                  <span className="text-xs font-extrabold text-white">نسخ اسم المسلسل الكامل</span>
                 </button>
               </div>
             </motion.div>

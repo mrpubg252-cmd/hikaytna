@@ -1232,12 +1232,13 @@ async function startServer() {
         parsed.users = parsed.users || {};
         parsed.creatorIPs = parsed.creatorIPs || {};
         parsed.adFreeExpiry = parsed.adFreeExpiry || {};
+        parsed.alerts = parsed.alerts || {};
         return parsed;
       }
     } catch (e) {
       console.error("Error reading referrals file:", e);
     }
-    return { visitedIPs: [], referrers: {}, users: {}, creatorIPs: {}, adFreeExpiry: {} };
+    return { visitedIPs: [], referrers: {}, users: {}, creatorIPs: {}, adFreeExpiry: {}, alerts: {} };
   }
 
   // Helper to save referrals database
@@ -1248,6 +1249,7 @@ async function startServer() {
       data.users = data.users || {};
       data.creatorIPs = data.creatorIPs || {};
       data.adFreeExpiry = data.adFreeExpiry || {};
+      data.alerts = data.alerts || {};
       fs.writeFileSync(REFERRALS_FILE, JSON.stringify(data, null, 2), "utf-8");
     } catch (e) {
       console.error("Error writing referrals file:", e);
@@ -1349,9 +1351,29 @@ async function startServer() {
       const newPoints = currentPoints + 1;
       db.referrers[cleanedRefId] = newPoints;
 
+      // Add individual notification (limit to top 30 elements for absolute high performance and zero lag)
+      db.alerts = db.alerts || {};
+      if (!db.alerts[cleanedRefId]) {
+        db.alerts[cleanedRefId] = [];
+      }
+      
+      const newAlert = {
+        id: "alert_" + Math.random().toString(36).substring(2, 9),
+        text: `بشرى سارة! 🎉 انضم زائر جديد لمنصتنا عبر رابط الإحالة الفريد الخاص بك! تم زيادة رصيدك بمقدار (+1 نقطة ذهبية) لتصبح نقاطك الإجمالية: ${newPoints} نقطة. 🌟🎁`,
+        timestamp: Date.now(),
+        type: "success"
+      };
+
+      db.alerts[cleanedRefId].unshift(newAlert);
+      
+      // Ensure we keep only the latest 30 alerts so the Notifications Box stays light and zero lag!
+      if (db.alerts[cleanedRefId].length > 30) {
+        db.alerts[cleanedRefId] = db.alerts[cleanedRefId].slice(0, 30);
+      }
+
       saveReferrals(db);
 
-      console.log(`[Referral Recorded] Code: ${referrerId}, Client IP: ${clientIp}, Points: ${newPoints}`);
+      console.log(`[Referral Recorded with Alert] Code: ${referrerId}, Client IP: ${clientIp}, Points: ${newPoints}`);
       return res.json({ 
         status: true, 
         message: "شكراً لك! تم احتساب إحالتك بنجاح وكسبت نقطة جديدة! 🎉🎁", 
@@ -1387,6 +1409,22 @@ async function startServer() {
       return res.json({ status: true, points, adFreeExpiry });
     } catch (err) {
       console.error("Error reading points:", err);
+      res.status(500).json({ status: false, message: "Internal server error" });
+    }
+  });
+
+  // Endpoint to obtain personal referral alerts for a given referrer ID
+  app.get("/api/v1/referral/alerts", (req, res) => {
+    try {
+      const { id } = req.query;
+      if (!id || typeof id !== "string") {
+        return res.status(400).json({ status: false, message: "معرف المستخدم مفقود" });
+      }
+      const db = loadReferrals();
+      const userAlerts = db.alerts?.[id.trim()] || [];
+      return res.json({ status: true, alerts: userAlerts });
+    } catch (err) {
+      console.error("Error reading alerts:", err);
       res.status(500).json({ status: false, message: "Internal server error" });
     }
   });
@@ -2058,6 +2096,25 @@ document.head.appendChild(s);
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
+  }
+
+  // Pre-download high-res logo dynamically to overwrite outdated logo
+  try {
+    const logoUrl = "https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png";
+    const logoPath = path.join(process.cwd(), 'public', 'logo.png');
+    axios.get(logoUrl, { responseType: 'arraybuffer' }).then((response) => {
+      fs.writeFileSync(logoPath, Buffer.from(response.data));
+      console.log("Successfully downloaded and updated local logo.png with the premium high-res image.");
+      // Also write in dist if dist exists
+      const distLogoPath = path.join(process.cwd(), 'dist', 'logo.png');
+      if (fs.existsSync(path.join(process.cwd(), 'dist'))) {
+        fs.writeFileSync(distLogoPath, Buffer.from(response.data));
+      }
+    }).catch(err => {
+      console.warn("Non-blocking logo cache helper bypassed:", err.message);
+    });
+  } catch (e) {
+    console.warn("Async non-blocking logo puller failed:", e);
   }
 
   app.listen(PORT, "0.0.0.0", () => {

@@ -26,18 +26,7 @@ function AppLayout() {
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
   const [toastType, setToastType] = React.useState<'success' | 'info'>('success');
   const [isInstallOpen, setIsInstallOpen] = React.useState(false);
-  const [isIntroRunning, setIsIntroRunning] = React.useState(() => {
-    if (typeof window === 'undefined') return false;
-    const isStandalone = 
-      window.matchMedia('(display-mode: standalone)').matches || 
-      (window.navigator as any).standalone || 
-      document.referrer.includes('android-app://') ||
-      new URLSearchParams(window.location.search).get('intro') === 'true' ||
-      new URLSearchParams(window.location.search).get('pwa') === 'true';
-
-    const hasSeenIntro = sessionStorage.getItem('has_seen_intro') === 'true';
-    return isStandalone || !hasSeenIntro;
-  });
+  const [isIntroRunning, setIsIntroRunning] = React.useState(false);
 
   React.useEffect(() => {
     const handleTriggerInstall = () => {
@@ -64,7 +53,19 @@ function AppLayout() {
   }, [deviceMode]);
 
   React.useEffect(() => {
-    // 0. Ensure user has a referral ID initialized immediately on startup
+    // 0. Ensure user has a default guest name initialized immediately on startup
+    const savedName = localStorage.getItem('guest_chat_name');
+    if (!savedName) {
+      const randomId = Math.floor(Math.random() * 900) + 100;
+      const defaultNames = ["متابع حكايتنا", "عاشق الدراما", "عاشق الحكايات", "محب المسلسلات"];
+      const chosenPrefix = defaultNames[Math.floor(Math.random() * defaultNames.length)];
+      const generatedName = `${chosenPrefix} ${randomId}`;
+      localStorage.setItem('guest_chat_name', generatedName);
+      localStorage.setItem('comment_author_name', generatedName);
+      localStorage.setItem('guest_chat_avatar', 'boy1');
+    }
+
+    // 0b. Ensure user has a referral ID initialized immediately on startup
     let refId = localStorage.getItem('my_referral_id');
     if (!refId) {
       refId = 'user_' + Math.random().toString(36).substring(2, 10);
