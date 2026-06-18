@@ -70,7 +70,16 @@ export default function WatchScreen() {
         setLoadingSeries(true);
         fetchAllSeries()
           .then((all) => {
-            const found = all.find((s) => s.id === queryId);
+            const found = all.find((s) => {
+              const cleanSId = s.id.trim();
+              const cleanQId = queryId.trim();
+              return (
+                cleanSId === cleanQId ||
+                encodeURIComponent(cleanSId) === cleanQId ||
+                cleanSId === decodeURIComponent(cleanQId) ||
+                cleanSId.replace(/_/g, '/') === cleanQId.replace(/_/g, '/')
+              );
+            });
             if (found) {
               setSeries(found);
               sessionStorage.setItem('backup_watching_series', JSON.stringify(found));
@@ -104,7 +113,9 @@ export default function WatchScreen() {
     } else {
       setIsAdGatePassed(false);
       // Direct full standalone window replace to the Express-served /ads endpoint (prevents history pollution)
-      window.location.replace(`/ads?id=${encodeURIComponent(series.id)}`);
+      const currentPathName = window.location.pathname;
+      const targetRedirect = `${currentPathName}?unlocked=true`;
+      window.location.replace(`/ads?id=${encodeURIComponent(series.id)}&redirect=${encodeURIComponent(targetRedirect)}`);
     }
   }, [series, location.search]);
 
@@ -1404,7 +1415,7 @@ export default function WatchScreen() {
                         whileTap={{ scale: 0.98 }}
                         onClick={() => {
                            setSelectedActor(null);
-                           navigate(`/watch/${encodeURIComponent(work.id)}`, { state: { series: work } });
+                           navigate(`/watch/${encodeURIComponent(work.title || work.id)}`, { state: { series: work } });
                         }}
                         className="group cursor-pointer"
                       >

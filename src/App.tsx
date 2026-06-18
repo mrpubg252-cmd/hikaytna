@@ -18,6 +18,7 @@ import MatchesScreen from './screens/MatchesScreen';
 import { getApiUrl } from './lib/apiConfig';
 import AppIntro from './components/AppIntro';
 import InstallWizard from './components/InstallWizard';
+import CookieConsent from './components/CookieConsent';
 
 function AppLayout() {
   const { deviceMode, isTV } = useDevice();
@@ -271,6 +272,7 @@ function AppLayout() {
       )}
 
       <InstallWizard isOpen={isInstallOpen} onClose={() => setIsInstallOpen(false)} />
+      <CookieConsent />
     </>
   );
 }

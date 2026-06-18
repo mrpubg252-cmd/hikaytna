@@ -333,7 +333,7 @@ export default function HomeScreen() {
                     item={item}
                     onPress={() => {
                       markSeriesAsRead(item);
-                      navigate(`/watch/${encodeURIComponent(item.id)}`, { state: { series: item } });
+                      navigate(`/watch/${encodeURIComponent(item.title || item.id)}`, { state: { series: item } });
                     }}
                   />
                 ))

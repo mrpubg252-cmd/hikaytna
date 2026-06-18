@@ -12,119 +12,34 @@ export default function AppIntro({ onComplete }: AppIntroProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Synthesize custom premium cinematic deep note audio (THX/Dolby style!)
+  // 1. Overcome browser autoplay restrictions for unmuted video on first user tap
   useEffect(() => {
-    if (!showIntro) return;
+    if (!showIntro || videoFailed) return;
 
-    let audioCtx: AudioContext | null = null;
-    let synthTriggered = false;
-
-    const playSound = () => {
-      if (synthTriggered) return;
-      synthTriggered = true;
-
-      try {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioContextClass) return;
-        audioCtx = new AudioContextClass();
-
-        // Resume Audio Context if suspended
-        if (audioCtx.state === 'suspended') {
-          audioCtx.resume();
+    const resumeVideoAudio = () => {
+      const video = videoRef.current;
+      if (video) {
+        video.muted = false;
+        const playPromise = video.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(e => console.log("User interaction play attempt:", e));
         }
-
-        const now = audioCtx.currentTime;
-
-        // Sound Group 1: Deep Warm Sub-Bass Drone
-        const subOsc = audioCtx.createOscillator();
-        const subGain = audioCtx.createGain();
-        subOsc.type = 'sawtooth';
-        subOsc.frequency.setValueAtTime(45, now); // Low F sub
-        subOsc.frequency.exponentialRampToValueAtTime(90, now + 3.5); // Warm slide up to F1
-
-        const subFilter = audioCtx.createBiquadFilter();
-        subFilter.type = 'lowpass';
-        subFilter.frequency.setValueAtTime(120, now);
-        subFilter.frequency.exponentialRampToValueAtTime(250, now + 3.0);
-
-        subGain.gain.setValueAtTime(0.0001, now);
-        subGain.gain.linearRampToValueAtTime(0.35, now + 1.2);
-        subGain.gain.linearRampToValueAtTime(0.0001, now + 5.2);
-
-        // Sound Group 2: Metallic Sparking Neon Ignition
-        const sparkOsc = audioCtx.createOscillator();
-        const sparkGain = audioCtx.createGain();
-        sparkOsc.type = 'triangle';
-        sparkOsc.frequency.setValueAtTime(220, now);
-        sparkOsc.frequency.exponentialRampToValueAtTime(440, now + 2.5);
-
-        sparkGain.gain.setValueAtTime(0.0001, now);
-        // Ignite peak at 1.5 seconds (goes with the neon ignite event)
-        sparkGain.gain.linearRampToValueAtTime(0.05, now + 1.4);
-        sparkGain.gain.linearRampToValueAtTime(0.18, now + 1.6); // Spark burst!
-        sparkGain.gain.linearRampToValueAtTime(0.0001, now + 4.8);
-
-        // Sound Group 3: High Chimmer Sky Ring (Pure luxury vibe)
-        const shimmerOsc = audioCtx.createOscillator();
-        const shimmerGain = audioCtx.createGain();
-        shimmerOsc.type = 'sine';
-        shimmerOsc.frequency.setValueAtTime(783.99, now); // High G5 shiny tone
-
-        shimmerGain.gain.setValueAtTime(0.0001, now);
-        shimmerGain.gain.linearRampToValueAtTime(0.06, now + 1.8);
-        shimmerGain.gain.linearRampToValueAtTime(0.0001, now + 5.0);
-
-        // Connections
-        subOsc.connect(subFilter);
-        subFilter.connect(subGain);
-        subGain.connect(audioCtx.destination);
-
-        sparkOsc.connect(sparkGain);
-        sparkGain.connect(audioCtx.destination);
-
-        shimmerOsc.connect(shimmerGain);
-        shimmerGain.connect(audioCtx.destination);
-
-        // Start all
-        subOsc.start(now);
-        sparkOsc.start(now);
-        shimmerOsc.start(now);
-
-        // Stop all
-        subOsc.stop(now + 5.5);
-        sparkOsc.stop(now + 5.5);
-        shimmerOsc.stop(now + 5.5);
-      } catch (err) {
-        console.warn("Subtle audio synthesizer build was bypassed by browser flags:", err);
       }
     };
 
-    // Try automatic play on mount
-    playSound();
+    // Try to trigger on mount
+    resumeVideoAudio();
 
-    // In case the browser blocks autoplay, play on the very first touch/click
-    const handleUserInteraction = () => {
-      playSound();
-      cleanup();
-    };
-
-    const cleanup = () => {
-      window.removeEventListener('click', handleUserInteraction);
-      window.removeEventListener('touchstart', handleUserInteraction);
-      window.removeEventListener('keydown', handleUserInteraction);
-    };
-
-    window.addEventListener('click', handleUserInteraction);
-    window.addEventListener('touchstart', handleUserInteraction);
-    window.addEventListener('keydown', handleUserInteraction);
+    window.addEventListener('click', resumeVideoAudio);
+    window.addEventListener('touchstart', resumeVideoAudio);
+    window.addEventListener('keydown', resumeVideoAudio);
 
     return () => {
-      cleanup();
-      if (audioCtx && audioCtx.state !== 'closed') {
-        audioCtx.close();
-      }
+      window.removeEventListener('click', resumeVideoAudio);
+      window.removeEventListener('touchstart', resumeVideoAudio);
+      window.removeEventListener('keydown', resumeVideoAudio);
     };
-  }, [showIntro]);
+  }, [showIntro, videoFailed]);
 
   // 2. Video Playback & Timers
   useEffect(() => {
@@ -286,7 +201,6 @@ export default function AppIntro({ onComplete }: AppIntroProps) {
             src="/intro.mp4"
             className="w-full h-full object-cover"
             playsInline
-            muted
             autoPlay
             onError={() => {
               console.log("Direct video asset triggers error or is missing; initiating stunning cinematic container fallback.");

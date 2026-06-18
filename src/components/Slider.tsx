@@ -679,7 +679,7 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
           <button 
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/watch/${encodeURIComponent(current.id)}`, { state: { series: current } });
+              navigate(`/watch/${encodeURIComponent(current.title || current.id)}`, { state: { series: current } });
             }}
             className="flex items-center gap-2 px-6 sm:px-10 py-3 sm:py-4 bg-white text-black font-black text-[10px] sm:text-xs uppercase tracking-[0.1em] sm:tracking-[0.2em] rounded-full hover:scale-105 transition-transform shadow-xl shadow-white/5"
           >
