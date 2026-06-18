@@ -15,6 +15,8 @@ import ChatScreen from './screens/ChatScreen';
 import ShortsScreen from './screens/ShortsScreen';
 import AdminScreen from './screens/AdminScreen';
 import MatchesScreen from './screens/MatchesScreen';
+import GamesScreen from './screens/GamesScreen';
+import CookieConsent from './components/CookieConsent';
 import { getApiUrl } from './lib/apiConfig';
 
 function AppLayout() {
@@ -147,8 +149,11 @@ function AppLayout() {
         <Route path="/chat" element={<ChatScreen />} />
         <Route path="/shorts" element={<ShortsScreen />} />
         <Route path="/matches" element={<MatchesScreen />} />
+        <Route path="/games" element={<GamesScreen />} />
         <Route path="/admin" element={<AdminScreen />} />
       </Routes>
+
+      <CookieConsent />
 
       {isTV && showTvBadge && (
         <div className="fixed top-4 left-4 z-[9999] bg-gradient-to-r from-red-600 to-red-800 text-white px-3 py-1.5 rounded-full text-[10px] sm:text-xs font-black shadow-[0_0_20px_rgba(229,9,20,0.6)] border border-white/10 flex items-center gap-2 select-none animate-bounce">

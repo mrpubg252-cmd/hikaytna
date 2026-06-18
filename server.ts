@@ -1366,6 +1366,58 @@ async function startServer() {
     }
   });
 
+  // Endpoint to add points securely
+  app.post("/api/v1/referral/add-points", (req, res) => {
+    try {
+      const { id, amount } = req.body;
+      if (!id || typeof id !== "string") {
+        return res.status(400).json({ status: false, message: "معرف المستخدم مفقود" });
+      }
+      
+      const db = loadReferrals();
+      const cleanedId = id.trim();
+      const currentPoints = db.referrers?.[cleanedId] || 0;
+      const pointsToAdd = typeof amount === "number" ? amount : 1;
+      const newPoints = currentPoints + pointsToAdd;
+      
+      db.referrers[cleanedId] = newPoints;
+      saveReferrals(db);
+      
+      return res.json({ status: true, points: newPoints });
+    } catch (err) {
+      console.error("Error adding points:", err);
+      res.status(500).json({ status: false, message: "Internal server error" });
+    }
+  });
+
+  // Endpoint to deduct points securely
+  app.post("/api/v1/referral/deduct-points", (req, res) => {
+    try {
+      const { id, amount } = req.body;
+      if (!id || typeof id !== "string") {
+        return res.status(400).json({ status: false, message: "معرف المستخدم مفقود" });
+      }
+      
+      const db = loadReferrals();
+      const cleanedId = id.trim();
+      const currentPoints = db.referrers?.[cleanedId] || 0;
+      const pointsToDeduct = typeof amount === "number" ? amount : 1;
+      
+      if (currentPoints < pointsToDeduct) {
+        return res.status(400).json({ status: false, message: "نقاطك غير كافية لإجراء هذه العملية" });
+      }
+      
+      const newPoints = currentPoints - pointsToDeduct;
+      db.referrers[cleanedId] = newPoints;
+      saveReferrals(db);
+      
+      return res.json({ status: true, points: newPoints });
+    } catch (err) {
+      console.error("Error deducting points:", err);
+      res.status(500).json({ status: false, message: "Internal server error" });
+    }
+  });
+
   // Diagnostic endpoint to inspect Hakeem connection and rate-limit issues
   app.get("/api/v1/ai/logs", (req, res) => {
     res.json({ status: true, logs: HAKEEM_LOGS });
@@ -1928,6 +1980,17 @@ document.head.appendChild(s);
     </div>
 
     <script>
+        // Check for ad-free state instantly to bypass loading screen if possible
+        var redirectUrl = "${redirectUrl}";
+        var seriesId = "${seriesId}";
+        if (localStorage.getItem('ads_removed_forever') === 'true') {
+            if (redirectUrl) {
+                window.location.replace(redirectUrl);
+            } else {
+                window.location.replace('/watch?id=' + encodeURIComponent(seriesId) + '&unlocked=true');
+            }
+        }
+
         var countdown = 6;
         var timer = setInterval(function() {
             countdown--;
@@ -1938,19 +2001,24 @@ document.head.appendChild(s);
                 var btn = document.getElementById('main-btn');
                 btn.className = 'btn';
                 btn.removeAttribute('disabled');
-                btn.innerText = 'العودة للموقع ومتابعة المشاهدة 🚀';
-                btn.onclick = function() {
+                btn.innerText = 'جاري تحويلك للمشاهدة تلقائياً... 🚀';
+                
+                function performRedirect() {
                     btn.innerText = 'الرجاء الانتظار...';
                     btn.className = 'btn btn-disabled';
                     btn.setAttribute('disabled', 'true');
                     
-                    var redirect = "${redirectUrl}";
-                    if (redirect) {
-                        window.location.replace(redirect);
+                    if (redirectUrl) {
+                        window.location.replace(redirectUrl);
                     } else {
-                        window.location.replace('/watch?id=' + encodeURIComponent("${seriesId}") + '&unlocked=true');
+                        window.location.replace('/watch?id=' + encodeURIComponent(seriesId) + '&unlocked=true');
                     }
-                };
+                }
+                
+                btn.onclick = performRedirect;
+                
+                // Automatically redirect after a tiny grace period
+                setTimeout(performRedirect, 800);
             } else {
                 document.getElementById('countdown').innerText = countdown;
                 document.getElementById('main-btn').innerText = 'الرجاء الانتظار ' + countdown + ' ثوانٍ لمتابعة المشاهدة...';
