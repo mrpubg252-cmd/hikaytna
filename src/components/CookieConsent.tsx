@@ -35,7 +35,7 @@ export default function CookieConsent() {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 30, scale: 0.95 }}
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="fixed bottom-4 left-4 right-4 md:left-auto md:right-8 md:max-w-md z-50 overflow-hidden"
+          className="fixed bottom-26 left-4 right-4 md:bottom-6 md:left-auto md:right-8 md:max-w-md z-[10000] overflow-hidden"
           id="cookie-consent-container"
         >
           {/* Main Premium Card */}

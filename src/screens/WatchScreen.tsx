@@ -35,7 +35,20 @@ export default function WatchScreen() {
       try {
         const parsed = JSON.parse(backup);
         const targetId = seriesId || new URLSearchParams(window.location.search).get('id');
-        if (!targetId || parsed.id === targetId) {
+        if (!targetId) return parsed;
+        
+        const cleanTId = targetId.trim();
+        const cleanPId = parsed.id.trim();
+        const cleanPTitle = parsed.title?.trim() || '';
+        
+        if (
+          cleanPId === cleanTId ||
+          encodeURIComponent(cleanPId) === cleanTId ||
+          cleanPId === decodeURIComponent(cleanTId) ||
+          cleanPTitle === cleanTId ||
+          encodeURIComponent(cleanPTitle) === cleanTId ||
+          cleanPTitle === decodeURIComponent(cleanTId)
+        ) {
           return parsed;
         }
       } catch (e) {
@@ -73,11 +86,15 @@ export default function WatchScreen() {
             const found = all.find((s) => {
               const cleanSId = s.id.trim();
               const cleanQId = queryId.trim();
+              const cleanTitle = s.title?.trim() || '';
               return (
                 cleanSId === cleanQId ||
                 encodeURIComponent(cleanSId) === cleanQId ||
                 cleanSId === decodeURIComponent(cleanQId) ||
-                cleanSId.replace(/_/g, '/') === cleanQId.replace(/_/g, '/')
+                cleanSId.replace(/_/g, '/') === cleanQId.replace(/_/g, '/') ||
+                cleanTitle === cleanQId ||
+                encodeURIComponent(cleanTitle) === cleanQId ||
+                cleanTitle === decodeURIComponent(cleanQId)
               );
             });
             if (found) {
