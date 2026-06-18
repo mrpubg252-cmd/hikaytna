@@ -38,6 +38,13 @@ function AppLayout() {
   }, [deviceMode]);
 
   React.useEffect(() => {
+    // 0. Ensure user has a referral ID initialized immediately on startup
+    let refId = localStorage.getItem('my_referral_id');
+    if (!refId) {
+      refId = 'user_' + Math.random().toString(36).substring(2, 10);
+      localStorage.setItem('my_referral_id', refId);
+    }
+
     // 1. Sync user's premium gold ad-free state globally on mount
     const storedRefId = localStorage.getItem('my_referral_id');
     if (storedRefId) {
@@ -45,10 +52,11 @@ function AppLayout() {
         .then(res => res.json())
         .then(data => {
           if (data.status) {
-            if (data.points >= 10) {
-              localStorage.setItem('ads_removed_forever', 'true');
+            localStorage.setItem('my_points', String(data.points || 0));
+            if (data.adFreeExpiry) {
+              localStorage.setItem('ad_free_until', String(data.adFreeExpiry));
             } else {
-              localStorage.removeItem('ads_removed_forever');
+              localStorage.removeItem('ad_free_until');
             }
           }
         })
@@ -60,49 +68,63 @@ function AppLayout() {
     const refCode = params.get('ref');
     
     if (refCode) {
-      // Check if this browser already completed a referral to exclude self-referrals or re-entries
-      const alreadyReferred = localStorage.getItem('referred_registered');
-      if (alreadyReferred) {
-        console.log("User has already completed a referral.");
+      const trimmedRefCode = refCode.trim();
+      const myRefId = localStorage.getItem('my_referral_id');
+
+      // Immediate self-click check
+      if (myRefId && trimmedRefCode === myRefId.trim()) {
+        console.warn("Self referral click detected!");
+        localStorage.setItem('cheated_detector_alert', 'true');
+        window.dispatchEvent(new Event('cheated-alert-updated'));
       } else {
-        // Wait for real-person telemetry signatures before counting referrals
-        const handleHumanActivity = () => {
-          window.removeEventListener('scroll', handleHumanActivity);
-          window.removeEventListener('click', handleHumanActivity);
-          window.removeEventListener('touchstart', handleHumanActivity);
-          window.removeEventListener('mousemove', handleHumanActivity);
-          window.removeEventListener('keydown', handleHumanActivity);
+        // Check if this browser already completed a referral to exclude self-referrals or re-entries
+        const alreadyReferred = localStorage.getItem('referred_registered');
+        if (alreadyReferred) {
+          console.log("User has already completed a referral.");
+        } else {
+          // Wait for real-person telemetry signatures before counting referrals
+          const handleHumanActivity = () => {
+            window.removeEventListener('scroll', handleHumanActivity);
+            window.removeEventListener('click', handleHumanActivity);
+            window.removeEventListener('touchstart', handleHumanActivity);
+            window.removeEventListener('mousemove', handleHumanActivity);
+            window.removeEventListener('keydown', handleHumanActivity);
 
-          console.log("⚡ [Telemetry Verification] Human actions detected. Registering referral for:", refCode);
+            console.log("⚡ [Telemetry Verification] Human actions detected. Registering referral for:", trimmedRefCode);
 
-          fetch(getApiUrl('/api/v1/referral/register'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ referrerId: refCode })
-          })
-          .then(res => res.json())
-          .then(data => {
-            if (data.status) {
-              localStorage.setItem('referred_registered', 'true');
-              setToastType('success');
-              setToastMessage(`🎉 تم احتساب إحالتك بنجاح! بفضل تفاعلك الحقيقي، ساعدت صديقك في إلغاء إعلاناته كلياً. شكراً لك!`);
-              setTimeout(() => setToastMessage(null), 8500);
-            } else {
-              setToastType('info');
-              setToastMessage(data.message || `لقد قمت مسبقاً بدعم صديقك عبر هذا الجهاز، شكراً لرالقيّ تفاعلك ونبل أخلاقك! ❤️`);
-              setTimeout(() => setToastMessage(null), 7000);
-            }
-          })
-          .catch(err => {
-            console.warn("Failed sending verified telemetry request", err);
-          });
-        };
+            fetch(getApiUrl('/api/v1/referral/register'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ referrerId: trimmedRefCode })
+            })
+            .then(res => res.json())
+            .then(data => {
+              if (data.status) {
+                localStorage.setItem('referred_registered', 'true');
+                setToastType('success');
+                setToastMessage(`🎉 تم احتساب إحالتك بنجاح! بفضل تفاعلك الحقيقي، ساعدت صديقك في إلغاء إعلاناته كلياً. شكراً لك!`);
+                setTimeout(() => setToastMessage(null), 8500);
+              } else {
+                if (data.selfReferral) {
+                  localStorage.setItem('cheated_detector_alert', 'true');
+                  window.dispatchEvent(new Event('cheated-alert-updated'));
+                }
+                setToastType('info');
+                setToastMessage(data.message || `لقد قمت مسبقاً بدعم صديقك عبر هذا الجهاز، شكراً لرالقيّ تفاعلك ونبل أخلاقك! ❤️`);
+                setTimeout(() => setToastMessage(null), 7000);
+              }
+            })
+            .catch(err => {
+              console.warn("Failed sending verified telemetry request", err);
+            });
+          };
 
-        window.addEventListener('scroll', handleHumanActivity, { passive: true });
-        window.addEventListener('click', handleHumanActivity);
-        window.addEventListener('touchstart', handleHumanActivity, { passive: true });
-        window.addEventListener('mousemove', handleHumanActivity, { passive: true });
-        window.addEventListener('keydown', handleHumanActivity);
+          window.addEventListener('scroll', handleHumanActivity, { passive: true });
+          window.addEventListener('click', handleHumanActivity);
+          window.addEventListener('touchstart', handleHumanActivity, { passive: true });
+          window.addEventListener('mousemove', handleHumanActivity, { passive: true });
+          window.addEventListener('keydown', handleHumanActivity);
+        }
       }
     }
 
