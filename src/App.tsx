@@ -25,6 +25,18 @@ function AppLayout() {
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
   const [toastType, setToastType] = React.useState<'success' | 'info'>('success');
   const [isInstallOpen, setIsInstallOpen] = React.useState(false);
+  const [isIntroRunning, setIsIntroRunning] = React.useState(() => {
+    if (typeof window === 'undefined') return false;
+    const isStandalone = 
+      window.matchMedia('(display-mode: standalone)').matches || 
+      (window.navigator as any).standalone || 
+      document.referrer.includes('android-app://') ||
+      new URLSearchParams(window.location.search).get('intro') === 'true' ||
+      new URLSearchParams(window.location.search).get('pwa') === 'true';
+
+    const hasSeenIntro = sessionStorage.getItem('has_seen_intro') === 'true';
+    return isStandalone || !hasSeenIntro;
+  });
 
   React.useEffect(() => {
     const handleTriggerInstall = () => {
@@ -200,12 +212,24 @@ function AppLayout() {
     };
   }, []);
 
+  if (isIntroRunning) {
+    return (
+      <AppIntro 
+        onComplete={() => {
+          sessionStorage.setItem('has_seen_intro', 'true');
+          setIsIntroRunning(false);
+        }} 
+      />
+    );
+  }
+
   return (
     <>
-      <AppIntro />
       <Routes>
         <Route path="/" element={<HomeScreen />} />
         <Route path="/watch" element={<WatchScreen />} />
+        <Route path="/watch/:seriesId" element={<WatchScreen />} />
+        <Route path="/watch/:seriesId/:episodeIndex" element={<WatchScreen />} />
         <Route path="/favorites" element={<FavoritesScreen />} />
         <Route path="/profile" element={<ProfileScreen />} />
         <Route path="/chat" element={<ChatScreen />} />

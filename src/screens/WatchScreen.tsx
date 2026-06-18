@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ChevronRight, Share2, Heart, History, MessageSquare, X, ChevronDown, ChevronUp, Download, Trash2, Play, CheckCircle2, AlertTriangle, Globe, Wifi, WifiOff, ExternalLink, Sparkles, Loader2, Users } from 'lucide-react';
 import EpisodeGrid, { formatEpisodeTitle } from '../components/EpisodeGrid';
 import CustomPlayer from '../components/CustomPlayer';
@@ -21,6 +21,7 @@ import { getTMDBPosterSync } from '../lib/tmdbHealing';
 export default function WatchScreen() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { seriesId, episodeIndex } = useParams();
   const { series: routeSeries } = (location.state as { series: Series }) || {};
 
   // Resolve the series, loading from route state or sessionStorage backup
@@ -33,9 +34,8 @@ export default function WatchScreen() {
     if (backup) {
       try {
         const parsed = JSON.parse(backup);
-        const params = new URLSearchParams(window.location.search);
-        const queryId = params.get('id');
-        if (!queryId || parsed.id === queryId) {
+        const targetId = seriesId || new URLSearchParams(window.location.search).get('id');
+        if (!targetId || parsed.id === targetId) {
           return parsed;
         }
       } catch (e) {
@@ -65,7 +65,7 @@ export default function WatchScreen() {
   useEffect(() => {
     if (!series) {
       const params = new URLSearchParams(location.search);
-      const queryId = params.get('id');
+      const queryId = seriesId || params.get('id');
       if (queryId) {
         setLoadingSeries(true);
         fetchAllSeries()
@@ -86,7 +86,7 @@ export default function WatchScreen() {
     } else {
       setLoadingSeries(false);
     }
-  }, [series, location.search, navigate]);
+  }, [series, seriesId, location.search, navigate]);
 
   useEffect(() => {
     if (!series) return;
@@ -140,7 +140,19 @@ export default function WatchScreen() {
   }, [series]);
 
   const [episodes, setEpisodes] = useState<Episode[]>([]);
-  const [currentEpisode, setCurrentEpisode] = useState(0);
+  const [currentEpisode, setCurrentEpisode] = useState(() => {
+    if (episodeIndex) {
+      const parsed = parseInt(episodeIndex, 10);
+      return !isNaN(parsed) && parsed >= 0 ? parsed : 0;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const queryEp = params.get('ep');
+    if (queryEp) {
+      const parsed = parseInt(queryEp, 10);
+      return !isNaN(parsed) && parsed >= 0 ? parsed : 0;
+    }
+    return 0;
+  });
   const [videoUrl, setVideoUrl] = useState('');
   const [activeServerUrl, setActiveServerUrl] = useState('');
   const [servers, setServers] = useState<{ name: string; url: string }[]>([]);
@@ -724,9 +736,22 @@ export default function WatchScreen() {
     
     setEpisodes(finalEps);
     if (finalEps.length > 0) {
-      // Check last watched episode if any
-      const savedIndex = localStorage.getItem(`mo_play_last_ep_${series.id}`);
-      const indexToPlay = savedIndex ? parseInt(savedIndex) : 0;
+      // Respect dynamic route episodeIndex first
+      let indexToPlay = 0;
+      if (episodeIndex) {
+        const parsed = parseInt(episodeIndex, 10);
+        if (!isNaN(parsed) && parsed >= 0 && parsed < finalEps.length) {
+          indexToPlay = parsed;
+        }
+      } else {
+        const savedIndex = localStorage.getItem(`mo_play_last_ep_${series.id}`);
+        if (savedIndex) {
+          const parsed = parseInt(savedIndex, 10);
+          if (!isNaN(parsed) && parsed >= 0 && parsed < finalEps.length) {
+            indexToPlay = parsed;
+          }
+        }
+      }
       const episodeToPlay = finalEps[indexToPlay] || finalEps[0];
       if (episodeToPlay) {
         playEpisode(episodeToPlay, indexToPlay, false);
@@ -796,6 +821,12 @@ export default function WatchScreen() {
           const localBlobUrl = URL.createObjectURL(data.blob);
           setCurrentEpisode(index);
           localStorage.setItem(`mo_play_last_ep_${series.id}`, index.toString());
+          try {
+            const cleanUrl = `/watch/${encodeURIComponent(series.id)}/${index}`;
+            window.history.replaceState({ ...window.history.state }, '', cleanUrl);
+          } catch (e) {
+            console.warn("Unable to push clean state offline", e);
+          }
           setVideoUrl(localBlobUrl);
           setActiveServerUrl('blob:offline');
           setIsDownloaded(true);
@@ -836,6 +867,14 @@ export default function WatchScreen() {
     // Normal Online playback mode
     setCurrentEpisode(index);
     localStorage.setItem(`mo_play_last_ep_${series.id}`, index.toString());
+    
+    // Gracefully update browser address bar with the clean URL without reloading!
+    try {
+      const cleanUrl = `/watch/${encodeURIComponent(series.id)}/${index}`;
+      window.history.replaceState({ ...window.history.state }, '', cleanUrl);
+    } catch (e) {
+      console.warn("Unable to push clean state", e);
+    }
     
     setVideoUrl(''); // Reset for loader
     
@@ -1365,7 +1404,7 @@ export default function WatchScreen() {
                         whileTap={{ scale: 0.98 }}
                         onClick={() => {
                            setSelectedActor(null);
-                           navigate('/watch', { state: { series: work } });
+                           navigate(`/watch/${encodeURIComponent(work.id)}`, { state: { series: work } });
                         }}
                         className="group cursor-pointer"
                       >

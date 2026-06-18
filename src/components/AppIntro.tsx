@@ -1,27 +1,130 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
-export default function AppIntro() {
-  const [showIntro, setShowIntro] = useState(false);
+interface AppIntroProps {
+  onComplete?: () => void;
+}
+
+export default function AppIntro({ onComplete }: AppIntroProps) {
+  const [showIntro, setShowIntro] = useState(true);
   const [videoFailed, setVideoFailed] = useState(false);
   const [stage, setStage] = useState<'drawing' | 'ignited' | 'steady' | 'complete'>('drawing');
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // 1. Detect Standalone / PWA Mode
+  // Synthesize custom premium cinematic deep note audio (THX/Dolby style!)
   useEffect(() => {
-    const isStandalone = 
-      window.matchMedia('(display-mode: standalone)').matches || 
-      (window.navigator as any).standalone || 
-      document.referrer.includes('android-app://') ||
-      new URLSearchParams(window.location.search).get('intro') === 'true' ||
-      new URLSearchParams(window.location.search).get('pwa') === 'true';
+    if (!showIntro) return;
 
-    if (isStandalone) {
-      // Show intro on mount for standalone app users or testing
-      setShowIntro(true);
-    }
-  }, []);
+    let audioCtx: AudioContext | null = null;
+    let synthTriggered = false;
+
+    const playSound = () => {
+      if (synthTriggered) return;
+      synthTriggered = true;
+
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) return;
+        audioCtx = new AudioContextClass();
+
+        // Resume Audio Context if suspended
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+
+        const now = audioCtx.currentTime;
+
+        // Sound Group 1: Deep Warm Sub-Bass Drone
+        const subOsc = audioCtx.createOscillator();
+        const subGain = audioCtx.createGain();
+        subOsc.type = 'sawtooth';
+        subOsc.frequency.setValueAtTime(45, now); // Low F sub
+        subOsc.frequency.exponentialRampToValueAtTime(90, now + 3.5); // Warm slide up to F1
+
+        const subFilter = audioCtx.createBiquadFilter();
+        subFilter.type = 'lowpass';
+        subFilter.frequency.setValueAtTime(120, now);
+        subFilter.frequency.exponentialRampToValueAtTime(250, now + 3.0);
+
+        subGain.gain.setValueAtTime(0.0001, now);
+        subGain.gain.linearRampToValueAtTime(0.35, now + 1.2);
+        subGain.gain.linearRampToValueAtTime(0.0001, now + 5.2);
+
+        // Sound Group 2: Metallic Sparking Neon Ignition
+        const sparkOsc = audioCtx.createOscillator();
+        const sparkGain = audioCtx.createGain();
+        sparkOsc.type = 'triangle';
+        sparkOsc.frequency.setValueAtTime(220, now);
+        sparkOsc.frequency.exponentialRampToValueAtTime(440, now + 2.5);
+
+        sparkGain.gain.setValueAtTime(0.0001, now);
+        // Ignite peak at 1.5 seconds (goes with the neon ignite event)
+        sparkGain.gain.linearRampToValueAtTime(0.05, now + 1.4);
+        sparkGain.gain.linearRampToValueAtTime(0.18, now + 1.6); // Spark burst!
+        sparkGain.gain.linearRampToValueAtTime(0.0001, now + 4.8);
+
+        // Sound Group 3: High Chimmer Sky Ring (Pure luxury vibe)
+        const shimmerOsc = audioCtx.createOscillator();
+        const shimmerGain = audioCtx.createGain();
+        shimmerOsc.type = 'sine';
+        shimmerOsc.frequency.setValueAtTime(783.99, now); // High G5 shiny tone
+
+        shimmerGain.gain.setValueAtTime(0.0001, now);
+        shimmerGain.gain.linearRampToValueAtTime(0.06, now + 1.8);
+        shimmerGain.gain.linearRampToValueAtTime(0.0001, now + 5.0);
+
+        // Connections
+        subOsc.connect(subFilter);
+        subFilter.connect(subGain);
+        subGain.connect(audioCtx.destination);
+
+        sparkOsc.connect(sparkGain);
+        sparkGain.connect(audioCtx.destination);
+
+        shimmerOsc.connect(shimmerGain);
+        shimmerGain.connect(audioCtx.destination);
+
+        // Start all
+        subOsc.start(now);
+        sparkOsc.start(now);
+        shimmerOsc.start(now);
+
+        // Stop all
+        subOsc.stop(now + 5.5);
+        sparkOsc.stop(now + 5.5);
+        shimmerOsc.stop(now + 5.5);
+      } catch (err) {
+        console.warn("Subtle audio synthesizer build was bypassed by browser flags:", err);
+      }
+    };
+
+    // Try automatic play on mount
+    playSound();
+
+    // In case the browser blocks autoplay, play on the very first touch/click
+    const handleUserInteraction = () => {
+      playSound();
+      cleanup();
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('click', handleUserInteraction);
+      window.removeEventListener('touchstart', handleUserInteraction);
+      window.removeEventListener('keydown', handleUserInteraction);
+    };
+
+    window.addEventListener('click', handleUserInteraction);
+    window.addEventListener('touchstart', handleUserInteraction);
+    window.addEventListener('keydown', handleUserInteraction);
+
+    return () => {
+      cleanup();
+      if (audioCtx && audioCtx.state !== 'closed') {
+        audioCtx.close();
+      }
+    };
+  }, [showIntro]);
 
   // 2. Video Playback & Timers
   useEffect(() => {
@@ -30,7 +133,12 @@ export default function AppIntro() {
     // We keep the intro display for exactly 5.8 seconds, then trigger complete
     const completeTimer = setTimeout(() => {
       setStage('complete');
-      setTimeout(() => setShowIntro(false), 800); // fade out duration
+      setTimeout(() => {
+        setShowIntro(false);
+        if (onComplete) {
+          onComplete();
+        }
+      }, 800); // fade out duration
     }, 5600);
 
     // Neon Ignite / Glow trigger after 1.8 seconds in the custom animation

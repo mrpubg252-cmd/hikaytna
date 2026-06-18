@@ -2004,7 +2004,7 @@ document.head.appendChild(s);
             if (redirectUrl) {
                 window.location.replace(redirectUrl);
             } else {
-                window.location.replace('/watch?id=' + encodeURIComponent(seriesId) + '&unlocked=true');
+                window.location.replace('/watch/' + encodeURIComponent(seriesId) + '?unlocked=true');
             }
         }
 

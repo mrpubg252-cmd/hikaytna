@@ -795,7 +795,7 @@ export default function AiChatDrawer({ onClose }: AiChatDrawerProps) {
 
                           <button
                             onClick={() => {
-                              navigate('/watch', { state: { series: ser } });
+                              navigate(`/watch/${encodeURIComponent(ser.id)}`, { state: { series: ser } });
                               onClose();
                             }}
                             className="shrink-0 bg-primary hover:bg-[#c10d10] text-white text-[10.5px] font-extrabold px-3.5 py-2 rounded-xl flex items-center gap-1 transition-all duration-200 active:scale-95 shadow-lg shadow-primary/15 cursor-pointer border border-white/5"

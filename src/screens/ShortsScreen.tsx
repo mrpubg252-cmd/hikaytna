@@ -1308,7 +1308,7 @@ export default function ShortsScreen() {
     }
 
     localStorage.setItem(`mo_play_last_ep_${matchedSeries.id}`, episodeIndex.toString());
-    navigate('/watch', { state: { series: matchedSeries } });
+    navigate(`/watch/${encodeURIComponent(matchedSeries.id)}/${episodeIndex}`, { state: { series: matchedSeries } });
   };
 
   const handleDeleteShort = (id: string) => {
