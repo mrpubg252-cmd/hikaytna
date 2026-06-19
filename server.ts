@@ -2057,32 +2057,15 @@ document.head.appendChild(s);
 
             if (window.adBlockEnabled && !window.adBlockWarningShown) {
                 window.adBlockWarningShown = true;
-                if (typeof timer !== 'undefined') clearInterval(timer);
                 
-                var cd = document.getElementById('countdown');
-                if (cd) cd.style.display = 'none';
-                
-                var btn = document.getElementById('main-btn');
-                if (btn) {
-                    btn.innerText = 'الرجاء تعطيل مانع الإعلانات (Adblock) 🚫';
-                    btn.style.background = '#374151';
-                    btn.style.boxShadow = 'none';
-                    btn.style.opacity = '0.8';
-                    btn.removeAttribute('onclick');
-                    btn.style.cursor = 'not-allowed';
-                }
-
                 var warn = document.createElement('div');
-                warn.innerHTML = '<div style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); color: white; padding: 25px; border-radius: 16px; margin: 25px 0; border: 1px solid #7f1d1d; box-shadow: 0 10px 25px rgba(220, 38, 38, 0.4);"><h3 style="margin: 0 0 15px 0; font-size: 20px; font-weight: 900; display: flex; align-items: center; justify-content: center; gap: 8px;"><span style="font-size:24px;">⛔</span> تم اكتشاف مانع إعلانات</h3><p style="font-size: 15px; margin-bottom: 20px; font-weight: 600; line-height: 1.7; text-align: right;">يرجى العلم أن موقعنا مجاني بالكامل ويعتمد فقط على هذه الإعلانات لدفع تكاليف السيرفرات باهظة الثمن والمحافظة على استمرارية الموقع.<br/><br/><b>لن تتمكن من تخطي هذه البوابة والوصول للمسلسل إلا بعد إيقاف مانع الإعلانات (Adblocker) لموقعنا.</b></p><div style="background: rgba(0,0,0,0.25); padding: 15px; border-radius: 10px; margin: 0; display:flex; align-items:center; justify-content:center; gap: 10px; font-weight: 800; cursor: pointer; transition: all 0.2s; text-align: center;" onclick="window.location.reload()" onmouseover="this.style.background=\\'rgba(0,0,0,0.4)\\'" onmouseout="this.style.background=\\'rgba(0,0,0,0.25)\\'">🔄 لقد قمت بالتعطيل، اضغط هنا لتحديث الصفحة</div></div>';
+                warn.innerHTML = '<div style="background: rgba(239, 68, 68, 0.1); color: #ef4444; padding: 12px; border-radius: 8px; margin: 15px 0; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 13px; text-align: center; font-weight: 600;">⚠️ يبدو أنك تستخدم مانع إعلانات. الإعلانات هامة جداً لاستمرارنا، فضلاً قم بتعطيله دعماً للموقع.</div>';
                 
                 var container = document.querySelector('.container');
                 var btnContainer = document.getElementById('btn-container');
                 if (container && btnContainer) {
                     container.insertBefore(warn, btnContainer);
                 }
-                
-                var topDesc = document.querySelector('.container > p');
-                if (topDesc) topDesc.style.display = 'none';
             }
         }
 
@@ -2106,7 +2089,6 @@ document.head.appendChild(s);
         }, 100);
 
         function triggerRedirect() {
-            if (window.adBlockEnabled) return;
             if (redirectUrl) {
                 window.location.replace(redirectUrl);
             } else {
@@ -2128,8 +2110,6 @@ document.head.appendChild(s);
 
         var countdown = 6;
         var timer = setInterval(function() {
-            if (window.adBlockEnabled) return;
-            
             countdown--;
             if (countdown <= 0) {
                 clearInterval(timer);
