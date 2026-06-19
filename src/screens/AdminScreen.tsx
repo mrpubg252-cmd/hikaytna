@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ShieldAlert, Send, Trash2, CheckCircle2, AlertTriangle, 
   Info, X, Clock, Plus, Film, Tv, Image as ImageIcon, 
-  Star, Type, Hash, ExternalLink, Sparkles
+  Star, Type, Hash, ExternalLink, Sparkles, Pencil, RefreshCw
 } from 'lucide-react';
 import { db } from '../services/firebase';
 import { ref, onValue, push, remove } from 'firebase/database';
@@ -55,6 +55,7 @@ export default function AdminScreen() {
     rawEpisodes: '' // For multi-episode input
   });
   const [isSavingSeries, setIsSavingSeries] = useState(false);
+  const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null);
 
   const navigate = useNavigate();
 
@@ -171,7 +172,7 @@ export default function AdminScreen() {
     setIsSavingSeries(true);
     try {
       const firestore = getFirestore();
-      const seriesId = "custom_" + Date.now();
+      const seriesId = editingSeriesId || ("custom_" + Date.now());
       
       let episodes = [];
       if (newSeries.isSeries && newSeries.rawEpisodes.trim()) {
@@ -197,14 +198,22 @@ export default function AdminScreen() {
         isPriority: newSeries.isPriority,
         trailer: newSeries.trailer,
         isSeries: newSeries.isSeries,
-        createdAt: Date.now(),
+        createdAt: editingSeriesId ? (customSeriesList.find(s => s.id === editingSeriesId)?.createdAt || Date.now()) : Date.now(),
+        updatedAt: Date.now(),
         episodes
       };
       
       await setDoc(doc(firestore, "custom_series", seriesId), seriesData);
       
       clearCache(); // Force refresh for all users
-      setCustomSeriesList([seriesData as any, ...customSeriesList]);
+      
+      if (editingSeriesId) {
+        setCustomSeriesList(customSeriesList.map(s => s.id === editingSeriesId ? (seriesData as any) : s));
+        setEditingSeriesId(null);
+      } else {
+        setCustomSeriesList([seriesData as any, ...customSeriesList]);
+      }
+
       setNewSeries({
         title: '',
         image: '',
@@ -215,13 +224,36 @@ export default function AdminScreen() {
         isSeries: true,
         rawEpisodes: ''
       });
-      alert('تم إضافة العمل بنجاح! سيظهر للجميع فوراً.');
+      alert(editingSeriesId ? 'تم تحديث العمل بنجاح!' : 'تم إضافة العمل بنجاح! سيظهر للجميع فوراً.');
     } catch (err) {
       console.error("Error saving series:", err);
       alert('حدث خطأ أثناء حفظ العمل');
     } finally {
       setIsSavingSeries(false);
     }
+  };
+
+  const handleEditSeries = (series: any) => {
+    setEditingSeriesId(series.id);
+    let rawEp = '';
+    if (series.episodes && series.episodes.length > 0) {
+      // Don't include the first one if it's just the default fallback duplicated from trailer
+      rawEp = series.episodes.map((ep: any) => `${ep.title} | ${ep.url}`).join('\n');
+    }
+    
+    setNewSeries({
+      title: series.title,
+      image: series.image,
+      category: series.category,
+      rating: series.rating || 9.0,
+      isPriority: series.isPriority || false,
+      trailer: series.trailer || '',
+      isSeries: series.isSeries !== undefined ? series.isSeries : true,
+      rawEpisodes: rawEp
+    });
+    
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDeleteSeries = async (id: string) => {
@@ -455,8 +487,12 @@ export default function AdminScreen() {
                   <Film className="w-6 h-6 text-primary" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-black text-white">إضافة عمل جديد</h2>
-                  <p className="text-zinc-500 text-xs mt-0.5">سيتم إضافة العمل برابط المدمج المباشر</p>
+                  <h2 className="text-xl font-black text-white">
+                    {editingSeriesId ? 'تعديل العمل' : 'إضافة عمل جديد'}
+                  </h2>
+                  <p className="text-zinc-500 text-xs mt-0.5">
+                    {editingSeriesId ? 'قم بتعديل بيانات المسلسل أو الفيلم المختارة' : 'سيتم إضافة العمل برابط المدمج المباشر'}
+                  </p>
                 </div>
               </div>
 
@@ -589,21 +625,42 @@ export default function AdminScreen() {
                   </label>
                 </div>
 
-                <div className="md:col-span-2 pt-4">
+                <div className="md:col-span-2 pt-4 flex gap-3">
                   <button
                     type="submit"
                     disabled={isSavingSeries}
-                    className="w-full bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-black rounded-2xl py-4 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-[0.98]"
+                    className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-black rounded-2xl py-4 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-[0.98]"
                   >
                     {isSavingSeries ? (
                       <RefreshCw className="w-5 h-5 animate-spin" />
                     ) : (
                       <>
-                        <Plus className="w-5 h-5" />
-                        <span>إضافة العمل الآن</span>
+                        {editingSeriesId ? <CheckCircle2 className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+                        <span>{editingSeriesId ? 'حفظ التعديلات' : 'إضافة العمل الآن'}</span>
                       </>
                     )}
                   </button>
+                  {editingSeriesId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingSeriesId(null);
+                        setNewSeries({
+                          title: '',
+                          image: '',
+                          category: 'أجنبي',
+                          rating: 9.0,
+                          isPriority: true,
+                          trailer: '',
+                          isSeries: true,
+                          rawEpisodes: ''
+                        });
+                      }}
+                      className="px-8 bg-zinc-800 hover:bg-zinc-700 text-white font-black rounded-2xl py-4 transition-colors text-sm"
+                    >
+                      إلغاء
+                    </button>
+                  )}
                 </div>
               </form>
             </section>
@@ -630,12 +687,22 @@ export default function AdminScreen() {
                         </span>
                       </div>
                     </div>
-                    <button
-                      onClick={() => s.id && handleDeleteSeries(s.id)}
-                      className="p-2.5 rounded-xl bg-red-500/10 text-red-500 opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleEditSeries(s)}
+                        className="p-2.5 rounded-xl bg-zinc-800 text-zinc-300 opacity-0 group-hover:opacity-100 transition-all hover:bg-primary hover:text-white"
+                        title="تعديل"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => s.id && handleDeleteSeries(s.id)}
+                        className="p-2.5 rounded-xl bg-red-500/10 text-red-500 opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
+                        title="حذف"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {customSeriesList.length === 0 && (
@@ -652,7 +719,3 @@ export default function AdminScreen() {
     </div>
   );
 }
-
-const RefreshCw = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
-);

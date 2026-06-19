@@ -1,5 +1,6 @@
 import { fetchAllFromAPI, applyPrioritySort } from "./api";
-import { fetchAllFromFirebase, Series, db } from "./firebase";
+import { fetchAllFromFirebase, Series, db, firestore } from "./firebase";
+import { collection, getDocs, orderBy, query as firestoreQuery } from 'firebase/firestore';
 import { fetchCategoryPageFromAPI } from "./api";
 import { getApiUrl } from "../lib/apiConfig";
 import { ref, onValue } from "firebase/database";
@@ -196,13 +197,11 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
 
   // Fetch custom series from Firestore if possible
   try {
-    const { getFirestore, collection, getDocs, orderBy, query } = await import("firebase/firestore");
-    const db = getFirestore();
-    const q = query(collection(db, "custom_series"), orderBy("createdAt", "desc"));
+    const q = firestoreQuery(collection(firestore, "custom_series"), orderBy("createdAt", "desc"));
     const customSnap = await getDocs(q);
-    customSnap.forEach((doc) => {
-      const data = doc.data() as Series;
-      const finalData = { ...data, id: data.id || doc.id };
+    customSnap.forEach((docSnap) => {
+      const data = docSnap.data() as Series;
+      const finalData = { ...data, id: data.id || docSnap.id };
       // Check if already in allData by ID
       const index = allData.findIndex(s => s.id === finalData.id);
       if (index !== -1) {
@@ -212,7 +211,7 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
       }
     });
   } catch (err) {
-    // console.log("Firebase not yet ready or error fetching custom series", err);
+    console.error("Error fetching custom series from Firestore:", err);
   }
 
   allData = allData.map((s) => ({ ...s, image: fixImageUrl(s.image, s.title) }));
@@ -233,6 +232,13 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
     } catch (e) {
       console.warn("Failed to save cache to localStorage", e);
     }
+  }
+
+  // Ensure background synchronization is triggered if cache was cleared
+  if (forceRefresh) {
+    // Already forced
+  } else {
+    triggerBackgroundFetch();
   }
 
   return allData;
@@ -276,11 +282,11 @@ export async function fetchAllSeries(forceRefresh = false): Promise<Series[]> {
       cachedSeriesList.unshift({
         id: "movie_titanic_999",
         title: "تايتانك (Titanic)",
-        image: "https://j.top4top.io/p_3822gpygf1.jpg",
+        image: "https://m.media-amazon.com/images/M/MV5BMDdmZGU3NDQtY2E5My00ZTliLWIzOTUtMTY4ZGI1YjdiNjk3XkEyXkFqcGdeQXVyNTA4NzY1MzY@._V1_QL75_UX380_CR0,0,380,562_.jpg",
         category: "أفلام",
         rating: 9.8,
         isPriority: true,
-        trailer: "/api/v1/titanic-player",
+        trailer: "",
         episodes: [
           { title: "الفيلم كامل", url: "/api/v1/titanic-player", link1: "/api/v1/titanic-player", link2: "", link3: "" }
         ]
@@ -295,7 +301,7 @@ export async function fetchAllSeries(forceRefresh = false): Promise<Series[]> {
         category: "أجنبي",
         rating: 9.5,
         isPriority: true,
-        trailer: "https://streamimdb.ru/embed/tv/tt0903747",
+        trailer: "",
         episodes: [
           { title: "المسلسل كامل", url: "https://streamimdb.ru/embed/tv/tt0903747", link1: "https://streamimdb.ru/embed/tv/tt0903747", link2: "", link3: "" }
         ]
@@ -467,7 +473,7 @@ export async function fetchCategoryPage(
   // Manual Injection for specific high-value content (Titanic)
   const titanicExists = newSeries.some(s => s.title && s.title.includes("تايتانك"));
   const catNorm = normalizeArabic(categoryName);
-  const isTargetCat = catNorm.includes("افلام") || catNorm.includes("اجنبي") || catNorm === "الكل";
+  const isTargetCat = catNorm.includes("افلام") || catNorm === "الكل";
   
   if (!titanicExists && isTargetCat) {
     newSeries.unshift({
