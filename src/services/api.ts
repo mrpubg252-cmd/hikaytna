@@ -272,7 +272,9 @@ export async function fetchSeriesByCategory(categoryUrl: string, signal?: AbortS
     const res = await resilientFetch(getApiUrl(API_BASE + "/series?url=" + encodeURIComponent(categoryUrl)), { signal });
     const data = await res.json();
     if (data.status && data.data) {
-      return data.data.map((s: any) => ({
+      return data.data
+        .filter((s: any) => !(s.url || "").includes("fifa-2026.html") && !(s.url || "").includes("world-cup-2026"))
+        .map((s: any) => ({
         id: (s.url || s.title || "").replace(/[^a-zA-Z0-9]/g, "_"),
         title: s.title || "",
         image: s.image || "",
@@ -307,7 +309,13 @@ export async function fetchPlayUrlFromAPI(episodeUrl: string, signal?: AbortSign
   try {
     const res = await resilientFetch(getApiUrl(API_BASE + "/play?url=" + encodeURIComponent(episodeUrl)), { signal });
     const data = await res.json();
-    if (data.status && data.player_url) return decryptValue(data.player_url);
+    if (data.status && data.player_url) {
+      const decrypted = decryptValue(data.player_url);
+      if (decrypted && (decrypted.includes('.mp4') || decrypted.includes('.m3u8') || decrypted.includes('.webm') || decrypted.includes('.ogg'))) {
+        return getApiUrl(`/api/v1/stream-proxy/${encodeURIComponent(data.player_url)}`);
+      }
+      return decrypted;
+    }
   } catch (error) { console.error("Play error", error); }
   return null;
 }

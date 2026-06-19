@@ -4,6 +4,7 @@ import Header from '../components/Header';
 import BottomNav from '../components/BottomNav';
 import MatchChat from '../components/MatchChat';
 import { motion, AnimatePresence } from 'motion/react';
+import CustomPlayer from '../components/CustomPlayer';
 import { fetchEpisodesFromAPI, fetchPlayUrlFromAPI } from '../services/api';
 
 interface MatchEpisode {
@@ -279,15 +280,22 @@ export default function MatchesScreen() {
                         </div>
                       </div>
                     ) : (
-                      /* Embed Stream Frame output */
-                      <iframe
-                        src={activeStream.iframeUrl}
-                        title="Live Match Player"
-                        className="w-full h-full border-none bg-black"
-                        allowFullScreen
-                        scrolling="no"
-                        allow="autoplay; encrypted-media"
-                      />
+                      <div className="w-full h-full relative">
+                        <CustomPlayer
+                          videoUrl={activeStream.iframeUrl}
+                          seriesId={activeStream.matchId}
+                          seriesImage=""
+                          episodeIndex={0}
+                          episodes={[{ title: activeStream.title, url: activeStream.iframeUrl, link1: activeStream.iframeUrl, link2: '', link3: '' }]}
+                          servers={[{ name: 'المصدر الرئيسي', url: activeStream.iframeUrl }]}
+                          onSelectEpisode={() => {}}
+                          onSelectServer={() => {}}
+                          isMaximized={false}
+                          onToggleMaximize={() => {}}
+                          seriesCategory="Matches"
+                          seriesTitle={activeStream.title}
+                        />
+                      </div>
                     )}
                   </div>
 
