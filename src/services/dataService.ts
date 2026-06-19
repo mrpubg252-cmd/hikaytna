@@ -159,6 +159,24 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
   });
 
   let allData = Array.from(mergedMap.values());
+
+  // Inject "Titanic" movie manually if not present
+  const titanicExists = allData.some(s => s.title && s.title.includes("تايتانك"));
+  if (!titanicExists) {
+    allData.push({
+      id: "movie_titanic_999",
+      title: "تايتانك (Titanic)",
+      image: "https://j.top4top.io/p_3822gpygf1.jpg",
+      category: "افلام",
+      rating: 9.8,
+      isPriority: true,
+      trailer: "/api/v1/titanic-player",
+      episodes: [
+        { title: "الفيلم كامل", url: "/api/v1/titanic-player", link1: "/api/v1/titanic-player", link2: "", link3: "" }
+      ]
+    });
+  }
+
   allData = allData.map((s) => ({ ...s, image: fixImageUrl(s.image, s.title) }));
 
   // Apply centralized priority sort and exclusions

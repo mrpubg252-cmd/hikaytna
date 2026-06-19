@@ -981,6 +981,34 @@ async function startServer() {
     }
   });
 
+  // 4.5. High-End Custom Player (Titanic Specific & Secure Wrappers)
+  app.get("/api/v1/titanic-player", (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('X-Frame-Options', 'ALLOWALL'); // Allow embedding
+    res.send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="referrer" content="origin">
+  <title>Serene Premium Player</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: system-ui, sans-serif; }
+    #player-wrapper { position: relative; width: 100%; height: 100%; background: #000; }
+    #pf { width: 100%; height: 100%; border: 0; display: block; background: #000; }
+  </style>
+</head>
+<body>
+  <div id="player-wrapper">
+    <iframe src="https://nextgencloudfabric.com/embed/movie/tt0120338" id="pf" allowfullscreen allow="autoplay"></iframe>
+  </div>
+</body>
+</html>
+    `);
+  });
+
   // 4.6. Secure Stream Proxy (Absolute Protection against sniffers)
   app.get("/api/v1/stream-proxy/:encryptedUrl", async (req, res) => {
     try {

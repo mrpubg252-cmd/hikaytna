@@ -16,12 +16,19 @@ interface SliderBackgroundImageProps {
 
 const SliderBackgroundImage: React.FC<SliderBackgroundImageProps> = ({ series, isVideoActive }) => {
   const [src, setSrc] = useState<string>(() => {
+    if (series.title && series.title.includes("تايتانك")) {
+      return "https://c.top4top.io/p_38225vps71.jpg";
+    }
     const cached = getTMDBPosterSync(series.title, series.category);
     if (cached) return cached;
     return series.image || "";
   });
 
   useEffect(() => {
+    if (series.title && series.title.includes("تايتانك")) {
+      setSrc("https://c.top4top.io/p_38225vps71.jpg");
+      return;
+    }
     const cached = getTMDBPosterSync(series.title, series.category);
     if (cached) {
       setSrc(cached);

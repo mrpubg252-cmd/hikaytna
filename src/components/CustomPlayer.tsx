@@ -1210,7 +1210,7 @@ const SafariNotification = () => {
     const urlLower = resolvedVideoUrl.toLowerCase();
     
       // Explicitly handle our secure frame proxies
-      if (urlLower.startsWith('/api/v1/secured-player')) {
+      if (urlLower.startsWith('/api/v1/secured-player') || urlLower.startsWith('/api/v1/titanic-player')) {
         setIsIframeFallback(true);
         setIsLoading(false);
         setIsPlaying(true);
