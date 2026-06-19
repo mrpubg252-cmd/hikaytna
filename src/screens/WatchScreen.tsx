@@ -24,15 +24,48 @@ export default function WatchScreen() {
   const { seriesId, episodeIndex } = useParams();
   const { series: routeSeries } = (location.state as { series: Series }) || {};
 
-  // Resolve the series, loading from route state or sessionStorage backup, or first-class local storage cache!
+  // Resolve the series, loading from route state, local storage cache, or sessionStorage backup
   const [series, setSeries] = useState<Series | null>(() => {
     if (routeSeries) {
       sessionStorage.setItem('backup_watching_series', JSON.stringify(routeSeries));
       return routeSeries;
     }
-    const backup = sessionStorage.getItem('backup_watching_series');
+
     const targetId = seriesId || new URLSearchParams(window.location.search).get('id');
-    
+    if (targetId) {
+      const cleanTId = targetId.trim();
+
+      // High performance fallback: check the local storage series cache for instant 0ms offline lookup
+      try {
+        const cachedData = localStorage.getItem('serene_series_cache');
+        if (cachedData) {
+          const parsedCache = JSON.parse(cachedData);
+          const rawList = parsedCache?.data;
+          if (Array.isArray(rawList)) {
+            const found = rawList.find((s: any) => {
+              const cleanSId = s.id?.trim() || '';
+              const cleanTitle = s.title?.trim() || '';
+              return (
+                cleanSId === cleanTId ||
+                encodeURIComponent(cleanSId) === cleanTId ||
+                cleanSId === decodeURIComponent(cleanTId) ||
+                cleanTitle === cleanTId ||
+                encodeURIComponent(cleanTitle) === cleanTId ||
+                cleanTitle === decodeURIComponent(cleanTId)
+              );
+            });
+            if (found) {
+              sessionStorage.setItem('backup_watching_series', JSON.stringify(found));
+              return found;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("WatchScreen synchronous localStorage fallback failed:", err);
+      }
+    }
+
+    const backup = sessionStorage.getItem('backup_watching_series');
     if (backup) {
       try {
         const parsed = JSON.parse(backup);
@@ -53,43 +86,9 @@ export default function WatchScreen() {
           return parsed;
         }
       } catch (e) {
-        // Fall through to cache reading
+        return null;
       }
     }
-
-    // High performance fallback: scan local storage JSON cache immediately for perfect 0ms offline retrieval
-    if (targetId) {
-      try {
-        const cachedData = localStorage.getItem('serene_series_cache');
-        if (cachedData) {
-          const parsedCache = JSON.parse(cachedData);
-          const rawList = parsedCache?.data;
-          if (Array.isArray(rawList)) {
-            const cleanTId = targetId.trim();
-            const found = rawList.find((s: any) => {
-              const cleanSId = s.id?.trim() || '';
-              const cleanTitle = s.title?.trim() || '';
-              return (
-                cleanSId === cleanTId ||
-                encodeURIComponent(cleanSId) === cleanTId ||
-                cleanSId === decodeURIComponent(cleanTId) ||
-                cleanSId.replace(/_/g, '/') === cleanTId.replace(/_/g, '/') ||
-                cleanTitle === cleanTId ||
-                encodeURIComponent(cleanTitle) === cleanTId ||
-                cleanTitle === decodeURIComponent(cleanTId)
-              );
-            });
-            if (found) {
-              sessionStorage.setItem('backup_watching_series', JSON.stringify(found));
-              return found;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn("WatchScreen localStorage fallback failed:", err);
-      }
-    }
-
     return null;
   });
 
@@ -108,17 +107,6 @@ export default function WatchScreen() {
     const params = new URLSearchParams(window.location.search);
     return params.get('unlocked') === 'true';
   });
-
-  const [manualBypass, setManualBypass] = useState(false);
-  const [showFallbackButton, setShowFallbackButton] = useState(false);
-
-  useEffect(() => {
-    // If the page loading stays active for more than 2.0 seconds, reveal fallback actions for 100% stability!
-    const timer = setTimeout(() => {
-      setShowFallbackButton(true);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, []);
 
   // Dynamic series loading by ID if they arrived from the direct external ads link
   useEffect(() => {
@@ -171,7 +159,7 @@ export default function WatchScreen() {
       return !isNaN(adUntilNum) && adUntilNum > Date.now();
     })();
 
-    if (params.get('unlocked') === 'true' || isPremium || manualBypass) {
+    if (params.get('unlocked') === 'true' || isPremium) {
       setIsAdGatePassed(true);
     } else {
       setIsAdGatePassed(false);
@@ -180,7 +168,7 @@ export default function WatchScreen() {
       const targetRedirect = `${currentPathName}?unlocked=true`;
       window.location.replace(`/ads?id=${encodeURIComponent(series.id)}&redirect=${encodeURIComponent(targetRedirect)}`);
     }
-  }, [series, location.search, manualBypass]);
+  }, [series, location.search]);
 
   // Overcome mobile back button black screen/ads-looping issues
   useEffect(() => {
@@ -200,57 +188,32 @@ export default function WatchScreen() {
     };
   }, [series, isAdGatePassed, navigate]);
 
-  if (loadingSeries || !series || !isAdGatePassed) {
+  if (loadingSeries || !series) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center space-y-4 select-none">
+        <div className="relative">
+          <Loader2 className="w-10 h-10 text-red-650 animate-spin relative z-10" />
+          <div className="absolute inset-0 bg-red-600/20 blur-lg rounded-full scale-150 animate-pulse" />
+        </div>
+        <span className="text-xs text-zinc-400 font-black">جاري تحميل وتجهيز خادم الفيديو... 🍿</span>
+      </div>
+    );
+  }
+
+  if (!isAdGatePassed) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center select-none relative overflow-hidden">
-        {/* Ambient premium glowing background container */}
-        <div className="absolute inset-0 bg-radial-gradient from-red-600/10 via-transparent to-transparent pointer-events-none opacity-40" />
-
-        <div className="relative z-10 flex flex-col items-center max-w-sm w-full space-y-6">
-          {/* Animated red glow loader spinner */}
+        {/* Ambient premium glowing background */}
+        <div className="absolute inset-0 bg-red-600/5 pointer-events-none opacity-40 animate-pulse" />
+        <div className="relative z-10 flex flex-col items-center max-w-sm w-full space-y-5">
           <div className="relative">
-            <Loader2 className="w-12 h-12 text-red-500 animate-spin relative z-[11]" />
-            <div className="absolute inset-0 bg-red-600/20 blur-xl rounded-full scale-150 animate-pulse" />
+            <Loader2 className="w-12 h-12 text-red-500 animate-spin relative z-10" />
+            <div className="absolute inset-0 bg-red-600/25 blur-xl rounded-full scale-150 animate-pulse" />
           </div>
-
-          <div className="space-y-2">
-            <h3 className="text-white text-base font-black tracking-tight">جاري تهيئة خوادم الفيديو...</h3>
-            <p className="text-zinc-500 text-[11px] leading-relaxed">يرصد النظام طلبك لتوجيهك لأسرع نطاق سحابي متاح للبث السلس 🍿⚡</p>
+          <div className="space-y-1.5">
+            <h3 className="text-white text-sm font-black tracking-tight">جاري تهيئة البث المباشر...</h3>
+            <p className="text-zinc-500 text-[10px] leading-relaxed">يرصد النظام طلبك لتوجيهك لخادم الإعلانات الراعي ومتابعة البث بدقة فائقة سلسة 🍿⚡</p>
           </div>
-
-          {/* Fallback button that resolves any browser/device hang, popup block, or connection delay */}
-          <AnimatePresence>
-            {showFallbackButton && (
-              <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                className="w-full pt-2 space-y-4"
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setManualBypass(true);
-                    setIsAdGatePassed(true);
-                  }}
-                  className="w-full flex items-center justify-center gap-2 p-4 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-xs sm:text-sm rounded-2xl cursor-pointer shadow-[0_4px_15px_rgba(220,38,38,0.4)] active:scale-95 transition-all outline-none"
-                >
-                  <span>الدخول المباشر للمسلسل للمشاهدة 🍿🚀</span>
-                </button>
-                
-                <div className="text-zinc-500 text-[10px] font-bold leading-relaxed flex flex-col items-center gap-1.5">
-                  <span>💡 إذا لم يتم تحويلك تلقائياً بسبب إعدادات متصفحك، استخدم الزر أعلاه لتتخطى التعليق فوراً.</span>
-                  <button 
-                    type="button"
-                    onClick={() => navigate('/', { replace: true })}
-                    className="text-amber-500 hover:underline mt-1 font-extrabold cursor-pointer outline-none"
-                  >
-                    العودة للرئيسية 🏠
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
       </div>
     );

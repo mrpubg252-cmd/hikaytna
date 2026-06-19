@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import SeriesCard from '../components/SeriesCard';
 import BottomNav from '../components/BottomNav';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, Search, Film } from 'lucide-react';
+import { navigateToWatchOrAds } from '../utils/watchNavigation';
 
 export default function FavoritesScreen() {
+  const navigate = useNavigate();
   // Use a simulated local state for now or the same favorite logic as before
   const [favorites] = useState<any[]>([]); // This would normally come from a hook
 
@@ -30,7 +33,7 @@ export default function FavoritesScreen() {
               <SeriesCard 
                 key={series.id} 
                 item={series} 
-                onPress={() => window.location.href = `/watch?id=${series.id}`} 
+                onPress={() => navigateToWatchOrAds(navigate, series)} 
               />
             ))}
           </div>

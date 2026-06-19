@@ -14,6 +14,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { ChevronLeft, ChevronRight, ArrowLeft, AlertCircle, AlertTriangle, X } from "lucide-react";
 import NoticeAndSupportBubble from "../components/NoticeAndSupportBubble";
 import { fuzzyMatchArabic } from "../lib/utils";
+import { navigateToWatchOrAds } from "../utils/watchNavigation";
 import {
   initializeEpisodeTracking,
   hasNewEpisode,
@@ -333,7 +334,7 @@ export default function HomeScreen() {
                     item={item}
                     onPress={() => {
                       markSeriesAsRead(item);
-                      navigate(`/watch/${encodeURIComponent(item.title || item.id)}`, { state: { series: item } });
+                      navigateToWatchOrAds(navigate, item);
                     }}
                   />
                 ))

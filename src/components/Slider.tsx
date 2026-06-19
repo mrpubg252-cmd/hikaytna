@@ -7,6 +7,7 @@ import { ref, set } from 'firebase/database';
 import { sliderSelections, syncSliderSelections } from '../services/api';
 import { getTMDBPoster, getTMDBPosterSync } from '../lib/tmdbHealing';
 import { updateCachedSeriesTrailer } from '../services/dataService';
+import { navigateToWatchOrAds } from '../utils/watchNavigation';
 
 interface SliderBackgroundImageProps {
   series: Series;
@@ -679,7 +680,7 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
           <button 
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/watch/${encodeURIComponent(current.title || current.id)}`, { state: { series: current } });
+              navigateToWatchOrAds(navigate, current);
             }}
             className="flex items-center gap-2 px-6 sm:px-10 py-3 sm:py-4 bg-white text-black font-black text-[10px] sm:text-xs uppercase tracking-[0.1em] sm:tracking-[0.2em] rounded-full hover:scale-105 transition-transform shadow-xl shadow-white/5"
           >

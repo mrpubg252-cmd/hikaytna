@@ -14,6 +14,7 @@ import BottomNav from '../components/BottomNav';
 import SeriesChat from '../components/SeriesChat';
 import ShortCard from '../components/ShortCard';
 import { getTMDBPoster, getTMDBPosterSync } from '../lib/tmdbHealing';
+import { navigateToWatchOrAds } from '../utils/watchNavigation';
 
 interface ShortsOptionImageProps {
   title: string;
@@ -1310,7 +1311,7 @@ export default function ShortsScreen() {
     }
 
     localStorage.setItem(`mo_play_last_ep_${matchedSeries.id}`, episodeIndex.toString());
-    navigate(`/watch/${encodeURIComponent(matchedSeries.title || matchedSeries.id)}/${episodeIndex}`, { state: { series: matchedSeries } });
+    navigateToWatchOrAds(navigate, matchedSeries, episodeIndex);
   };
 
   const handleDeleteShort = (id: string) => {
