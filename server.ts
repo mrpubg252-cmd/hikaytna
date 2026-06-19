@@ -2167,7 +2167,7 @@ document.head.appendChild(s);
     var hls = null;
     
     function initPlayer() {
-      if (streamUrl.indexOf('.m3u8') !== -1 && Hls.isSupported()) {
+      if (Hls.isSupported()) {
         hls = new Hls({ maxMaxBufferLength: 60 });
         hls.loadSource(streamUrl);
         hls.attachMedia(video);
@@ -2187,23 +2187,20 @@ document.head.appendChild(s);
                 break;
               default:
                 hls.destroy();
-                // try fallback to direct src
-                video.src = streamUrl;
-                video.play().catch(function(){});
+                loader.style.display = 'block'; loader.innerText = 'تعذر تحميل البث';
                 break;
             }
           }
         });
-      } else {
+      } else if (video.canPlayType('application/vnd.apple.mpegurl') || streamUrl.indexOf('.mp4') !== -1) {
         // Native support (Safari) or MP4
         video.src = streamUrl;
         video.addEventListener('loadedmetadata', function() {
           loader.style.display = 'none';
           video.play().catch(function(){});
         });
-        video.addEventListener('error', function() {
-          loader.style.display = 'block'; loader.innerText = 'تعذر تشغيل هذا المقطع المدعوم';
-        });
+      } else {
+         loader.style.display = 'block'; loader.innerText = 'هذا المتصفح لا يدعم مشغل البث';
       }
     }
     
