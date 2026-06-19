@@ -982,7 +982,7 @@ async function startServer() {
   });
 
   // 4.6. Secure Stream Proxy (Absolute Protection against sniffers)
-  app.get("/api/v1/stream-proxy/:encryptedUrl", async (req, res) => {
+  app.get("/api/v1/stream-proxy/:encryptedUrl(*)", async (req, res) => {
     try {
       const encrypted = req.params.encryptedUrl;
       const url = decryptValue(decodeURIComponent(encrypted));
@@ -991,26 +991,24 @@ async function startServer() {
       const parsedUrl = new URL(url);
       
       const headersOptions: any = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
         'Accept': '*/*',
         'Accept-Language': 'en-US,en;q=0.9',
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache'
       };
 
-      // Specific fixes for known sources like AlooyTV / Vid2 / Vid3 which host "The Pit" (Al-Hofrah)
-      const hostMatch = url.match(/vid[0-9]|alooytv|zvde-dsn|cdn/i);
+      // Specific fixes for known sources like AlooyTV / Vid2 / Vid3
+      const hostMatch = url.match(/vid[0-9]|alooytv|zvde-dsn|cdn|workers\.dev/i);
       if (hostMatch) {
-         headersOptions['Referer'] = 'https://alooytv.com/';
-         headersOptions['Origin'] = 'https://alooytv.com';
+         headersOptions['Referer'] = 'https://fh.alooytv12.xyz/';
+         headersOptions['Origin'] = 'https://fh.alooytv12.xyz';
          headersOptions['Sec-Fetch-Dest'] = 'video';
          headersOptions['Sec-Fetch-Mode'] = 'no-cors';
          headersOptions['Sec-Fetch-Site'] = 'cross-site';
-         // Use a more recent User-Agent
-         headersOptions['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
       } else {
-         headersOptions['Referer'] = parsedUrl.origin + '/';
-         headersOptions['Origin'] = parsedUrl.origin;
+         headersOptions['Referer'] = 'https://fh.alooytv12.xyz/'; // Default to current source origin
+         headersOptions['Origin'] = 'https://fh.alooytv12.xyz';
       }
 
       if (req.headers.range) {

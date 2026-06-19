@@ -459,9 +459,9 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   const [showResumeNotification, setShowResumeNotification] = useState(false);
   const [resumeTimeText, setResumeTimeText] = useState('');
   const lastButtonClickTimeRef = useRef<number>(0);
-  const [isIframeFallback, setIsIframeFallback] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showTimeoutOptions, setShowTimeoutOptions] = useState(false);
+  const [isStalled, setIsStalled] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const isLocalOfflineVideo = videoUrl && videoUrl.startsWith('blob:');
@@ -1991,7 +1991,39 @@ const SafariNotification = () => {
     const video = videoRef.current;
     if (!video) return;
     setCurrentTime(video.currentTime);
+    if (isStalled) setIsStalled(false);
   };
+
+  // Stalled video watchdog (Safari fix)
+  useEffect(() => {
+    if (!isPlaying || isLoading || isBuffering) return;
+
+    let lastProgressTime = Date.now();
+    let lastVideoTime = videoRef.current?.currentTime || 0;
+
+    const interval = setInterval(() => {
+      const video = videoRef.current;
+      if (!video) return;
+
+      const currentVideoTime = video.currentTime;
+      const now = Date.now();
+
+      if (currentVideoTime !== lastVideoTime) {
+        lastVideoTime = currentVideoTime;
+        lastProgressTime = now;
+        if (isStalled) setIsStalled(false);
+      } else {
+        // Video time is not moving while "playing"
+        if (now - lastProgressTime > 6000) { // 6 seconds of no movement
+          console.warn("Video watchdog detected a stall.");
+          setIsStalled(true);
+          setShowTimeoutOptions(true);
+        }
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [isPlaying, isLoading, isBuffering, isStalled]);
 
   const handleLoadedMetadata = () => {
     const video = videoRef.current;
@@ -2863,38 +2895,36 @@ const SafariNotification = () => {
             />
           )}
 
-          {showTimeoutOptions && !isIframeFallback && (
+          {showTimeoutOptions && (
             <div className="absolute inset-0 z-[500] flex flex-col items-center justify-center bg-black/80 backdrop-blur-md px-6 text-center animate-fade-in pointer-events-auto">
               <div className="w-16 h-16 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-500 mb-4 mx-auto">
                 <AlertCircle className="w-8 h-8 animate-pulse" />
               </div>
-              <h3 className="text-white text-base font-black mb-2 tracking-wide">تعذر تشغيل المشغل المباشر</h3>
+              <h3 className="text-white text-base font-black mb-2 tracking-wide">
+                {isStalled ? "انقطع البث المباشر" : "حدث خطأ في التحميل"}
+              </h3>
               <p className="text-zinc-400 text-xs mb-6 max-w-sm leading-relaxed font-bold">
-                يبدو أن هناك مشكلة في الاتصال بالفيلم عبر المشغل المباشر السريع. هل تود تجربة المشغل الاحتياطي؟
+                {isStalled 
+                  ? "يبدو أن البث قد توقف مؤقتاً أو أن المتصفح يواجه مشكلة في الاستقرار. جرب إعادة تشغيل المشغل."
+                  : "حدثت مشكلة أثناء الاتصال بخادم البث. تأكد من جودة الإنترنت وحاول مرة أخرى."}
               </p>
-              <div className="flex items-center justify-center gap-4">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsIframeFallback(true);
-                    setShowTimeoutOptions(false);
-                    setIsLoading(true);
-                  }}
-                  className="bg-primary hover:bg-primary/90 text-white font-black text-xs px-6 py-3 rounded-xl transition shadow-[0_0_20px_rgba(220,38,38,0.3)]"
-                >
-                  تفعيل المشغل الاحتياطي
-                </button>
+              <div className="flex items-center justify-center">
                 <button
                   onClick={(e) => {
                      e.stopPropagation();
                      setShowTimeoutOptions(false);
                      setIsLoading(true);
+                     setIsStalled(false);
                      const vid = videoRef.current;
-                     if (vid) { vid.load(); }
+                     if (vid) { 
+                        vid.load();
+                        vid.play().catch(() => {});
+                     }
                   }}
-                  className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs px-6 py-3 rounded-xl transition"
+                  className="bg-primary hover:bg-primary/90 text-white font-black text-xs px-10 py-3.5 rounded-xl transition shadow-[0_0_20px_rgba(220,38,38,0.3)] flex items-center gap-2"
                 >
-                  إعادة المحاولة
+                  <RefreshCw className="w-4 h-4" />
+                  إعادة تشغيل البث
                 </button>
               </div>
             </div>
