@@ -4,8 +4,7 @@ import Hls from 'hls.js';
 import { 
   Play, Pause, Volume2, VolumeX, Maximize, Minimize, 
   RotateCcw, RotateCw, List, Settings, CheckCircle2, X,
-  ArrowRight, Sparkles, Shield, ExternalLink, ChevronLeft,
-  AlertCircle, RefreshCw
+  ArrowRight, Sparkles, Shield, ExternalLink, ChevronLeft
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -178,15 +177,11 @@ const ShadowVideoInternal: React.FC<ShadowVideoProps> = ({
     const video = document.createElement('video');
     video.muted = isMuted; // Set initial muted state
     video.preload = 'auto';
-    video.crossOrigin = 'anonymous';
 
     video.tabIndex = -1;
     video.controls = false;
     video.playsInline = true;
     (video as any).webkitPlaysInline = true;
-    video.setAttribute('playsinline', 'true');
-    video.setAttribute('webkit-playsinline', 'true');
-    video.setAttribute('autoplay', 'true'); // Hint to the browser for faster init
     
     // Prevent downloads, PiP, etc.
     video.setAttribute('controlsList', 'nodownload nofullscreen noremoteplayback');
@@ -464,9 +459,9 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   const [showResumeNotification, setShowResumeNotification] = useState(false);
   const [resumeTimeText, setResumeTimeText] = useState('');
   const lastButtonClickTimeRef = useRef<number>(0);
+  const [isIframeFallback, setIsIframeFallback] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showTimeoutOptions, setShowTimeoutOptions] = useState(false);
-  const [isStalled, setIsStalled] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const isLocalOfflineVideo = videoUrl && videoUrl.startsWith('blob:');
@@ -1083,11 +1078,7 @@ const SafariNotification = () => {
     if (video) {
       video.muted = isMuted;
       video.volume = volume;
-      // Safari stability: load before play after ad skip
-      video.load();
-      video.play().catch((err) => {
-        console.warn("Autoplay block or playback error after ad skip:", err);
-      });
+      video.play().catch(() => {});
       setIsPlaying(true);
     }
   };
@@ -1160,7 +1151,7 @@ const SafariNotification = () => {
 
   // Initialize PlayerJS if loaded and direct stream is used (non-embed)
   useEffect(() => {
-    if (!playerjsLoaded || !resolvedVideoUrl) return;
+    if (!playerjsLoaded || isIframeFallback || !resolvedVideoUrl) return;
 
     const PlayerjsClass = (window as any).Playerjs;
     if (!PlayerjsClass) return;
@@ -1204,18 +1195,27 @@ const SafariNotification = () => {
         playerjsInstanceRef.current = null;
       }
     };
-  }, [playerjsLoaded, resolvedVideoUrl]);
+  }, [playerjsLoaded, resolvedVideoUrl, isIframeFallback]);
 
-  // Check if link is a standard direct video
+  // Check if link is iframe/embed only or a standard direct video
   useEffect(() => {
     setIsLoading(true);
     setIsBuffering(false);
+    setIsIframeFallback(false);
     
     if (!resolvedVideoUrl) {
       return;
     }
     
     const urlLower = resolvedVideoUrl.toLowerCase();
+    
+      // Explicitly handle our secure frame proxies
+      if (urlLower.startsWith('/api/v1/secured-player')) {
+        setIsIframeFallback(true);
+        setIsLoading(false);
+        setIsPlaying(true);
+        return;
+      }
     
     const isDirectVideo = 
       urlLower.startsWith('blob:') ||
@@ -1234,6 +1234,7 @@ const SafariNotification = () => {
       ));
 
     if (!isDirectVideo) {
+      setIsIframeFallback(true);
       setIsLoading(false);
       setIsPlaying(true);
       return;
@@ -1288,19 +1289,12 @@ const SafariNotification = () => {
             setShowControls(true); // Keep controls open so user can press play
           });
         });
-        let networkErrorCount = 0;
         hls.on(Hls.Events.ERROR, (event, data) => {
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
-                networkErrorCount++;
                 console.warn("HLS network error, attempting recovery level reload:", data);
-                if (networkErrorCount > 3) {
-                  setShowTimeoutOptions(true);
-                  setIsLoading(false);
-                } else {
-                  setTimeout(() => { hls?.startLoad(); }, 1000);
-                }
+                hls?.startLoad();
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
                 console.warn("HLS media fatal error, attempting recovery:", data);
@@ -1364,16 +1358,7 @@ const SafariNotification = () => {
         });
         video.removeEventListener('canplay', onPlayable);
       };
-      
-      const onError = () => {
-        console.warn("Native video MP4 load error. Showing timeout options.");
-        setIsLoading(false);
-        setShowTimeoutOptions(true);
-        video.removeEventListener('error', onError);
-      };
-      
       video.addEventListener('canplay', onPlayable);
-      video.addEventListener('error', onError);
     }
 
     return () => {
@@ -1405,29 +1390,38 @@ const SafariNotification = () => {
     }
   };
 
-  // Load initial progress and default duration
+  // Load initial progress and default duration for iframe embeds
   useEffect(() => {
-    const savedSecond = progressService.getProgress(seriesId, episodeIndex);
-    if (savedSecond > 0) {
-      setCurrentTime(savedSecond);
-      const mins = Math.floor(savedSecond / 60);
-      const secs = Math.floor(savedSecond % 60);
-      const formattedEpClean = formatEpisodeTitle(episodes[episodeIndex]?.title || "", episodeIndex, false);
-      setResumeTimeText(`تم الاستئناف: ${formattedEpClean} عند الدقيقة ${mins}:${secs.toString().padStart(2, '0')}`);
-      setShowResumeNotification(true);
-      const timer = setTimeout(() => setShowResumeNotification(false), 4500);
-      return () => clearTimeout(timer);
-    } else {
-      setCurrentTime(0);
+    if (isIframeFallback) {
+      const savedSecond = progressService.getProgress(seriesId, episodeIndex);
+      if (savedSecond > 0) {
+        setCurrentTime(savedSecond);
+        const mins = Math.floor(savedSecond / 60);
+        const secs = Math.floor(savedSecond % 60);
+        const formattedEpClean = formatEpisodeTitle(episodes[episodeIndex]?.title || "", episodeIndex, false);
+        setResumeTimeText(`تم الاستئناف: ${formattedEpClean} عند الدقيقة ${mins}:${secs.toString().padStart(2, '0')}`);
+        setShowResumeNotification(true);
+        const timer = setTimeout(() => setShowResumeNotification(false), 4500);
+        return () => clearTimeout(timer);
+      } else {
+        setCurrentTime(0);
+      }
+      setDuration(3600); // Default 1 hour estimation for embed streams
     }
-  }, [seriesId, episodeIndex, episodes]);
+  }, [isIframeFallback, seriesId, episodeIndex, episodes]);
 
   // Instant watch progress save on component unmount and browser close (beforeunload)
   useEffect(() => {
     const saveCurrentProgress = () => {
-      const video = videoRef.current;
-      if (video && video.currentTime > 5) {
-        progressService.saveProgress(seriesId, episodeIndex, video.currentTime);
+      if (isIframeFallback) {
+        if (currentTime > 5) {
+          progressService.saveProgress(seriesId, episodeIndex, currentTime);
+        }
+      } else {
+        const video = videoRef.current;
+        if (video && video.currentTime > 5) {
+          progressService.saveProgress(seriesId, episodeIndex, video.currentTime);
+        }
       }
     };
 
@@ -1436,15 +1430,37 @@ const SafariNotification = () => {
       window.removeEventListener('beforeunload', saveCurrentProgress);
       saveCurrentProgress();
     };
-  }, [seriesId, episodeIndex, currentTime]);
+  }, [seriesId, episodeIndex, isIframeFallback, currentTime]);
 
-  // Simulating time progress logic removed as it was for iframe only
+  // Simulating time progress inside frame embeds to keep the timeline working perfectly!
   useEffect(() => {
-    // Logic removed
-  }, [isPlaying, duration]);
+    if (!isIframeFallback || !isPlaying) return;
+    const interval = setInterval(() => {
+      setCurrentTime(prev => {
+        const next = prev + 1;
+        const total = duration || 3600;
+        if (next >= total) {
+          setIsPlaying(false);
+          return 0;
+        }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isIframeFallback, isPlaying, duration]);
 
   // Auto-Save watch progress every 4 seconds
   useEffect(() => {
+    if (isIframeFallback) {
+      if (playerjsLoaded) return;
+      const interval = setInterval(() => {
+        if (isPlaying && currentTime > 5) {
+          progressService.saveProgress(seriesId, episodeIndex, currentTime);
+        }
+      }, 4000);
+      return () => clearInterval(interval);
+    }
+    
     if (playerjsLoaded) return;
     const interval = setInterval(() => {
       const video = videoRef.current;
@@ -1454,7 +1470,7 @@ const SafariNotification = () => {
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [isPlaying, seriesId, episodeIndex, playerjsLoaded, currentTime]);
+  }, [isPlaying, isIframeFallback, seriesId, episodeIndex, playerjsLoaded, currentTime]);
 
   // Mouse activity or interactions to reset the controls timer
   const resetControlsTimeout = (forceShow: boolean = false) => {
@@ -1665,6 +1681,19 @@ const SafariNotification = () => {
   const handlePlayPause = (e?: React.MouseEvent) => {
     lastButtonClickTimeRef.current = Date.now();
     if (e) e.stopPropagation();
+    
+    if (isIframeFallback) {
+      setIsPlaying(prev => {
+        const nextVal = !prev;
+        if (!nextVal) {
+          setShowControls(true);
+        } else {
+          setShowControls(false);
+        }
+        return nextVal;
+      });
+      return;
+    }
 
     const video = videoRef.current;
     if (!video) return;
@@ -1691,6 +1720,8 @@ const SafariNotification = () => {
 
   // Start long press timer to speed up to 2.0x
   const startLongPressTimer = (e: React.MouseEvent | React.TouchEvent) => {
+    if (isIframeFallback) return;
+
     if (longPressTimeoutRef.current) {
       clearTimeout(longPressTimeoutRef.current);
     }
@@ -1806,7 +1837,7 @@ const SafariNotification = () => {
     }
 
     const video = videoRef.current;
-    if (!video) return;
+    if (!video && !isIframeFallback) return;
 
     // Restore unmuted audio state if it was muted merely by autoplay blocks
     if (video && video.muted && !isMuted) {
@@ -1944,55 +1975,7 @@ const SafariNotification = () => {
     const video = videoRef.current;
     if (!video) return;
     setCurrentTime(video.currentTime);
-    if (isStalled) setIsStalled(false);
   };
-
-  // Stalled video watchdog (Safari fix)
-  useEffect(() => {
-    if (!isPlaying || isLoading || isBuffering) return;
-
-    let lastProgressTime = Date.now();
-    let lastVideoTime = videoRef.current?.currentTime || 0;
-    let initialLoadCheckCount = 0;
-
-    const interval = setInterval(() => {
-      const video = videoRef.current;
-      if (!video) return;
-
-      const currentVideoTime = video.currentTime;
-      const now = Date.now();
-
-      // Safari Fix: detect if video is "Playing" but stuck at 0:00 (Black Screen)
-      if (currentVideoTime === 0 && isPlaying && !isLoading && !isBuffering) {
-        initialLoadCheckCount++;
-        if (initialLoadCheckCount > 2) {
-          console.log("Safari black screen detected. Attempting kickstart...");
-          video.play().catch(() => {});
-          // If still stuck after 5 checks, try a forced reload of the video element
-          if (initialLoadCheckCount > 5) {
-            video.load();
-            video.play().catch(() => {});
-          }
-        }
-      }
-
-      if (currentVideoTime !== lastVideoTime) {
-        lastVideoTime = currentVideoTime;
-        lastProgressTime = now;
-        initialLoadCheckCount = 0;
-        if (isStalled) setIsStalled(false);
-      } else {
-        // Video time is not moving while "playing"
-        if (now - lastProgressTime > 8000) { // 8 seconds of no movement
-          console.warn("Video watchdog detected a stall.");
-          setIsStalled(true);
-          setShowTimeoutOptions(true);
-        }
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [isPlaying, isLoading, isBuffering, isStalled]);
 
   const handleLoadedMetadata = () => {
     const video = videoRef.current;
@@ -2035,10 +2018,14 @@ const SafariNotification = () => {
       : (e as React.MouseEvent).clientX;
     const targetTime = calculateSeekTime(clientX);
     
-    const video = videoRef.current;
-    if (video) {
-      video.currentTime = targetTime;
-      setCurrentTime(video.currentTime);
+    if (isIframeFallback) {
+      setCurrentTime(targetTime);
+    } else {
+      const video = videoRef.current;
+      if (video) {
+        video.currentTime = targetTime;
+        setCurrentTime(video.currentTime);
+      }
     }
     resetControlsTimeout();
   };
@@ -2052,10 +2039,14 @@ const SafariNotification = () => {
         : (e as MouseEvent).clientX;
       const targetTime = calculateSeekTime(clientX);
       
-      const video = videoRef.current;
-      if (video) {
-        video.currentTime = targetTime;
-        setCurrentTime(video.currentTime);
+      if (isIframeFallback) {
+        setCurrentTime(targetTime);
+      } else {
+        const video = videoRef.current;
+        if (video) {
+          video.currentTime = targetTime;
+          setCurrentTime(video.currentTime);
+        }
       }
       resetControlsTimeout();
     };
@@ -2075,7 +2066,7 @@ const SafariNotification = () => {
       window.removeEventListener('mouseup', onEnd);
       window.removeEventListener('touchend', onEnd);
     };
-  }, [isSeekingState, duration]);
+  }, [isSeekingState, duration, isIframeFallback]);
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
@@ -2089,10 +2080,14 @@ const SafariNotification = () => {
     const clickPercent = clickX / width;
     
     const targetTime = clickPercent * duration;
-    const video = videoRef.current;
-    if (video) {
-      video.currentTime = targetTime;
-      setCurrentTime(video.currentTime);
+    if (isIframeFallback) {
+      setCurrentTime(targetTime);
+    } else {
+      const video = videoRef.current;
+      if (video) {
+        video.currentTime = targetTime;
+        setCurrentTime(video.currentTime);
+      }
     }
     resetControlsTimeout();
   };
@@ -2103,10 +2098,14 @@ const SafariNotification = () => {
     setShowEpisodeMenu(false);
     setIsVolumeAdjustMode(false);
     
-    const video = videoRef.current;
-    if (video) {
-      video.currentTime = Math.min(Math.max(0, video.currentTime + amount), duration);
-      setCurrentTime(video.currentTime);
+    if (isIframeFallback) {
+      setCurrentTime(prev => Math.min(Math.max(0, prev + amount), duration));
+    } else {
+      const video = videoRef.current;
+      if (video) {
+        video.currentTime = Math.min(Math.max(0, video.currentTime + amount), duration);
+        setCurrentTime(video.currentTime);
+      }
     }
     resetControlsTimeout(showControls);
 
@@ -2810,59 +2809,45 @@ const SafariNotification = () => {
             </div>
           )}
 
-          <ShadowVideo
-            videoRef={videoRef}
-            isPlaying={isPlaying}
-            isMuted={isMuted}
-            onTimeUpdate={handleTimeUpdate}
-            onLoadedMetadata={handleLoadedMetadata}
-            onError={handleVideoError}
-            onWaiting={() => {}}
-            onPlaying={() => { setIsLoading(false); }}
-            onSeeking={() => {}}
-            onSeeked={() => {}}
-            onStalled={() => {}}
-            onCanPlay={handleCanPlay}
-            onCanPlayThrough={() => setIsBuffering(false)}
-            className="w-full h-full"
-          />
-
-          {showTimeoutOptions && (
-            <div className="absolute inset-0 z-[500] flex flex-col items-center justify-center bg-black/80 backdrop-blur-md px-6 text-center animate-fade-in pointer-events-auto">
-              <div className="w-16 h-16 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-500 mb-4 mx-auto">
-                <AlertCircle className="w-8 h-8 animate-pulse" />
-              </div>
-              <h3 className="text-white text-base font-black mb-2 tracking-wide">
-                {isStalled ? "انقطع البث المباشر" : "حدث خطأ في التحميل"}
-              </h3>
-              <p className="text-zinc-400 text-xs mb-6 max-w-sm leading-relaxed font-bold">
-                {isStalled 
-                  ? "يبدو أن البث قد توقف مؤقتاً أو أن المتصفح يواجه مشكلة في الاستقرار. جرب إعادة تشغيل المشغل."
-                  : "حدثت مشكلة أثناء الاتصال بخادم البث. تأكد من جودة الإنترنت وحاول مرة أخرى."}
-              </p>
-              <div className="flex items-center justify-center">
-                <button
-                  onClick={(e) => {
-                     e.stopPropagation();
-                     setShowTimeoutOptions(false);
-                     setIsLoading(true);
-                     setIsStalled(false);
-                     const vid = videoRef.current;
-                     if (vid) { 
-                        vid.load();
-                        vid.play().catch(() => {});
-                     }
-                  }}
-                  className="bg-primary hover:bg-primary/90 text-white font-black text-xs px-10 py-3.5 rounded-xl transition shadow-[0_0_20px_rgba(220,38,38,0.3)] flex items-center gap-2"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  إعادة تشغيل البث
-                </button>
-              </div>
-            </div>
+          {isIframeFallback ? (
+            <iframe
+              src={resolvedVideoUrl}
+              className="w-full h-full border-0 animate-fade-in"
+              allowFullScreen
+              allow="autoplay; encrypted-media; picture-in-picture"
+              referrerPolicy="no-referrer-when-downgrade"
+              style={{
+                width: '100%',
+                height: '100%',
+                backgroundColor: 'black',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 10,
+              }}
+            />
+          ) : (
+            <ShadowVideo
+              videoRef={videoRef}
+              isPlaying={isPlaying}
+              isMuted={isMuted}
+              onTimeUpdate={handleTimeUpdate}
+              onLoadedMetadata={handleLoadedMetadata}
+              onError={handleVideoError}
+              onWaiting={() => {}}
+              onPlaying={() => { setIsLoading(false); }}
+              onSeeking={() => {}}
+              onSeeked={() => {}}
+              onStalled={() => {}}
+              onCanPlay={handleCanPlay}
+              onCanPlayThrough={() => setIsBuffering(false)}
+              className="w-full h-full"
+            />
           )}
 
-          {!isLoading && !showTimeoutOptions && (
+          {!isLoading && (
             <>
               {/* Buffering/Offline Indicator */}
               {isOffline && (
@@ -2896,7 +2881,10 @@ const SafariNotification = () => {
                 onTouchEnd={handleTouchEnd}
                 onTouchCancel={handleTouchCancel}
                 onClick={handlePlayerClick}
-                className="absolute inset-0 z-[100] select-none cursor-pointer flex items-center justify-center font-sans overflow-hidden touch-none pointer-events-auto">
+                className={cn(
+                  "absolute inset-0 z-[100] select-none cursor-pointer flex items-center justify-center font-sans overflow-hidden touch-none",
+                  isIframeFallback ? "pointer-events-none" : "pointer-events-auto"
+                )}>
                 
                 {/* 2x Speed-up indicator banner */}
                 <AnimatePresence>
@@ -2966,7 +2954,7 @@ const SafariNotification = () => {
 
               {/* Central Play/Pause Circular Button Overlay */}
               <AnimatePresence>
-                {(showControls || !isPlaying) && (
+                {(showControls || !isPlaying) && !isIframeFallback && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -2992,9 +2980,39 @@ const SafariNotification = () => {
                 )}
               </AnimatePresence>
 
+              {/* Floating navigation icons for Embeds */}
+              {isIframeFallback && (
+                <div className="absolute top-4 right-4 z-[1000] flex items-center gap-2 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)]">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowEpisodeMenu(!showEpisodeMenu); }}
+                    className="flex items-center gap-2 bg-black/85 px-3 py-2 rounded-xl border border-white/10 text-white text-[10px] font-black uppercase tracking-wider shadow-2xl pointer-events-auto"
+                  >
+                    <List className="w-4 h-4 text-primary" />
+                    الحلقات
+                  </button>
+                  {isMobile && isStandalone && isMaximized && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleForceRotation(); }}
+                      className={cn(
+                        "p-2 rounded-xl border text-white transition-all shadow-2xl flex items-center justify-center gap-1.5 pointer-events-auto",
+                        isForceRotated ? "bg-primary border-primary" : "bg-black/85 border-white/10"
+                      )}
+                      title="تدوير الشاشة"
+                    >
+                      <RotateCw className="w-4 h-4" />
+                      <span className="text-[10px]">تدوير</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleBrowserFullscreen(); }}
+                    className="p-2 bg-black/85 rounded-xl border border-white/10 text-white shadow-2xl pointer-events-auto"
+                  >
+                    {isMaximized ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                  </button>
+                </div>
+              )}
 
-
-              {controlsLayout}
+              {!isIframeFallback && controlsLayout}
 
               {/* RESUME PROGRESS NOTIFICATION TOAST */}
               <AnimatePresence>
@@ -3107,6 +3125,7 @@ const SafariNotification = () => {
                           seriesImage={seriesImage}
                           seriesId={seriesId}
                           onSelect={(ep, idx) => {
+                            setIsIframeFallback(false);
                             setIsLoading(true);
                             onSelectEpisode(ep, idx);
                             setShowEpisodeMenu(false);

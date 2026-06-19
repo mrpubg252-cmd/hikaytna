@@ -982,7 +982,7 @@ async function startServer() {
   });
 
   // 4.6. Secure Stream Proxy (Absolute Protection against sniffers)
-  app.get("/api/v1/stream-proxy/:encryptedUrl(*)", async (req, res) => {
+  app.get("/api/v1/stream-proxy/:encryptedUrl", async (req, res) => {
     try {
       const encrypted = req.params.encryptedUrl;
       const url = decryptValue(decodeURIComponent(encrypted));
@@ -991,24 +991,26 @@ async function startServer() {
       const parsedUrl = new URL(url);
       
       const headersOptions: any = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
         'Accept': '*/*',
         'Accept-Language': 'en-US,en;q=0.9',
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache'
       };
 
-      // Specific fixes for known sources like AlooyTV / Vid2 / Vid3
-      const hostMatch = url.match(/vid[0-9]|alooytv|zvde-dsn|cdn|workers\.dev/i);
+      // Specific fixes for known sources like AlooyTV / Vid2 / Vid3 which host "The Pit" (Al-Hofrah)
+      const hostMatch = url.match(/vid[0-9]|alooytv|zvde-dsn|cdn/i);
       if (hostMatch) {
-         headersOptions['Referer'] = 'https://fh.alooytv12.xyz/';
-         headersOptions['Origin'] = 'https://fh.alooytv12.xyz';
+         headersOptions['Referer'] = 'https://alooytv.com/';
+         headersOptions['Origin'] = 'https://alooytv.com';
          headersOptions['Sec-Fetch-Dest'] = 'video';
          headersOptions['Sec-Fetch-Mode'] = 'no-cors';
          headersOptions['Sec-Fetch-Site'] = 'cross-site';
+         // Use a more recent User-Agent
+         headersOptions['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
       } else {
-         headersOptions['Referer'] = 'https://fh.alooytv12.xyz/'; // Default to current source origin
-         headersOptions['Origin'] = 'https://fh.alooytv12.xyz';
+         headersOptions['Referer'] = parsedUrl.origin + '/';
+         headersOptions['Origin'] = parsedUrl.origin;
       }
 
       if (req.headers.range) {
@@ -1029,13 +1031,7 @@ async function startServer() {
 
       const proxyRes = axiosResponse.data;
       const contentType = axiosResponse.headers['content-type'] || '';
-      const isM3u8 = url.includes('.m3u8') || String(contentType).toLowerCase().includes('mpegurl');
-
-      // Force Safari stability headers
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
+      const isM3u8 = url.includes('.m3u8') || String(contentType).includes('mpegurl');
 
       if (isM3u8) {
          let body = '';
@@ -1066,16 +1062,13 @@ async function startServer() {
          });
       } else {
          res.status(axiosResponse.status || 200);
-         
-         // Fix for Safari black screen: Ensure Accept-Ranges is always present
-         res.setHeader('Accept-Ranges', 'bytes');
-         
-         ['content-length', 'content-range'].forEach(h => {
+         res.setHeader('Access-Control-Allow-Origin', '*');
+         ['accept-ranges', 'content-length', 'content-range'].forEach(h => {
             if (axiosResponse.headers[h]) res.setHeader(h, axiosResponse.headers[h] as string);
          });
          Object.keys(axiosResponse.headers).forEach(key => {
            const keyLower = key.toLowerCase();
-           if (['accept-ranges', 'content-length', 'content-range', 'access-control-allow-origin', 'cache-control', 'pragma', 'expires'].includes(keyLower)) return;
+           if (['accept-ranges', 'content-length', 'content-range'].includes(keyLower)) return;
            // Forward safe headers
            if (keyLower !== 'host' && keyLower !== 'connection' && keyLower !== 'content-disposition' && keyLower !== 'transfer-encoding') {
               let val = axiosResponse.headers[key] as string;
