@@ -81,17 +81,19 @@ export default function MatchesScreen() {
     if (matchId && unlocked === 'true') {
       if (matchId === 'main') {
         handleWatchStream('كأس العالم 2026 - بث مباشر', MAIN_BROADCAST_URL, true, true);
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
       } else {
-        const decodedUrl = decodeURIComponent(matchId);
-        const targetMatch = matches.find(m => m.url === decodedUrl);
-        if (targetMatch) {
-          handleWatchStream(targetMatch.title, targetMatch.url, false, true);
-        } else if (matches.length > 0) {
-          // If we have matches but didn't find the target...
+        if (matches.length > 0) {
+          const decodedUrl = decodeURIComponent(matchId);
+          const targetMatch = matches.find(m => m.url === decodedUrl);
+          if (targetMatch) {
+            handleWatchStream(targetMatch.title, targetMatch.url, false, true);
+          }
+          const newUrl = window.location.pathname;
+          window.history.replaceState({}, '', newUrl);
         }
       }
-      const newUrl = window.location.pathname;
-      window.history.replaceState({}, '', newUrl);
     }
   }, [matches]);
 
