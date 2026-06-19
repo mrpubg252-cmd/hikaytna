@@ -1029,7 +1029,13 @@ async function startServer() {
 
       const proxyRes = axiosResponse.data;
       const contentType = axiosResponse.headers['content-type'] || '';
-      const isM3u8 = url.includes('.m3u8') || String(contentType).includes('mpegurl');
+      const isM3u8 = url.includes('.m3u8') || String(contentType).toLowerCase().includes('mpegurl');
+
+      // Force Safari stability headers
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
 
       if (isM3u8) {
          let body = '';
@@ -1060,13 +1066,16 @@ async function startServer() {
          });
       } else {
          res.status(axiosResponse.status || 200);
-         res.setHeader('Access-Control-Allow-Origin', '*');
-         ['accept-ranges', 'content-length', 'content-range'].forEach(h => {
+         
+         // Fix for Safari black screen: Ensure Accept-Ranges is always present
+         res.setHeader('Accept-Ranges', 'bytes');
+         
+         ['content-length', 'content-range'].forEach(h => {
             if (axiosResponse.headers[h]) res.setHeader(h, axiosResponse.headers[h] as string);
          });
          Object.keys(axiosResponse.headers).forEach(key => {
            const keyLower = key.toLowerCase();
-           if (['accept-ranges', 'content-length', 'content-range'].includes(keyLower)) return;
+           if (['accept-ranges', 'content-length', 'content-range', 'access-control-allow-origin', 'cache-control', 'pragma', 'expires'].includes(keyLower)) return;
            // Forward safe headers
            if (keyLower !== 'host' && keyLower !== 'connection' && keyLower !== 'content-disposition' && keyLower !== 'transfer-encoding') {
               let val = axiosResponse.headers[key] as string;
