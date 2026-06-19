@@ -1,49 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Tv, Calendar, RefreshCw, Play, X, Loader2, Sparkles, CheckCircle, Info, Flame, AlertCircle, MessageSquare } from 'lucide-react';
+import { Trophy, Tv, X, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import Header from '../components/Header';
 import BottomNav from '../components/BottomNav';
 import MatchChat from '../components/MatchChat';
 import { motion, AnimatePresence } from 'motion/react';
 import CustomPlayer from '../components/CustomPlayer';
-import { fetchEpisodesFromAPI, fetchPlayUrlFromAPI } from '../services/api';
-
-interface MatchEpisode {
-  title: string;
-  url: string;
-}
+import { fetchPlayUrlFromAPI } from '../services/api';
 
 export default function MatchesScreen() {
-  const [matches, setMatches] = useState<MatchEpisode[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
   const [activeStream, setActiveStream] = useState<{ title: string; matchId: string; iframeUrl: string; streamError?: boolean } | null>(null);
-  const [loadingStream, setLoadingStream] = useState<string | null>(null); // matchId 'main' or url
+  const [loadingStream, setLoadingStream] = useState<string | null>(null); // matchId 'main'
   const [isPlayerMaximized, setIsPlayerMaximized] = useState(false);
   
   const MAIN_BROADCAST_URL = 'https://fh.alooytv12.xyz/world-cup-2026';
-  const MATCHES_URL = 'https://fh.alooytv12.xyz/watch/fifa-2026.html';
-
-  useEffect(() => {
-    const fetchMatches = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const episodes = await fetchEpisodesFromAPI(MATCHES_URL);
-        if (episodes && episodes.length > 0) {
-          setMatches(episodes);
-        } else {
-          setError('لم يتم العثور على مباريات مسجلة حالياً.');
-        }
-      } catch (err: any) {
-        setError('خطأ في الاتصال بخادم بيانات المباريات.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchMatches();
-  }, []);
 
   const handleWatchStream = async (title: string, url: string, isMain: boolean = false, bypassAdGate = false) => {
     const params = new URLSearchParams(window.location.search);
@@ -83,19 +52,9 @@ export default function MatchesScreen() {
         handleWatchStream('كأس العالم 2026 - بث مباشر', MAIN_BROADCAST_URL, true, true);
         const newUrl = window.location.pathname;
         window.history.replaceState({}, '', newUrl);
-      } else {
-        if (matches.length > 0) {
-          const decodedUrl = decodeURIComponent(matchId);
-          const targetMatch = matches.find(m => m.url === decodedUrl);
-          if (targetMatch) {
-            handleWatchStream(targetMatch.title, targetMatch.url, false, true);
-          }
-          const newUrl = window.location.pathname;
-          window.history.replaceState({}, '', newUrl);
-        }
       }
     }
-  }, [matches]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#070708] text-white pb-32 selection:bg-red-650 selection:text-white font-sans overflow-x-hidden">
@@ -138,79 +97,6 @@ export default function MatchesScreen() {
             <Trophy className="w-full h-full text-zinc-100 drop-shadow-[0_0_30px_rgba(255,255,255,0.3)] animate-pulse will-change-transform" />
           </div>
         </div>
-
-        {/* MATCHES LIST HEADER */}
-        <div className="flex flex-col gap-2 border-b border-zinc-900 pb-4 mt-8">
-          <div className="flex items-center gap-3">
-            <div className="w-1.5 h-6 bg-red-600 rounded-full" />
-            <h2 className="text-xl font-black">المباريات المنتهية</h2>
-          </div>
-          <p className="text-sm text-zinc-400 font-bold">بإمكانك مشاهدة الإعادة الكاملة للمباريات المنتهية</p>
-        </div>
-
-        {/* POST-MATCH LIST */}
-        {loading ? (
-          <div className="bg-zinc-950/40 border border-zinc-900 rounded-[2rem] py-24 text-center space-y-4 shadow-sm">
-            <div className="relative inline-flex items-center justify-center">
-              <div className="w-16 h-16 rounded-full border-t-2 border-b-2 border-red-600 animate-spin" />
-            </div>
-            <h3 className="text-xs font-black text-white">جاري تحميل المباريات...</h3>
-          </div>
-        ) : error ? (
-          <div className="bg-zinc-950/20 border border-zinc-900 rounded-[2rem] p-8 text-center space-y-4 max-w-xl mx-auto">
-            <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
-            <h3 className="text-sm font-black text-white">{error}</h3>
-          </div>
-        ) : matches.length === 0 ? (
-          <div className="bg-[#0b0b0d] border border-zinc-900 rounded-[2rem] p-16 text-center space-y-3 shadow-md max-w-2xl mx-auto">
-            <Info className="w-12 h-12 text-zinc-500 mx-auto" />
-            <h3 className="text-sm font-black text-zinc-300">لا توجد مباريات مسجلة</h3>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            <AnimatePresence mode="popLayout">
-              {matches.map((match, index) => {
-                const identifier = encodeURIComponent(match.url);
-                const isLoading = loadingStream === identifier;
-                
-                return (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    transition={{ duration: 0.3, delay: index * 0.05 }}
-                    onClick={() => !isLoading && handleWatchStream(match.title, match.url, false)}
-                    className="group flex flex-col justify-between gap-4 bg-zinc-950/40 hover:bg-zinc-900/80 border border-zinc-900/60 hover:border-red-900/50 rounded-2xl p-6 cursor-pointer transition-all duration-300 relative overflow-hidden"
-                  >
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-red-600/5 blur-[40px] rounded-full pointer-events-none group-hover:bg-red-600/10 transition-colors" />
-
-                    <div className="flex items-center gap-4 flex-1">
-                      <div className="w-12 h-12 rounded-xl bg-red-950/30 border border-red-900/30 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                        <Play className="w-5 h-5 text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.5)] ml-1" />
-                      </div>
-                      <h4 className="text-[13px] font-black text-zinc-200 line-clamp-2 group-hover:text-red-400 transition-colors leading-relaxed">
-                        {match.title}
-                      </h4>
-                    </div>
-                    
-                    <div className="flex items-center justify-end border-t border-zinc-900/50 pt-3 mt-1">
-                      {isLoading ? (
-                        <span className="flex items-center gap-2 text-[10px] font-bold text-red-500 bg-red-500/10 px-3 py-1.5 rounded-lg">
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> جاري التجهيز...
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1.5 text-[10px] font-bold text-zinc-500 group-hover:text-red-400 transition-colors bg-zinc-900/50 px-3 py-1.5 rounded-lg border border-zinc-800">
-                          <Tv className="w-3.5 h-3.5" /> شاهد الان
-                        </span>
-                      )}
-                    </div>
-                  </motion.div>
-                )
-              })}
-            </AnimatePresence>
-          </div>
-        )}
 
         {/* DETAILED WATCH GAME WITH CHAT MODAL INTERFACE */}
         <AnimatePresence>
