@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, push, set, onValue, remove, get, Database, query, limitToLast } from 'firebase/database';
 import { motion, AnimatePresence } from 'motion/react';
@@ -184,7 +185,7 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     let finalName = rawName;
     
     // Admin check transformation
-    if (rawName === 'bewCew,iDYgC@K6') {
+    if (rawName === 'bewCew,iDYgC@K6' || rawName === 'مدير' || rawName === 'المدير') {
       finalName = 'المدير 🛡️';
       localStorage.setItem('short_admin_access', 'true');
     } else {
@@ -922,6 +923,11 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
           </button>
           <Users className="w-3.5 h-3.5" />
           <span className="text-[10px] font-bold">{onlineCount}</span>
+          {localStorage.getItem('short_admin_access') === 'true' && (
+            <Link to="/admin" target="_blank" className="p-1.5 hover:bg-primary/20 rounded-full transition-all text-primary border border-primary/20 ml-1 group" title="لوحة الإدارة">
+              <ShieldAlert className="w-4 h-4" />
+            </Link>
+          )}
         </div>
       </div>
 
@@ -1067,7 +1073,12 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
                 </div>
                 <div className={`flex flex-col max-w-[75%] ${isMe ? 'items-end' : 'items-start'}`}>
                   <div className="flex items-center gap-1.5 mb-1 text-[9px] font-black text-zinc-500">
-                    <span>{msg.userName}</span>
+                    <span className={cn(msg.userName.includes('المدير') ? "text-primary flex items-center gap-1" : "text-zinc-500")}>
+                      {msg.userName}
+                      {msg.userName.includes('المدير') && (
+                        <span className="px-1.5 py-0.5 rounded bg-primary/20 text-[7px] text-primary border border-primary/30 ml-1">VIP</span>
+                      )}
+                    </span>
                     <span className="text-[8px] font-mono opacity-60 tracking-wider pr-1.5 border-r border-white/10">{getRemainingTimeText(msg.createdAt)}</span>
                   </div>
                   <div 

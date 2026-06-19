@@ -107,6 +107,23 @@
             "createdAt": { "type": "string", "format": "date-time" }
         },
         "required": ["id", "userId", "issue", "status"]
+    },
+    "ManualSeries": {
+      "title": "Manual Series",
+      "description": "Series added manually by admin.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "image": { "type": "string" },
+        "category": { "type": "string" },
+        "rating": { "type": "number" },
+        "isPriority": { "type": "boolean" },
+        "trailer": { "type": "string" },
+        "episodes": { "type": "array" },
+        "isSeries": { "type": "boolean" }
+      },
+      "required": ["id", "title", "image", "category"]
     }
   },
   "firestore": {
@@ -141,6 +158,10 @@
     "/supportTickets/{ticketId}": {
         "schema": "SupportTicket",
         "description": "Support tickets."
+    },
+    "/custom_series/{seriesId}": {
+        "schema": "ManualSeries",
+        "description": "Admin-added series."
     }
   }
 }

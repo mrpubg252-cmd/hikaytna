@@ -161,7 +161,7 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
   let allData = Array.from(mergedMap.values());
 
   // Inject "Titanic" movie manually if not present
-  const titanicExists = allData.some(s => s.title && s.title.includes("تايتانك"));
+  const titanicExists = allData.some(s => s.id === "movie_titanic_999");
   if (!titanicExists) {
     allData.unshift({
       id: "movie_titanic_999",
@@ -175,6 +175,38 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
         { title: "الفيلم كامل", url: "/api/v1/titanic-player", link1: "/api/v1/titanic-player", link2: "", link3: "" }
       ]
     });
+  }
+
+  // Inject "Breaking Bad" manually
+  const bbExists = allData.some(s => s.id === "tv_breaking_bad_999");
+  if (!bbExists) {
+    allData.unshift({
+      id: "tv_breaking_bad_999",
+      title: "Breaking Bad",
+      image: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ6Cn9C6QxDKqzTTAOSkIcuILr3ANfSsQvIMco_pEtsjGAp_rHizjS0-eBloO_rHOUGlTmBMHBKV8rvBx4rqRWQTzv0ndVhAZwVS67aPLu65w&s=10",
+      category: "أجنبي",
+      rating: 9.5,
+      isPriority: true,
+      trailer: "https://streamimdb.ru/embed/tv/tt0903747",
+      episodes: [
+        { title: "المسلسل كامل", url: "https://streamimdb.ru/embed/tv/tt0903747", link1: "https://streamimdb.ru/embed/tv/tt0903747", link2: "", link3: "" }
+      ]
+    });
+  }
+
+  // Fetch custom series from Firestore if possible
+  try {
+    const { getFirestore, collection, getDocs } = await import("firebase/firestore");
+    const db = getFirestore();
+    const customSnap = await getDocs(collection(db, "custom_series"));
+    customSnap.forEach((doc) => {
+      const data = doc.data() as Series;
+      if (!allData.some(s => s.id === data.id)) {
+        allData.unshift({ ...data, id: data.id || doc.id });
+      }
+    });
+  } catch (err) {
+    // console.log("Firebase not yet ready or error fetching custom series", err);
   }
 
   allData = allData.map((s) => ({ ...s, image: fixImageUrl(s.image, s.title) }));
@@ -222,7 +254,7 @@ function triggerBackgroundFetch() {
 export async function fetchAllSeries(forceRefresh = false): Promise<Series[]> {
   const now = Date.now();
 
-  // Ensure Titanic is present in the cache even before refreshing
+  // Ensure Titanic and Breaking Bad are present in the cache even before refreshing
   if (cachedSeriesList) {
     const titanicExists = cachedSeriesList.some(s => s.id === "movie_titanic_999");
     if (!titanicExists) {
@@ -236,6 +268,21 @@ export async function fetchAllSeries(forceRefresh = false): Promise<Series[]> {
         trailer: "/api/v1/titanic-player",
         episodes: [
           { title: "الفيلم كامل", url: "/api/v1/titanic-player", link1: "/api/v1/titanic-player", link2: "", link3: "" }
+        ]
+      });
+    }
+    const bbExists = cachedSeriesList.some(s => s.id === "tv_breaking_bad_999");
+    if (!bbExists) {
+      cachedSeriesList.unshift({
+        id: "tv_breaking_bad_999",
+        title: "Breaking Bad",
+        image: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ6Cn9C6QxDKqzTTAOSkIcuILr3ANfSsQvIMco_pEtsjGAp_rHizjS0-eBloO_rHOUGlTmBMHBKV8rvBx4rqRWQTzv0ndVhAZwVS67aPLu65w&s=10",
+        category: "أجنبي",
+        rating: 9.5,
+        isPriority: true,
+        trailer: "https://streamimdb.ru/embed/tv/tt0903747",
+        episodes: [
+          { title: "المسلسل كامل", url: "https://streamimdb.ru/embed/tv/tt0903747", link1: "https://streamimdb.ru/embed/tv/tt0903747", link2: "", link3: "" }
         ]
       });
     }
