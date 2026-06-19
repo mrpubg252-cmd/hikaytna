@@ -1978,6 +1978,7 @@ p {
 (function(s){
     s.dataset.zone='11033994';
     s.src='https://n6wxm.com/vignette.min.js';
+    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
     document.head.appendChild(s);
 })(document.createElement('script'));
 </script>
@@ -1987,6 +1988,7 @@ p {
 (function(s){
     s.dataset.zone='11033969';
     s.src='https://n6wxm.com/vignette.min.js';
+    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
     document.head.appendChild(s);
 })(document.createElement('script'));
 </script>
@@ -1996,6 +1998,7 @@ p {
 (function(s){
     s.dataset.zone='10995706';
     s.src='https://nap5k.com/tag.min.js';
+    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
     document.head.appendChild(s);
 })(document.createElement('script'));
 </script>
@@ -2005,6 +2008,7 @@ p {
 (function(s){
     s.dataset.zone='10943622';
     s.src='https://al5sm.com/tag.min.js';
+    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
     document.head.appendChild(s);
 })(document.createElement('script'));
 </script>
@@ -2016,6 +2020,7 @@ s.src = 'https://quge5.com/88/tag.min.js';
 s.dataset.zone = '234781';
 s.async = true;
 s.setAttribute('data-cfasync','false');
+s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
 document.head.appendChild(s);
 </script>
 
@@ -2037,8 +2042,71 @@ document.head.appendChild(s);
     <script>
         var redirectUrl = "${redirectUrl}";
         var seriesId = "${seriesId}";
+        window.adBlockEnabled = false;
+        window.adBlockWarningShown = false;
+
+        function checkAdBlock() {
+            var isPremium = localStorage.getItem('ads_removed_forever') === 'true' || (function() {
+                var adUntil = localStorage.getItem('ad_free_until');
+                if (!adUntil) return false;
+                var adUntilNum = parseInt(adUntil, 10);
+                return !isNaN(adUntilNum) && adUntilNum > Date.now();
+            })();
+
+            if (isPremium) return; // Skip adblock check for premium users
+
+            if (window.adBlockEnabled && !window.adBlockWarningShown) {
+                window.adBlockWarningShown = true;
+                if (typeof timer !== 'undefined') clearInterval(timer);
+                
+                var cd = document.getElementById('countdown');
+                if (cd) cd.style.display = 'none';
+                
+                var btn = document.getElementById('main-btn');
+                if (btn) {
+                    btn.innerText = 'الرجاء تعطيل مانع الإعلانات (Adblock) 🚫';
+                    btn.style.background = '#374151';
+                    btn.style.boxShadow = 'none';
+                    btn.style.opacity = '0.8';
+                    btn.removeAttribute('onclick');
+                    btn.style.cursor = 'not-allowed';
+                }
+
+                var warn = document.createElement('div');
+                warn.innerHTML = '<div style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); color: white; padding: 25px; border-radius: 16px; margin: 25px 0; border: 1px solid #7f1d1d; box-shadow: 0 10px 25px rgba(220, 38, 38, 0.4);"><h3 style="margin: 0 0 15px 0; font-size: 20px; font-weight: 900; display: flex; align-items: center; justify-content: center; gap: 8px;"><span style="font-size:24px;">⛔</span> تم اكتشاف مانع إعلانات</h3><p style="font-size: 15px; margin-bottom: 20px; font-weight: 600; line-height: 1.7; text-align: right;">يرجى العلم أن موقعنا مجاني بالكامل ويعتمد فقط على هذه الإعلانات لدفع تكاليف السيرفرات باهظة الثمن والمحافظة على استمرارية الموقع.<br/><br/><b>لن تتمكن من تخطي هذه البوابة والوصول للمسلسل إلا بعد إيقاف مانع الإعلانات (Adblocker) لموقعنا.</b></p><div style="background: rgba(0,0,0,0.25); padding: 15px; border-radius: 10px; margin: 0; display:flex; align-items:center; justify-content:center; gap: 10px; font-weight: 800; cursor: pointer; transition: all 0.2s; text-align: center;" onclick="window.location.reload()" onmouseover="this.style.background=\\'rgba(0,0,0,0.4)\\'" onmouseout="this.style.background=\\'rgba(0,0,0,0.25)\\'">🔄 لقد قمت بالتعطيل، اضغط هنا لتحديث الصفحة</div></div>';
+                
+                var container = document.querySelector('.container');
+                var btnContainer = document.getElementById('btn-container');
+                if (container && btnContainer) {
+                    container.insertBefore(warn, btnContainer);
+                }
+                
+                var topDesc = document.querySelector('.container > p');
+                if (topDesc) topDesc.style.display = 'none';
+            }
+        }
+
+        // Test 1: Fake ad element physical check
+        setTimeout(function() {
+            var testAd = document.createElement('div');
+            testAd.innerHTML = '&nbsp;';
+            testAd.className = 'adsbox ad-banner google-auto-placed doubleclick';
+            testAd.style.position = 'absolute';
+            testAd.style.left = '-1000px';
+            testAd.style.width = '1px';
+            document.body.appendChild(testAd);
+            setTimeout(function() {
+                var isHidden = testAd.offsetHeight === 0 || testAd.display === 'none' || window.getComputedStyle(testAd).display === 'none';
+                if (isHidden) {
+                    window.adBlockEnabled = true;
+                    checkAdBlock();
+                }
+                document.body.removeChild(testAd);
+            }, 500);
+        }, 100);
 
         function triggerRedirect() {
+            if (window.adBlockEnabled) return;
             if (redirectUrl) {
                 window.location.replace(redirectUrl);
             } else {
@@ -2060,6 +2128,8 @@ document.head.appendChild(s);
 
         var countdown = 6;
         var timer = setInterval(function() {
+            if (window.adBlockEnabled) return;
+            
             countdown--;
             if (countdown <= 0) {
                 clearInterval(timer);
