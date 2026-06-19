@@ -309,6 +309,16 @@ export async function fetchPlayUrlFromAPI(episodeUrl: string, signal?: AbortSign
   try {
     const res = await resilientFetch(getApiUrl(API_BASE + "/play?url=" + encodeURIComponent(episodeUrl)), { signal });
     const data = await res.json();
+    
+    // First: Check if we have direct streams from the API payload (better source)
+    if (data.status && data.streams && data.streams.length > 0) {
+      const bestStream = data.streams.find((s: any) => s.type === 'direct' || s.type === 'source') || data.streams[0];
+      if (bestStream && bestStream.url) {
+        return getApiUrl("/api/v1/play_embed?url=" + encodeURIComponent(bestStream.url));
+      }
+    }
+    
+    // Fallback to legacy embedded player url
     if (data.status && data.player_url) return decryptValue(data.player_url);
   } catch (error) { console.error("Play error", error); }
   return null;

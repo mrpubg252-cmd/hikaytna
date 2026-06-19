@@ -18,8 +18,8 @@ export default function MatchesScreen() {
   const [activeStream, setActiveStream] = useState<{ title: string; iframeUrl: string; streamError?: boolean } | null>(null);
   const [loadingStream, setLoadingStream] = useState<string | null>(null); // url or 'main'
   
-  const MAIN_BROADCAST_URL = 'https://a.alooytv13.xyz/world-cup-2026';
-  const MATCHES_URL = 'https://a.alooytv13.xyz/watch/fifa-2026.html';
+  const MAIN_BROADCAST_URL = 'https://fh.alooytv12.xyz/world-cup-2026';
+  const MATCHES_URL = 'https://fh.alooytv12.xyz/watch/fifa-2026.html';
 
   useEffect(() => {
     const fetchMatches = async () => {

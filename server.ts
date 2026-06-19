@@ -2124,6 +2124,93 @@ document.head.appendChild(s);
     res.send(html);
   });
 
+  // HLS Player Embed
+  app.get("/api/v1/play_embed", (req, res) => {
+    const streamUrl = req.query.url as string || "";
+    if (!streamUrl) {
+      return res.status(400).send("No stream URL provided.");
+    }
+    const html = `<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>البث المباشر</title>
+<style>
+  body, html {
+    margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden;
+  }
+  .player-fullscreen {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain;
+  }
+  #loader {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    color: #fff; font-family: sans-serif; font-size: 14px; font-weight: bold; background: rgba(0,0,0,0.7);
+    padding: 10px 20px; border-radius: 8px; z-index: 10;
+  }
+  /* simple spinner */
+  .spinner {
+    width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.3); border-top-color: #f59e0b;
+    border-radius: 50%; animation: spin 1s infinite linear; margin: 0 auto 8px;
+  }
+  @keyframes spin { 100% { transform: rotate(360deg); } }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+</head>
+<body>
+  <div id="loader"><div class="spinner"></div>جاري الاتصال بالبث المباشر...</div>
+  <video id="video" class="player-fullscreen" controls playsinline autoplay></video>
+  <script>
+    var video = document.getElementById('video');
+    var loader = document.getElementById('loader');
+    var streamUrl = "${streamUrl}";
+    var hls = null;
+    
+    function initPlayer() {
+      if (Hls.isSupported()) {
+        hls = new Hls({ maxMaxBufferLength: 60 });
+        hls.loadSource(streamUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, function() {
+          loader.style.display = 'none';
+          video.play().catch(function(){});
+        });
+        hls.on(Hls.Events.ERROR, function(event, data) {
+          if (data.fatal) {
+            switch(data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                loader.style.display = 'block'; loader.innerText = 'جاري إعادة الاتصال...';
+                hls.startLoad();
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                hls.recoverMediaError();
+                break;
+              default:
+                hls.destroy();
+                loader.style.display = 'block'; loader.innerText = 'تعذر تحميل البث';
+                break;
+            }
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl') || streamUrl.indexOf('.mp4') !== -1) {
+        // Native support (Safari) or MP4
+        video.src = streamUrl;
+        video.addEventListener('loadedmetadata', function() {
+          loader.style.display = 'none';
+          video.play().catch(function(){});
+        });
+      } else {
+         loader.style.display = 'block'; loader.innerText = 'هذا المتصفح لا يدعم مشغل البث';
+      }
+    }
+    
+    initPlayer();
+  </script>
+</body>
+</html>`;
+    res.send(html);
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
