@@ -211,6 +211,7 @@ export default function EpisodeGrid({
                   isActive
                     ? "border-primary/50 bg-[#121217] shadow-xl shadow-primary/5 ring-1 ring-primary/30"
                     : "border-white/5 hover:border-white/10 active:scale-[0.99]",
+                  ep.url?.includes('streamimdb') && "border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10"
                 )}
               >
                 {/* Thumbnail with custom playing indicators */}
@@ -220,7 +221,10 @@ export default function EpisodeGrid({
                       referrerPolicy="no-referrer"
                       src={seriesImage}
                       alt={displayTitle}
-                      className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-500"
+                      className={cn(
+                        "w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-500",
+                        ep.url?.includes('streamimdb') && "opacity-90"
+                      )}
                       onError={(e) => {
                         const currentSrc = e.currentTarget.src;
                         if (currentSrc.includes("/api/v1/image-proxy?url=")) {
@@ -240,6 +244,11 @@ export default function EpisodeGrid({
                     <div className="w-full h-full bg-gradient-to-tr from-zinc-950 to-zinc-900" />
                   )}
 
+                  {/* Legendary Glow */}
+                  {ep.url?.includes('streamimdb') && (
+                    <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-amber-500/30 to-transparent pointer-events-none" />
+                  )}
+
                   {/* Play gradient overlay */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent flex items-center justify-center">
                     <div
@@ -248,6 +257,7 @@ export default function EpisodeGrid({
                         isActive
                           ? "bg-primary text-black border-primary scale-110"
                           : "bg-black/60 text-white border-white/20 group-hover:bg-primary group-hover:text-black group-hover:border-primary group-hover:scale-110",
+                        !isActive && ep.url?.includes('streamimdb') && "border-amber-500/50 group-hover:bg-amber-500"
                       )}
                     >
                       <Play className="w-3.5 h-3.5 fill-current translate-x-[-0.5px]" />
@@ -261,6 +271,13 @@ export default function EpisodeGrid({
                       <span>مكتمل</span>
                     </span>
                   )}
+                  
+                  {ep.url?.includes('streamimdb') && (
+                    <span className="absolute top-1 left-1 bg-amber-500 text-black text-[7px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-md uppercase tracking-tighter">
+                      <Sparkles className="w-2.5 h-2.5" />
+                      Legendary
+                    </span>
+                  )}
                 </div>
 
                 {/* Title and stats layout on right */}
@@ -269,8 +286,9 @@ export default function EpisodeGrid({
                     className={cn(
                       "text-xs sm:text-sm font-black truncate leading-snug transition-colors duration-200",
                       isActive
-                        ? "text-primary font-black"
+                        ? (ep.url?.includes('streamimdb') ? "text-amber-500" : "text-primary")
                         : "text-white group-hover:text-primary",
+                      !isActive && ep.url?.includes('streamimdb') && "group-hover:text-amber-400"
                     )}
                   >
                     {displayTitle}
@@ -278,7 +296,12 @@ export default function EpisodeGrid({
 
                   <div className="flex items-center flex-wrap gap-1.5 mt-1">
                     {isActive ? (
-                      <span className="inline-flex items-center text-[10px] text-primary font-black animate-pulse bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20">
+                      <span className={cn(
+                        "inline-flex items-center text-[10px] font-black animate-pulse px-2 py-0.5 rounded-md border",
+                        ep.url?.includes('streamimdb') 
+                          ? "text-amber-500 bg-amber-500/10 border-amber-500/20" 
+                          : "text-primary bg-primary/10 border-primary/20"
+                      )}>
                         تشغيل الآن
                       </span>
                     ) : (

@@ -110,5 +110,11 @@ service cloud.firestore {
         allow create: if isSignedIn() && incoming().userId == request.auth.uid;
         allow update: if isOwner(existing().userId) && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'issue']);
     }
+
+    // Admin-added series Rules
+    // Allowing public read, and write for now because admin uses custom password logic
+    match /custom_series/{seriesId} {
+        allow read, write: if true;
+    }
   }
 }

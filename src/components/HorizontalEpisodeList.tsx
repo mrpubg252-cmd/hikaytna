@@ -62,8 +62,8 @@ export default memo(function HorizontalEpisodeList({
               className={cn(
                 "group text-right relative flex flex-col w-[130px] sm:w-[145px] shrink-0 snap-center rounded-xl bg-zinc-950 border transition-all duration-200 outline-none cursor-pointer focus:ring-2 focus:ring-primary focus:border-primary overflow-hidden shadow-inner",
                 isActive
-                  ? "border-primary bg-primary/5 ring-1 ring-primary/20"
-                  : "border-white/5 hover:border-white/10 hover:bg-zinc-900 active:scale-[0.98]"
+                  ? (ep.url?.includes('streamimdb') ? "border-amber-500 bg-amber-500/10 ring-1 ring-amber-500/20" : "border-primary bg-primary/5 ring-1 ring-primary/20")
+                  : (ep.url?.includes('streamimdb') ? "border-amber-500/10 hover:border-amber-500/30" : "border-white/5 hover:border-white/10 hover:bg-zinc-900 active:scale-[0.98]")
               )}
             >
               {/* Image thumbnail 16:9 banner */}
@@ -93,6 +93,10 @@ export default memo(function HorizontalEpisodeList({
                 ) : (
                   <div className="w-full h-full bg-gradient-to-tr from-zinc-950 to-zinc-900" />
                 )}
+
+                {ep.url?.includes('streamimdb') && (
+                  <div className="absolute inset-x-0 bottom-0 h-full bg-gradient-to-t from-amber-500/20 to-transparent pointer-events-none" />
+                )}
                 
                 {/* Dark overlay trailing */}
                 <div className="absolute inset-0 bg-black/15 group-hover:bg-transparent transition-colors" />
@@ -100,7 +104,10 @@ export default memo(function HorizontalEpisodeList({
                 {/* Play hover/current centered circle */}
                 {isActive && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                    <span className="w-6 h-6 rounded-full bg-primary/95 flex items-center justify-center text-black shadow animate-pulse">
+                    <span className={cn(
+                      "w-6 h-6 rounded-full flex items-center justify-center text-black shadow animate-pulse",
+                      ep.url?.includes('streamimdb') ? "bg-amber-500" : "bg-primary/95"
+                    )}>
                       <Play className="w-2 h-2 fill-current text-white" />
                     </span>
                   </div>
@@ -108,7 +115,7 @@ export default memo(function HorizontalEpisodeList({
 
                 {/* 100% Accurate HD Badge Overlay */}
                 <div className="absolute bottom-1.5 left-1.5 bg-black/70 backdrop-blur-md text-[7px] font-extrabold text-white px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow border border-white/5 select-none font-sans">
-                  <Play className="w-1.5 h-1.5 fill-current text-primary" />
+                  <Play className={cn("w-1.5 h-1.5 fill-current", ep.url?.includes('streamimdb') ? "text-amber-500" : "text-primary")} />
                   <span>HD</span>
                 </div>
               </div>
@@ -116,11 +123,13 @@ export default memo(function HorizontalEpisodeList({
               {/* Title & Stats container */}
               <div className={cn(
                 "py-1.5 px-2 text-center flex flex-col justify-center min-h-0 flex-1 w-full border-t border-white/5",
-                isActive ? "bg-primary/5" : "bg-[#0b0c12]"
+                isActive ? (ep.url?.includes('streamimdb') ? "bg-amber-500/10" : "bg-primary/5") : "bg-[#0b0c12]"
               )}>
                 <span className={cn(
                   "text-[9px] sm:text-[10px] font-extrabold truncate block text-center w-full leading-snug transition-colors duration-150",
-                  isActive ? "text-primary" : "text-zinc-200 group-hover:text-primary"
+                  isActive 
+                    ? (ep.url?.includes('streamimdb') ? "text-amber-500" : "text-primary") 
+                    : "text-zinc-200 group-hover:text-amber-400"
                 )}>
                   {displayTitle}
                 </span>
@@ -134,11 +143,14 @@ export default memo(function HorizontalEpisodeList({
                   )}
                   {!isWatched && !isActive && (
                     <span className="text-zinc-500 font-medium whitespace-nowrap">
-                      جاهز فوراً ⚡
+                      {ep.url?.includes('streamimdb') ? "متاح للتميز ✨" : "جاهز فوراً ⚡"}
                     </span>
                   )}
                   {isActive && (
-                    <span className="text-primary font-black animate-pulse">
+                    <span className={cn(
+                      "font-black animate-pulse",
+                      ep.url?.includes('streamimdb') ? "text-amber-500" : "text-primary"
+                    )}>
                       يُعرض الآن
                     </span>
                   )}

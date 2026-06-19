@@ -3,13 +3,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ShieldAlert, Send, Trash2, CheckCircle2, AlertTriangle, 
   Info, X, Clock, Plus, Film, Tv, Image as ImageIcon, 
-  Star, Type, Hash, ExternalLink
+  Star, Type, Hash, ExternalLink, Sparkles
 } from 'lucide-react';
 import { db } from '../services/firebase';
 import { ref, onValue, push, remove } from 'firebase/database';
-import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, setDoc } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, deleteDoc, doc, setDoc, query, orderBy } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
+import { clearCache } from '../services/dataService';
 
 interface Notice {
   id: string;
@@ -43,14 +44,15 @@ export default function AdminScreen() {
   
   // Series states
   const [customSeriesList, setCustomSeriesList] = useState<CustomSeries[]>([]);
-  const [newSeries, setNewSeries] = useState<CustomSeries>({
+  const [newSeries, setNewSeries] = useState<CustomSeries & { rawEpisodes: string }>({
     title: '',
     image: '',
     category: 'أجنبي',
     rating: 9.0,
     isPriority: true,
     trailer: '',
-    isSeries: true
+    isSeries: true,
+    rawEpisodes: '' // For multi-episode input
   });
   const [isSavingSeries, setIsSavingSeries] = useState(false);
 
@@ -100,12 +102,13 @@ export default function AdminScreen() {
     const fetchSeries = async () => {
       try {
         const firestore = getFirestore();
-        const snap = await getDocs(collection(firestore, "custom_series"));
+        const q = query(collection(firestore, "custom_series"), orderBy("createdAt", "desc"));
+        const snap = await getDocs(q);
         const list: CustomSeries[] = [];
         snap.forEach(d => {
           list.push({ ...d.data() as CustomSeries, id: d.id });
         });
-        setCustomSeriesList(list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+        setCustomSeriesList(list);
       } catch (err) {
         console.error("Error fetching custom series:", err);
       }
@@ -169,18 +172,39 @@ export default function AdminScreen() {
     try {
       const firestore = getFirestore();
       const seriesId = "custom_" + Date.now();
-      const seriesData = {
-        ...newSeries,
-        id: seriesId,
-        createdAt: Date.now(),
-        episodes: [
+      
+      let episodes = [];
+      if (newSeries.isSeries && newSeries.rawEpisodes.trim()) {
+        const lines = newSeries.rawEpisodes.split('\n');
+        episodes = lines.filter(l => l.includes('|')).map((line, idx) => {
+          const [title, url] = line.split('|').map(s => s.trim());
+          return { title: title || `الحلقة ${idx + 1}`, url, link1: url, link2: '', link3: '' };
+        });
+      }
+
+      if (episodes.length === 0) {
+        episodes = [
           { title: newSeries.isSeries ? "الحلقة الأولى" : "الفيلم كامل", url: newSeries.trailer, link1: newSeries.trailer, link2: "", link3: "" }
-        ]
+        ];
+      }
+
+      const seriesData = {
+        id: seriesId,
+        title: newSeries.title,
+        image: newSeries.image,
+        category: newSeries.category,
+        rating: newSeries.rating,
+        isPriority: newSeries.isPriority,
+        trailer: newSeries.trailer,
+        isSeries: newSeries.isSeries,
+        createdAt: Date.now(),
+        episodes
       };
       
       await setDoc(doc(firestore, "custom_series", seriesId), seriesData);
       
-      setCustomSeriesList([seriesData, ...customSeriesList]);
+      clearCache(); // Force refresh for all users
+      setCustomSeriesList([seriesData as any, ...customSeriesList]);
       setNewSeries({
         title: '',
         image: '',
@@ -188,7 +212,8 @@ export default function AdminScreen() {
         rating: 9.0,
         isPriority: true,
         trailer: '',
-        isSeries: true
+        isSeries: true,
+        rawEpisodes: ''
       });
       alert('تم إضافة العمل بنجاح! سيظهر للجميع فوراً.');
     } catch (err) {
@@ -204,6 +229,7 @@ export default function AdminScreen() {
     try {
       const firestore = getFirestore();
       await deleteDoc(doc(firestore, "custom_series", id));
+      clearCache(); // Force refresh
       setCustomSeriesList(customSeriesList.filter(s => s.id !== id));
     } catch (err) {
       console.error("Error deleting series:", err);
@@ -487,7 +513,7 @@ export default function AdminScreen() {
                 <div className="space-y-2 md:col-span-2">
                   <label className="text-xs font-black text-zinc-400 flex items-center gap-2">
                     <ExternalLink className="w-3.5 h-3.5" />
-                    رابط المشغل المدمج (Embed URL)
+                    رابط المشغل المدمج (Embed URL) أو رابط الحلقة الأولى
                   </label>
                   <input
                     type="url"
@@ -499,6 +525,23 @@ export default function AdminScreen() {
                     dir="ltr"
                   />
                 </div>
+
+                {newSeries.isSeries && (
+                  <div className="space-y-2 md:col-span-2 mb-4">
+                    <label className="text-xs font-black text-zinc-400 flex items-center gap-2">
+                      <Tv className="w-3.5 h-3.5" />
+                      إضافة حلقات المسلسل (اختياري)
+                    </label>
+                    <textarea
+                      placeholder={`الحلقة 1 | https://link.com\nالحلقة 2 | https://link2.com`}
+                      value={newSeries.rawEpisodes}
+                      onChange={(e) => setNewSeries({...newSeries, rawEpisodes: e.target.value})}
+                      className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-xl px-4 py-3 min-h-[120px] outline-none focus:border-primary transition-all text-sm"
+                      dir="ltr"
+                    />
+                    <p className="text-[10px] text-zinc-500 mt-1">نسق الإضافة: (اسم الحلقة | الرابط) - كل حلقة في سطر جديد</p>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <label className="text-xs font-black text-zinc-400 flex items-center gap-2">

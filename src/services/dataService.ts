@@ -196,13 +196,19 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
 
   // Fetch custom series from Firestore if possible
   try {
-    const { getFirestore, collection, getDocs } = await import("firebase/firestore");
+    const { getFirestore, collection, getDocs, orderBy, query } = await import("firebase/firestore");
     const db = getFirestore();
-    const customSnap = await getDocs(collection(db, "custom_series"));
+    const q = query(collection(db, "custom_series"), orderBy("createdAt", "desc"));
+    const customSnap = await getDocs(q);
     customSnap.forEach((doc) => {
       const data = doc.data() as Series;
-      if (!allData.some(s => s.id === data.id)) {
-        allData.unshift({ ...data, id: data.id || doc.id });
+      const finalData = { ...data, id: data.id || doc.id };
+      // Check if already in allData by ID
+      const index = allData.findIndex(s => s.id === finalData.id);
+      if (index !== -1) {
+        allData[index] = finalData;
+      } else {
+        allData.unshift(finalData);
       }
     });
   } catch (err) {
@@ -249,6 +255,15 @@ function triggerBackgroundFetch() {
       isFetchingInBackground = false;
       console.error("Background silent series refresh failed:", err);
     });
+}
+
+export function clearCache() {
+  cachedSeriesList = null;
+  lastFetchTime = 0;
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    window.dispatchEvent(new CustomEvent("series-cache-cleared"));
+  }
 }
 
 export async function fetchAllSeries(forceRefresh = false): Promise<Series[]> {

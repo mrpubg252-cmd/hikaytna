@@ -2810,24 +2810,36 @@ const SafariNotification = () => {
           )}
 
           {isIframeFallback ? (
-            <iframe
-              src={resolvedVideoUrl}
-              className="w-full h-full border-0 animate-fade-in"
-              allowFullScreen
-              allow="autoplay; encrypted-media; picture-in-picture"
-              referrerPolicy="no-referrer-when-downgrade"
-              style={{
-                width: '100%',
-                height: '100%',
-                backgroundColor: 'black',
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                zIndex: 10,
-              }}
-            />
+            <div className={cn(
+              "w-full h-full relative",
+              resolvedVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
+            )}>
+              <iframe
+                src={resolvedVideoUrl}
+                className={cn(
+                  "w-full h-full border-0 animate-fade-in",
+                  resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
+                )}
+                allowFullScreen
+                allow="autoplay; encrypted-media; picture-in-picture"
+                referrerPolicy="no-referrer-when-downgrade"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  backgroundColor: 'black',
+                  position: 'relative',
+                  zIndex: 10,
+                }}
+              />
+              {resolvedVideoUrl.includes('streamimdb') && (
+                <div className="absolute top-4 left-4 z-20 pointer-events-none">
+                  <div className="bg-amber-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
+                    <Sparkles className="w-3 h-3 fill-current" />
+                    PREMIUM STREAMING
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
             <ShadowVideo
               videoRef={videoRef}

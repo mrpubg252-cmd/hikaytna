@@ -1,9 +1,10 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Play } from 'lucide-react';
+import { Play, Sparkles } from 'lucide-react';
 import { Series } from '../services/firebase';
 import { hasNewEpisode } from '../lib/episodeHistory';
 import { getTMDBPoster, getTMDBPosterSync } from '../lib/tmdbHealing';
+import { cn } from '../lib/utils';
 
 interface SeriesCardProps {
   item: Series;
@@ -15,6 +16,7 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
   if (!item) return null;
   const _hasNew = hasNewEpisode(item);
   const [clicked, setClicked] = React.useState(false);
+  const isLegendary = item.trailer?.includes('streamimdb') || item.episodes?.some(ep => ep.url?.includes('streamimdb'));
 
   const handlePress = React.useCallback(() => {
     if (_hasNew && !clicked) {
@@ -89,7 +91,10 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       transition={{ duration: 0.3 }}
-      className="relative group cursor-pointer aspect-[3/4] rounded-2xl overflow-hidden bg-zinc-900 border border-white/5 will-change-transform"
+      className={cn(
+        "relative group cursor-pointer aspect-[3/4] rounded-2xl overflow-hidden bg-zinc-900 border transition-all will-change-transform",
+        isLegendary ? "border-amber-500/40 shadow-[0_0_20px_rgba(245,158,11,0.15)] hover:shadow-[0_0_30px_rgba(245,158,11,0.25)]" : "border-white/5"
+      )}
       onClick={handlePress}
     >
       <img 
@@ -98,7 +103,11 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
         loading="lazy"
         decoding="async"
         referrerPolicy="no-referrer"
-        className={`w-full h-full object-cover transition-opacity duration-500 will-change-transform ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+        className={cn(
+          "w-full h-full object-cover transition-opacity duration-500 will-change-transform",
+          imageLoaded ? 'opacity-100' : 'opacity-0',
+          isLegendary && "scale-[1.01]"
+        )}
         onLoad={() => setImageLoaded(true)}
         onError={() => {
           // Reactively fetch fallback poster path from TMDB on rendering errors
@@ -117,10 +126,21 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
         }}
       />
 
+      {isLegendary && (
+        <div className="absolute inset-0 bg-gradient-to-t from-amber-500/10 via-transparent to-transparent pointer-events-none" />
+      )}
+
       {/* Floating Rating Badge */}
       <div className="absolute top-2.5 left-2 bg-black/70 backdrop-blur-md border border-white/10 text-[9px] sm:text-[10px] text-yellow-500 font-extrabold px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-lg z-30 select-none">
         ⭐ <span className="text-zinc-100">{displayRating}</span>
       </div>
+
+      {isLegendary && (
+        <div className="absolute top-2.5 right-2 bg-amber-500 text-black text-[7px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-xl z-30 select-none animate-pulse">
+          <Sparkles className="w-2.5 h-2.5 fill-current" />
+          LEGENDARY
+        </div>
+      )}
       
       <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent flex flex-col justify-end p-3 sm:p-5">
         <h3 className="text-white font-black text-xs sm:text-sm uppercase tracking-tight truncate">{item.title}</h3>
