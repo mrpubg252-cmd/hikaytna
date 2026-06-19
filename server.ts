@@ -998,19 +998,18 @@ async function startServer() {
         'Pragma': 'no-cache'
       };
 
-      // Specific fixes for known sources like AlooyTV / Vid2 / Vid3 which host "The Pit" (Al-Hofrah)
-      const hostMatch = url.match(/vid[0-9]|alooytv|zvde-dsn|cdn/i);
+      // Specific fixes for known sources
+      const hostMatch = url.match(/vid[0-9]|alooytv|zvde-dsn|cdn|workers\.dev/i);
       if (hostMatch) {
-         headersOptions['Referer'] = 'https://alooytv.com/';
-         headersOptions['Origin'] = 'https://alooytv.com';
+         headersOptions['Referer'] = 'https://fh.alooytv12.xyz/';
+         headersOptions['Origin'] = 'https://fh.alooytv12.xyz';
          headersOptions['Sec-Fetch-Dest'] = 'video';
          headersOptions['Sec-Fetch-Mode'] = 'no-cors';
          headersOptions['Sec-Fetch-Site'] = 'cross-site';
-         // Use a more recent User-Agent
          headersOptions['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
       } else {
-         headersOptions['Referer'] = parsedUrl.origin + '/';
-         headersOptions['Origin'] = parsedUrl.origin;
+         headersOptions['Referer'] = 'https://fh.alooytv12.xyz/'; // Always default to this to bypass restrictions
+         headersOptions['Origin'] = 'https://fh.alooytv12.xyz';
       }
 
       if (req.headers.range) {

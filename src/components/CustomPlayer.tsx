@@ -1289,12 +1289,19 @@ const SafariNotification = () => {
             setShowControls(true); // Keep controls open so user can press play
           });
         });
+        let networkErrorCount = 0;
         hls.on(Hls.Events.ERROR, (event, data) => {
           if (data.fatal) {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
+                networkErrorCount++;
                 console.warn("HLS network error, attempting recovery level reload:", data);
-                hls?.startLoad();
+                if (networkErrorCount > 3) {
+                  setShowTimeoutOptions(true);
+                  setIsLoading(false);
+                } else {
+                  setTimeout(() => { hls?.startLoad(); }, 1000);
+                }
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
                 console.warn("HLS media fatal error, attempting recovery:", data);

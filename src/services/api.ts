@@ -311,9 +311,9 @@ export async function fetchPlayUrlFromAPI(episodeUrl: string, signal?: AbortSign
     const data = await res.json();
     if (data.status && data.player_url) {
       const decrypted = decryptValue(data.player_url);
-      if (decrypted && (decrypted.includes('.mp4') || decrypted.includes('.m3u8') || decrypted.includes('.webm') || decrypted.includes('.ogg'))) {
-        return getApiUrl(`/api/v1/stream-proxy/${encodeURIComponent(data.player_url)}`);
-      }
+      
+      // We explicitly skip proxying .m3u8 because piping thousands of chunks causes severe lagging.
+      // MP4s might be fine, but let's test direct to ensure maximum speed as requested.
       return decrypted;
     }
   } catch (error) { console.error("Play error", error); }

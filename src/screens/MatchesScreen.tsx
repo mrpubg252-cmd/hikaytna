@@ -19,6 +19,7 @@ export default function MatchesScreen() {
   
   const [activeStream, setActiveStream] = useState<{ title: string; matchId: string; iframeUrl: string; streamError?: boolean } | null>(null);
   const [loadingStream, setLoadingStream] = useState<string | null>(null); // matchId 'main' or url
+  const [isPlayerMaximized, setIsPlayerMaximized] = useState(false);
   
   const MAIN_BROADCAST_URL = 'https://fh.alooytv12.xyz/world-cup-2026';
   const MATCHES_URL = 'https://fh.alooytv12.xyz/watch/fifa-2026.html';
@@ -140,9 +141,9 @@ export default function MatchesScreen() {
         <div className="flex flex-col gap-2 border-b border-zinc-900 pb-4 mt-8">
           <div className="flex items-center gap-3">
             <div className="w-1.5 h-6 bg-red-600 rounded-full" />
-            <h2 className="text-xl font-black">مباريات مسجلة</h2>
+            <h2 className="text-xl font-black">المباريات المنتهية</h2>
           </div>
-          <p className="text-sm text-zinc-400 font-bold">مباريات منتهية - ملخص وإعادة كاملة</p>
+          <p className="text-sm text-zinc-400 font-bold">بإمكانك مشاهدة الإعادة الكاملة للمباريات المنتهية</p>
         </div>
 
         {/* POST-MATCH LIST */}
@@ -290,8 +291,8 @@ export default function MatchesScreen() {
                           servers={[{ name: 'المصدر الرئيسي', url: activeStream.iframeUrl }]}
                           onSelectEpisode={() => {}}
                           onSelectServer={() => {}}
-                          isMaximized={false}
-                          onToggleMaximize={() => {}}
+                          isMaximized={isPlayerMaximized}
+                          onToggleMaximize={() => setIsPlayerMaximized(!isPlayerMaximized)}
                           seriesCategory="Matches"
                           seriesTitle={activeStream.title}
                         />
