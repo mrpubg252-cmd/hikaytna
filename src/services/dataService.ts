@@ -163,11 +163,11 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
   // Inject "Titanic" movie manually if not present
   const titanicExists = allData.some(s => s.title && s.title.includes("تايتانك"));
   if (!titanicExists) {
-    allData.push({
+    allData.unshift({
       id: "movie_titanic_999",
       title: "تايتانك (Titanic)",
       image: "https://j.top4top.io/p_3822gpygf1.jpg",
-      category: "افلام",
+      category: "أفلام",
       rating: 9.8,
       isPriority: true,
       trailer: "/api/v1/titanic-player",
@@ -221,6 +221,25 @@ function triggerBackgroundFetch() {
 
 export async function fetchAllSeries(forceRefresh = false): Promise<Series[]> {
   const now = Date.now();
+
+  // Ensure Titanic is present in the cache even before refreshing
+  if (cachedSeriesList) {
+    const titanicExists = cachedSeriesList.some(s => s.id === "movie_titanic_999");
+    if (!titanicExists) {
+      cachedSeriesList.unshift({
+        id: "movie_titanic_999",
+        title: "تايتانك (Titanic)",
+        image: "https://j.top4top.io/p_3822gpygf1.jpg",
+        category: "أفلام",
+        rating: 9.8,
+        isPriority: true,
+        trailer: "/api/v1/titanic-player",
+        episodes: [
+          { title: "الفيلم كامل", url: "/api/v1/titanic-player", link1: "/api/v1/titanic-player", link2: "", link3: "" }
+        ]
+      });
+    }
+  }
 
   // If forceRefresh is false, we have a cache, and it's younger than CACHE_DURATION_MS, return immediately
   if (
@@ -381,7 +400,27 @@ export async function fetchCategoryPage(
   });
 
   // Apply centralized priority sort and exclusions for this page
-  const newSeries = applyPrioritySort(processedSeries);
+  let newSeries = applyPrioritySort(processedSeries);
+
+  // Manual Injection for specific high-value content (Titanic)
+  const titanicExists = newSeries.some(s => s.title && s.title.includes("تايتانك"));
+  const catNorm = normalizeArabic(categoryName);
+  const isTargetCat = catNorm.includes("افلام") || catNorm.includes("اجنبي") || catNorm === "الكل";
+  
+  if (!titanicExists && isTargetCat) {
+    newSeries.unshift({
+      id: "movie_titanic_999",
+      title: "تايتانك (Titanic)",
+      image: "https://j.top4top.io/p_3822gpygf1.jpg",
+      category: "أفلام",
+      rating: 9.8,
+      isPriority: true,
+      trailer: "/api/v1/titanic-player",
+      episodes: [
+        { title: "الفيلم كامل", url: "/api/v1/titanic-player", link1: "/api/v1/titanic-player", link2: "", link3: "" }
+      ]
+    });
+  }
 
   // Merge into our RAM cache to avoid losing it if they switch tabs and come back
   if (!cachedSeriesList) {

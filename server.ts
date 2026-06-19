@@ -984,7 +984,7 @@ async function startServer() {
   // 4.5. High-End Custom Player (Titanic Specific & Secure Wrappers)
   app.get("/api/v1/titanic-player", (req, res) => {
     res.setHeader('Content-Type', 'text/html');
-    res.setHeader('X-Frame-Options', 'ALLOWALL'); // Allow embedding
+    res.setHeader('X-Frame-Options', 'ALLOWALL'); 
     res.send(`
 <!DOCTYPE html>
 <html lang="en">
@@ -992,18 +992,45 @@ async function startServer() {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="referrer" content="origin">
-  <title>Serene Premium Player</title>
+  <title>Player</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: system-ui, sans-serif; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0b0b; font-family: system-ui, sans-serif; }
     #player-wrapper { position: relative; width: 100%; height: 100%; background: #000; }
-    #pf { width: 100%; height: 100%; border: 0; display: block; background: #000; }
+    #pf { width: 100%; height: 100%; border: 0; display: block; background: #111; }
+    .status-badge { position: fixed; bottom: 20px; left: 20px; color: rgba(255,255,255,0.2); font-size: 12px; letter-spacing: 0.3px; pointer-events: none; z-index: 10; background: rgba(0,0,0,0.4); padding: 6px 14px; border-radius: 40px; backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.05); }
+    .hide-cursor, .hide-cursor * { cursor: none !important; }
+    iframe { transition: opacity 0.2s ease; }
   </style>
 </head>
 <body>
   <div id="player-wrapper">
-    <iframe src="https://nextgencloudfabric.com/embed/movie/tt0120338" id="pf" allowfullscreen allow="autoplay"></iframe>
+    <iframe id="pf" src="https://nextgencloudfabric.com/embed/movie/tt0120338" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen referrerpolicy="origin"></iframe>
   </div>
+  <div class="status-badge" id="statusBadge">● loaded</div>
+  <script>
+    (function(){
+      if (window !== window.top) {
+        var die = function(){ document.documentElement.innerHTML = ''; document.write('<!DOCTYPE html><html><head></head><body style="margin:0;background:#000"></body></html>'); document.close(); };
+        var s = false;
+        try { if (window.origin === 'null' || !window.origin) s = true; } catch(e){ s = true; }
+        if (s) { die(); throw ''; }
+      }
+      var f = document.getElementById('pf');
+      window.addEventListener('message', function(e) {
+        if (e.source !== f.contentWindow) return;
+        var d = e.data;
+        if (!d || typeof d !== 'object') return;
+        if (d.type === 'CURSOR_HIDE') { document.body.classList.add('hide-cursor'); document.documentElement.classList.add('hide-cursor'); f.style.cursor = 'none'; }
+        if (d.type === 'CURSOR_SHOW') { document.body.classList.remove('hide-cursor'); document.documentElement.classList.remove('hide-cursor'); f.style.cursor = ''; }
+      });
+      var badge = document.getElementById('statusBadge');
+      if (badge) {
+        setTimeout(function() { if (badge) badge.style.opacity = '0.6'; }, 4000);
+        setTimeout(function() { if (badge) { badge.style.transition = 'opacity 0.8s ease'; badge.style.opacity = '0'; } }, 8000);
+      }
+    })();
+  </script>
 </body>
 </html>
     `);

@@ -158,10 +158,10 @@ export function applyPrioritySort(seriesList: any[]): any[] {
     .filter(s => s && s.title && !excludedTitles.some(title => s.title.includes(title)))
     .map(s => {
       const pinData = categoryPins[s.id];
-      const isPinned = pinData && pinData.pinned === true;
+      const isPinned = pinData && pinData.pinned === true || s.id === "movie_titanic_999";
       const hasNew = hasNewEpisode(s);
       const updatedAt = getEpisodeUpdatedAt(s) || 0;
-      return { ...s, _isPinned: isPinned, _pinnedAt: isPinned ? (pinData.pinnedAt || 0) : 0, _hasNew: hasNew, _updatedAt: updatedAt, _rank: s.rank !== undefined ? s.rank : 9999 };
+      return { ...s, _isPinned: isPinned, _pinnedAt: isPinned ? (s.id === "movie_titanic_999" ? Date.now() + 1000000 : (pinData?.pinnedAt || 0)) : 0, _hasNew: hasNew, _updatedAt: updatedAt, _rank: s.rank !== undefined ? s.rank : 9999 };
     });
 
   mapped.sort((a, b) => {
