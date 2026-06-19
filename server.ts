@@ -1978,7 +1978,6 @@ p {
 (function(s){
     s.dataset.zone='11033994';
     s.src='https://n6wxm.com/vignette.min.js';
-    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
     document.head.appendChild(s);
 })(document.createElement('script'));
 </script>
@@ -1988,7 +1987,6 @@ p {
 (function(s){
     s.dataset.zone='11033969';
     s.src='https://n6wxm.com/vignette.min.js';
-    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
     document.head.appendChild(s);
 })(document.createElement('script'));
 </script>
@@ -1998,7 +1996,6 @@ p {
 (function(s){
     s.dataset.zone='10995706';
     s.src='https://nap5k.com/tag.min.js';
-    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
     document.head.appendChild(s);
 })(document.createElement('script'));
 </script>
@@ -2008,7 +2005,6 @@ p {
 (function(s){
     s.dataset.zone='10943622';
     s.src='https://al5sm.com/tag.min.js';
-    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
     document.head.appendChild(s);
 })(document.createElement('script'));
 </script>
@@ -2020,7 +2016,6 @@ s.src = 'https://quge5.com/88/tag.min.js';
 s.dataset.zone = '234781';
 s.async = true;
 s.setAttribute('data-cfasync','false');
-s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
 document.head.appendChild(s);
 </script>
 
@@ -2069,24 +2064,21 @@ document.head.appendChild(s);
             }
         }
 
-        // Test 1: Fake ad element physical check
-        setTimeout(function() {
-            var testAd = document.createElement('div');
-            testAd.innerHTML = '&nbsp;';
-            testAd.className = 'adsbox ad-banner google-auto-placed doubleclick';
-            testAd.style.position = 'absolute';
-            testAd.style.left = '-1000px';
-            testAd.style.width = '1px';
-            document.body.appendChild(testAd);
-            setTimeout(function() {
-                var isHidden = testAd.offsetHeight === 0 || testAd.display === 'none' || window.getComputedStyle(testAd).display === 'none';
-                if (isHidden) {
-                    window.adBlockEnabled = true;
-                    checkAdBlock();
-                }
-                document.body.removeChild(testAd);
-            }, 500);
-        }, 100);
+        function verifyAdBlockNetwork() {
+            fetch('https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js', {
+                method: 'HEAD',
+                mode: 'no-cors',
+                cache: 'no-store'
+            }).then(function() {
+                // Network request succeeded, no adblocker (or it is allowing this specific domain, which is rare)
+            }).catch(function() {
+                // Network request blocked
+                window.adBlockEnabled = true;
+                checkAdBlock();
+            });
+        }
+        
+        setTimeout(verifyAdBlockNetwork, 100);
 
         function triggerRedirect() {
             if (redirectUrl) {
