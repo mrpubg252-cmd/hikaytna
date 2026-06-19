@@ -233,7 +233,7 @@ export default function EpisodeGrid({
                           } catch (err) {}
                         }
                         e.currentTarget.src =
-                          "https://i.postimg.cc/d12Ynnwc/logo.png";
+                          "https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png";
                       }}
                     />
                   ) : (

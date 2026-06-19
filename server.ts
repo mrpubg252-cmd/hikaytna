@@ -1978,6 +1978,7 @@ p {
 (function(s){
     s.dataset.zone='11033994';
     s.src='https://n6wxm.com/vignette.min.js';
+    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
     document.head.appendChild(s);
 })(document.createElement('script'));
 </script>
@@ -1987,6 +1988,7 @@ p {
 (function(s){
     s.dataset.zone='11033969';
     s.src='https://n6wxm.com/vignette.min.js';
+    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
     document.head.appendChild(s);
 })(document.createElement('script'));
 </script>
@@ -1996,6 +1998,7 @@ p {
 (function(s){
     s.dataset.zone='10995706';
     s.src='https://nap5k.com/tag.min.js';
+    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
     document.head.appendChild(s);
 })(document.createElement('script'));
 </script>
@@ -2005,6 +2008,7 @@ p {
 (function(s){
     s.dataset.zone='10943622';
     s.src='https://al5sm.com/tag.min.js';
+    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
     document.head.appendChild(s);
 })(document.createElement('script'));
 </script>
@@ -2016,6 +2020,7 @@ s.src = 'https://quge5.com/88/tag.min.js';
 s.dataset.zone = '234781';
 s.async = true;
 s.setAttribute('data-cfasync','false');
+s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
 document.head.appendChild(s);
 </script>
 
@@ -2064,21 +2069,24 @@ document.head.appendChild(s);
             }
         }
 
-        function verifyAdBlockNetwork() {
-            fetch('https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js', {
-                method: 'HEAD',
-                mode: 'no-cors',
-                cache: 'no-store'
-            }).then(function() {
-                // Network request succeeded, no adblocker (or it is allowing this specific domain, which is rare)
-            }).catch(function() {
-                // Network request blocked
-                window.adBlockEnabled = true;
-                checkAdBlock();
-            });
-        }
-        
-        setTimeout(verifyAdBlockNetwork, 100);
+        // Test 1: Fake ad element physical check
+        setTimeout(function() {
+            var testAd = document.createElement('div');
+            testAd.innerHTML = '&nbsp;';
+            testAd.className = 'adsbox ad-banner google-auto-placed doubleclick';
+            testAd.style.position = 'absolute';
+            testAd.style.left = '-1000px';
+            testAd.style.width = '1px';
+            document.body.appendChild(testAd);
+            setTimeout(function() {
+                var isHidden = testAd.offsetHeight === 0 || testAd.display === 'none' || window.getComputedStyle(testAd).display === 'none';
+                if (isHidden) {
+                    window.adBlockEnabled = true;
+                    checkAdBlock();
+                }
+                document.body.removeChild(testAd);
+            }, 500);
+        }, 100);
 
         function triggerRedirect() {
             if (redirectUrl) {
@@ -2124,93 +2132,6 @@ document.head.appendChild(s);
     res.send(html);
   });
 
-  // HLS Player Embed
-  app.get("/api/v1/play_embed", (req, res) => {
-    const streamUrl = req.query.url as string || "";
-    if (!streamUrl) {
-      return res.status(400).send("No stream URL provided.");
-    }
-    const html = `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>البث المباشر</title>
-<style>
-  body, html {
-    margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden;
-  }
-  .player-fullscreen {
-    position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain;
-  }
-  #loader {
-    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    color: #fff; font-family: sans-serif; font-size: 14px; font-weight: bold; background: rgba(0,0,0,0.7);
-    padding: 10px 20px; border-radius: 8px; z-index: 10;
-  }
-  /* simple spinner */
-  .spinner {
-    width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.3); border-top-color: #f59e0b;
-    border-radius: 50%; animation: spin 1s infinite linear; margin: 0 auto 8px;
-  }
-  @keyframes spin { 100% { transform: rotate(360deg); } }
-</style>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
-</head>
-<body>
-  <div id="loader"><div class="spinner"></div>جاري الاتصال بالبث المباشر...</div>
-  <video id="video" class="player-fullscreen" controls playsinline autoplay></video>
-  <script>
-    var video = document.getElementById('video');
-    var loader = document.getElementById('loader');
-    var streamUrl = "${streamUrl}";
-    var hls = null;
-    
-    function initPlayer() {
-      if (Hls.isSupported()) {
-        hls = new Hls({ maxMaxBufferLength: 60 });
-        hls.loadSource(streamUrl);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, function() {
-          loader.style.display = 'none';
-          video.play().catch(function(){});
-        });
-        hls.on(Hls.Events.ERROR, function(event, data) {
-          if (data.fatal) {
-            switch(data.type) {
-              case Hls.ErrorTypes.NETWORK_ERROR:
-                loader.style.display = 'block'; loader.innerText = 'جاري إعادة الاتصال...';
-                hls.startLoad();
-                break;
-              case Hls.ErrorTypes.MEDIA_ERROR:
-                hls.recoverMediaError();
-                break;
-              default:
-                hls.destroy();
-                loader.style.display = 'block'; loader.innerText = 'تعذر تحميل البث';
-                break;
-            }
-          }
-        });
-      } else if (video.canPlayType('application/vnd.apple.mpegurl') || streamUrl.indexOf('.mp4') !== -1) {
-        // Native support (Safari) or MP4
-        video.src = streamUrl;
-        video.addEventListener('loadedmetadata', function() {
-          loader.style.display = 'none';
-          video.play().catch(function(){});
-        });
-      } else {
-         loader.style.display = 'block'; loader.innerText = 'هذا المتصفح لا يدعم مشغل البث';
-      }
-    }
-    
-    initPlayer();
-  </script>
-</body>
-</html>`;
-    res.send(html);
-  });
-
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -2229,7 +2150,7 @@ document.head.appendChild(s);
 
   // Pre-download high-res logo dynamically to overwrite outdated logo
   try {
-    const logoUrl = "https://i.postimg.cc/d12Ynnwc/logo.png";
+    const logoUrl = "https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png";
     const logoPath = path.join(process.cwd(), 'public', 'logo.png');
     axios.get(logoUrl, { responseType: 'arraybuffer' }).then((response) => {
       fs.writeFileSync(logoPath, Buffer.from(response.data));

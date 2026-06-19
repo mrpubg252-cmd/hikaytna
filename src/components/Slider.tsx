@@ -59,7 +59,7 @@ const SliderBackgroundImage: React.FC<SliderBackgroundImageProps> = ({ series, i
         if (src && src.includes('image.tmdb.org')) return;
         getTMDBPoster(series.title, series.category).then((healed) => {
           if (healed) setSrc(healed);
-          else setSrc('https://i.postimg.cc/d12Ynnwc/logo.png');
+          else setSrc('https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png');
         });
       }}
     />

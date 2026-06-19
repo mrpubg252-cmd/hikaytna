@@ -1461,7 +1461,7 @@ export default function WatchScreen() {
               <div className="p-6 border-b border-white/5 flex items-center justify-between sticky top-0 bg-zinc-900 z-10">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-primary/20">
-                    <img src={selectedActor.profile_path || 'https://i.postimg.cc/d12Ynnwc/logo.png'} alt="" className="w-full h-full object-cover" />
+                    <img src={selectedActor.profile_path || 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png'} alt="" className="w-full h-full object-cover" />
                   </div>
                   <div>
                     <h2 className="text-xl font-black text-white">{selectedActor.name}</h2>
