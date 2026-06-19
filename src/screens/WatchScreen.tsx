@@ -165,8 +165,8 @@ export default function WatchScreen() {
       setIsAdGatePassed(false);
       // Direct full standalone window replace to the Express-served /ads endpoint (prevents history pollution)
       const currentPathName = window.location.pathname;
-      const targetRedirect = `${currentPathName}?unlocked=true`;
-      window.location.replace(`/ads?id=${encodeURIComponent(series.id)}&redirect=${encodeURIComponent(targetRedirect)}`);
+      const targetRedirect = `${window.location.origin}${currentPathName}?unlocked=true`;
+      window.location.replace(`/gateway?id=${encodeURIComponent(series.id)}&redirect=${encodeURIComponent(targetRedirect)}`);
     }
   }, [series, location.search]);
 

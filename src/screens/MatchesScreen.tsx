@@ -85,7 +85,7 @@ export default function MatchesScreen() {
     if (!isUnlocked && !bypassAdGate) {
       const currentOrigin = window.location.origin;
       const redirectPath = `${currentOrigin}/matches?matchId=${encodeURIComponent(match.id)}&unlocked=true`;
-      window.location.href = `/ads?redirect=${encodeURIComponent(redirectPath)}`;
+      window.location.href = `/gateway?redirect=${encodeURIComponent(redirectPath)}`;
       return;
     }
 

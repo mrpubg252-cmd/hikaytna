@@ -1883,7 +1883,7 @@ ${seriesContext}`;
   });
 
   // Isolated HTML ad serving page
-  app.get("/ads", (req, res) => {
+  app.get("/gateway", (req, res) => {
     const seriesId = String(req.query.id || "");
     const redirectUrl = String(req.query.redirect || "");
     const html = `<!DOCTYPE html>

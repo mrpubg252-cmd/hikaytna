@@ -46,9 +46,16 @@ export function navigateToWatchOrAds(
     navigate(watchPath, { state: { series: item } });
   } else {
     // If they aren't premium, bypass the watch screen initial loading and redirect IMMEDIATELY to the ads page.
-    const targetRedirect = `${watchPath}?unlocked=true`;
+    // FIRST: We MUST explicitly save the series to sessionStorage so that when the ads page redirects back, WatchScreen can pick it up instantly!
+    try {
+      sessionStorage.setItem('backup_watching_series', JSON.stringify(item));
+    } catch (e) {
+      console.warn("Storage failed", e);
+    }
+
+    const targetRedirect = `${window.location.origin}${watchPath}?unlocked=true`;
     
-    // Direct, atomic replace to prevent history pollution and ensure 100% instantaneous loader-free ad page loading.
-    window.location.replace(`/ads?id=${encodeURIComponent(item.id)}&redirect=${encodeURIComponent(targetRedirect)}`);
+    // Direct link to the ads engine.
+    window.location.href = `/gateway?id=${encodeURIComponent(item.id)}&redirect=${encodeURIComponent(targetRedirect)}`;
   }
 }
