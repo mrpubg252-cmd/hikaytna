@@ -982,7 +982,7 @@ async function startServer() {
   });
 
   // 4.6. Secure Stream Proxy (Absolute Protection against sniffers)
-  app.get("/api/v1/stream-proxy/:encryptedUrl", async (req, res) => {
+  app.get("/api/v1/stream-proxy/:encryptedUrl(*)", async (req, res) => {
     try {
       const encrypted = req.params.encryptedUrl;
       const url = decryptValue(decodeURIComponent(encrypted));

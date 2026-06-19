@@ -1365,7 +1365,16 @@ const SafariNotification = () => {
         });
         video.removeEventListener('canplay', onPlayable);
       };
+      
+      const onError = () => {
+        console.warn("Native video MP4 load error. Showing timeout options.");
+        setIsLoading(false);
+        setShowTimeoutOptions(true);
+        video.removeEventListener('error', onError);
+      };
+      
       video.addEventListener('canplay', onPlayable);
+      video.addEventListener('error', onError);
     }
 
     return () => {
@@ -2854,7 +2863,44 @@ const SafariNotification = () => {
             />
           )}
 
-          {!isLoading && (
+          {showTimeoutOptions && !isIframeFallback && (
+            <div className="absolute inset-0 z-[500] flex flex-col items-center justify-center bg-black/80 backdrop-blur-md px-6 text-center animate-fade-in pointer-events-auto">
+              <div className="w-16 h-16 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-500 mb-4 mx-auto">
+                <AlertCircle className="w-8 h-8 animate-pulse" />
+              </div>
+              <h3 className="text-white text-base font-black mb-2 tracking-wide">تعذر تشغيل المشغل المباشر</h3>
+              <p className="text-zinc-400 text-xs mb-6 max-w-sm leading-relaxed font-bold">
+                يبدو أن هناك مشكلة في الاتصال بالفيلم عبر المشغل المباشر السريع. هل تود تجربة المشغل الاحتياطي؟
+              </p>
+              <div className="flex items-center justify-center gap-4">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsIframeFallback(true);
+                    setShowTimeoutOptions(false);
+                    setIsLoading(true);
+                  }}
+                  className="bg-primary hover:bg-primary/90 text-white font-black text-xs px-6 py-3 rounded-xl transition shadow-[0_0_20px_rgba(220,38,38,0.3)]"
+                >
+                  تفعيل المشغل الاحتياطي
+                </button>
+                <button
+                  onClick={(e) => {
+                     e.stopPropagation();
+                     setShowTimeoutOptions(false);
+                     setIsLoading(true);
+                     const vid = videoRef.current;
+                     if (vid) { vid.load(); }
+                  }}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs px-6 py-3 rounded-xl transition"
+                >
+                  إعادة المحاولة
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!isLoading && !showTimeoutOptions && (
             <>
               {/* Buffering/Offline Indicator */}
               {isOffline && (
