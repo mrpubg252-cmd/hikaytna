@@ -61,7 +61,7 @@ const SliderBackgroundImage: React.FC<SliderBackgroundImageProps> = ({ series, i
       animate={{ opacity: isVideoActive ? 0.2 : 1 }}
       transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
       referrerPolicy="no-referrer"
-      className="w-full h-full object-cover will-change-opacity"
+      className="w-full h-full object-fill will-change-opacity"
       onError={() => {
         if (src && src.includes('image.tmdb.org')) return;
         getTMDBPoster(series.title, series.category).then((healed) => {
@@ -176,7 +176,7 @@ const SliderShadowVideo: React.FC<SliderShadowVideoProps> = ({
 
     video.style.width = '100%';
     video.style.height = '100%';
-    video.style.objectFit = 'cover';
+    video.style.objectFit = 'fill';
     video.style.pointerEvents = 'none';
 
     video.src = src;
@@ -596,7 +596,7 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
                       } catch (err) {}
                     }
                   }}
-                  className="w-full h-full object-cover scale-[1.35] pointer-events-none border-0"
+                  className="w-full h-full object-fill pointer-events-none border-0"
                   allow="autoplay; encrypted-media; picture-in-picture"
                   referrerPolicy="no-referrer"
                   style={{

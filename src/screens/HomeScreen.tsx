@@ -184,25 +184,17 @@ export default function HomeScreen() {
   // 5. Slider logic (Global and stable)
   const sliderSeries = useMemo(() => {
     const pool = globalCache.length > 0 ? globalCache : allSeriesRaw;
-    let selected = (pool || []).filter(s => s && sliderSelections[s.id]?.selected === true);
-
-    // Force Titanic into the slider if it exists in the pool
-    const titanic = pool.find(s => s.id === "movie_titanic_999");
-    if (titanic && !selected.some(s => s.id === "movie_titanic_999")) {
-      selected = [titanic, ...selected];
-    }
+    const selected = (pool || []).filter(s => s && sliderSelections[s.id]?.selected === true);
 
     if (selected.length > 0) {
       // Match the sorting in api.ts
-      return selected.sort((a, b) => {
-        if (a.id === "movie_titanic_999") return -1;
-        if (b.id === "movie_titanic_999") return 1;
-        return (sliderSelections[b.id]?.selectedAt || 0) - (sliderSelections[a.id]?.selectedAt || 0);
-      });
+      return selected.sort((a, b) => (sliderSelections[b.id]?.selectedAt || 0) - (sliderSelections[a.id]?.selectedAt || 0));
     }
     
-    // Fallback: Use Global Pins (top 5)
-    return applyPrioritySort(pool).slice(0, 6);
+    // Fallback: Use Global Pins (top 5) - Exclude Titanic from fallback
+    return applyPrioritySort(pool)
+      .filter(s => s.id !== "movie_titanic_999")
+      .slice(0, 6);
   }, [globalCache, allSeriesRaw, sliderSelections]);
 
   function handleCategoryChange(category: string) {
