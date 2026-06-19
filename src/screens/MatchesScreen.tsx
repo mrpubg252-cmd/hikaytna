@@ -99,47 +99,14 @@ export default function MatchesScreen() {
 
       <main className="max-w-6xl mx-auto px-4 md:px-6 pt-4 sm:pt-6 space-y-8">
         
-        {/* WORLD CUP MAIN HERO BANNER */}
-        <div className="relative group overflow-hidden rounded-[2.5rem] bg-zinc-950/40 border border-amber-900/30 p-8 md:p-12 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="absolute inset-0 bg-gradient-to-r from-amber-600/10 to-amber-900/5 mix-blend-overlay pointer-events-none" />
-          <div className="absolute -top-32 -right-32 w-96 h-96 bg-amber-600/10 rounded-full blur-[100px] pointer-events-none" />
-          
-          <div className="relative z-10 flex-1 space-y-4 md:space-y-6 text-center md:text-right">
-            <h1 className="text-3xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-amber-600 leading-tight block">
-              كأس العالم 2026
-            </h1>
-            <p className="text-zinc-400 text-sm md:text-base font-bold max-w-xl mx-auto md:mx-0">
-              تابع البث المباشر لأكبر حدث رياضي. بث حصري ومستقر عالي الجودة لبطولة كأس العالم.
-            </p>
-            
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => handleWatchStream('كأس العالم 2026 - بث مباشر', MAIN_BROADCAST_URL, true)}
-              disabled={loadingStream === 'main'}
-              className="mt-4 mx-auto md:mx-0 bg-gradient-to-l from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white px-8 py-4 rounded-2xl font-black text-sm md:text-lg flex items-center justify-center gap-3 shadow-[0_0_40px_rgba(217,119,6,0.3)] hover:shadow-[0_0_60px_rgba(217,119,6,0.5)] transition-all cursor-pointer w-full md:w-auto"
-            >
-              {loadingStream === 'main' ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Tv className="w-5 h-5 animate-pulse" />
-              )}
-              بث مباشر
-            </motion.button>
-          </div>
-          
-          {/* Trophy Graphic */}
-          <div className="relative z-10 w-48 h-48 md:w-64 md:h-64 flex-shrink-0 animate-pulse transition">
-            <div className="absolute inset-0 bg-amber-500/20 blur-[50px] rounded-full" />
-            <Trophy className="w-full h-full text-amber-500 drop-shadow-[0_0_20px_rgba(245,158,11,0.5)]" />
-          </div>
-        </div>
-
         {/* MATCHES LIST */}
         <div className="space-y-6">
-          <div className="flex items-center gap-3 border-b border-zinc-900 pb-4">
-            <Trophy className="w-6 h-6 text-amber-500" />
-            <h2 className="text-xl font-black">مباريات كأس العالم</h2>
+          <div className="flex flex-col gap-2 border-b border-zinc-900 pb-4">
+            <div className="flex items-center gap-3">
+              <Trophy className="w-6 h-6 text-amber-500" />
+              <h2 className="text-xl font-black">المباريات</h2>
+            </div>
+            <p className="text-sm text-zinc-400 font-bold">مباريات منتهية - ملخص كامل</p>
           </div>
 
           {loading ? (
