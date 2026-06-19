@@ -156,7 +156,7 @@ const ShortCard = memo(({
                 }
               } catch(err) {}
             }
-            e.currentTarget.src = 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png';
+            e.currentTarget.src = 'https://i.postimg.cc/d12Ynnwc/logo.png';
           }}
         />
         
@@ -245,7 +245,7 @@ const ShortCard = memo(({
                   }
                 } catch(err) {}
               }
-              e.currentTarget.src = 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png';
+              e.currentTarget.src = 'https://i.postimg.cc/d12Ynnwc/logo.png';
             }}
           />
           {/* Aesthetic Vignettes for Dark Cinematic Quality */}
@@ -331,7 +331,7 @@ const ShortCard = memo(({
               }
             } catch(err) {}
           }
-          e.currentTarget.src = 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png';
+          e.currentTarget.src = 'https://i.postimg.cc/d12Ynnwc/logo.png';
         }}
       />
 
@@ -486,7 +486,7 @@ const ShortCard = memo(({
                       }
                     } catch(err) {}
                   }
-                  e.currentTarget.src = 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png';
+                  e.currentTarget.src = 'https://i.postimg.cc/d12Ynnwc/logo.png';
                 }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />

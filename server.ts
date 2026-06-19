@@ -2142,7 +2142,7 @@ document.head.appendChild(s);
 
   // Pre-download high-res logo dynamically to overwrite outdated logo
   try {
-    const logoUrl = "https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png";
+    const logoUrl = "https://i.postimg.cc/d12Ynnwc/logo.png";
     const logoPath = path.join(process.cwd(), 'public', 'logo.png');
     axios.get(logoUrl, { responseType: 'arraybuffer' }).then((response) => {
       fs.writeFileSync(logoPath, Buffer.from(response.data));

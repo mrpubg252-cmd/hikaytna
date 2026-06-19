@@ -67,7 +67,7 @@ const ShortsOptionImage: React.FC<ShortsOptionImageProps> = ({ title, image, thu
           if (healed) {
             setSrc(healed);
           } else {
-            setSrc('https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png');
+            setSrc('https://i.postimg.cc/d12Ynnwc/logo.png');
           }
         });
       }}
@@ -2131,7 +2131,7 @@ export default function ShortsScreen() {
                     src={shareShortData.seriesImage || shareShortData.thumbnail} 
                     className="w-full h-full object-cover" 
                     onError={(e) => {
-                      e.currentTarget.src = 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png';
+                      e.currentTarget.src = 'https://i.postimg.cc/d12Ynnwc/logo.png';
                     }}
                   />
                 </div>

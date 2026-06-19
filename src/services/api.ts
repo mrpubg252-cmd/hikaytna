@@ -272,7 +272,9 @@ export async function fetchSeriesByCategory(categoryUrl: string, signal?: AbortS
     const res = await resilientFetch(getApiUrl(API_BASE + "/series?url=" + encodeURIComponent(categoryUrl)), { signal });
     const data = await res.json();
     if (data.status && data.data) {
-      return data.data.map((s: any) => ({
+      return data.data
+        .filter((s: any) => !(s.url || "").includes("fifa-2026.html"))
+        .map((s: any) => ({
         id: (s.url || s.title || "").replace(/[^a-zA-Z0-9]/g, "_"),
         title: s.title || "",
         image: s.image || "",

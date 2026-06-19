@@ -576,7 +576,7 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
         const aiMsgRef = push(ref(db, `chats/${safeSeriesId}`));
         await set(aiMsgRef, {
           userName: `حكيم ✨ (مستشارك الذكي)`,
-          userAvatar: `https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png`,
+          userAvatar: `https://i.postimg.cc/d12Ynnwc/logo.png`,
           text: aiText,
           createdAt: Date.now()
         });
@@ -592,7 +592,7 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
             
           await set(aiMsgRef, {
             userName: `حكيم ✨ (مستشارك الذكي)`,
-            userAvatar: `https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png`,
+            userAvatar: `https://i.postimg.cc/d12Ynnwc/logo.png`,
             text: errorText,
             createdAt: Date.now()
           });
