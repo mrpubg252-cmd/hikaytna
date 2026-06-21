@@ -2591,17 +2591,8 @@ document.head.appendChild(s);
             }
         }
 
-        // Check for ad-free state instantly to bypass loading screen if possible
-        var isPremium = localStorage.getItem('ads_removed_forever') === 'true' || (function() {
-            var adUntil = localStorage.getItem('ad_free_until');
-            if (!adUntil) return false;
-            var adUntilNum = parseInt(adUntil, 10);
-            return !isNaN(adUntilNum) && adUntilNum > Date.now();
-        })();
-
-        if (isPremium) {
-            triggerRedirect();
-        }
+        // Removed automatic redirection so that every user must manually click 'Skip Ad' to proceed, ensuring a fully controlled user action.
+        var isPremium = false;
 
         var countdown = 6;
         var timer = setInterval(function() {

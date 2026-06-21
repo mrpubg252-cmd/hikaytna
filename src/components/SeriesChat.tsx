@@ -5,7 +5,7 @@ import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, push, set, onValue, remove, get, Database, query, limitToLast } from 'firebase/database';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play, Pause, Trash2, Video, Pencil } from 'lucide-react';
+import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play, Pause, Trash2, Video, Pencil, Copy } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { decryptValue } from '../lib/security';
 import { useAuth } from '../context/AuthContext';
@@ -48,6 +48,7 @@ interface ChatMessage {
   sceneTime?: number;
   sceneImage?: string;
   edited?: boolean;
+  isSticker?: boolean;
 }
 
 function CustomAudioPlayer({ src }: { src: string }) {
@@ -383,6 +384,40 @@ export default function SeriesChat({
     { id: 'st3', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/vO8fJ2Zp6uR2P6w4zM/giphy.gif' },
     { id: 'st4', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/vNfR9Xp1o2k5X2R5W9/giphy.gif' },
   ];
+
+  const [copiedSticker, setCopiedSticker] = useState<string | null>(() => localStorage.getItem('copied_chat_sticker'));
+  const [copiedFeedback, setCopiedFeedback] = useState(false);
+
+  const isMessageSticker = (msg: ChatMessage | null) => {
+    if (!msg) return false;
+    if (msg.isSticker) return true;
+    if (!msg.imageUrl) return false;
+    if (STICKERS.some(st => st.url === msg.imageUrl)) return true;
+    if (msg.imageUrl.includes('giphy.com/media/')) return true;
+    return false;
+  };
+
+  const handleCopySticker = (url: string) => {
+    try {
+      navigator.clipboard.writeText(url);
+      setCopiedSticker(url);
+      localStorage.setItem('copied_chat_sticker', url);
+      setCopiedFeedback(true);
+      const audio = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAAAn"); // subtle click/feedback audio if supported
+      audio.play().catch(() => {});
+      setTimeout(() => {
+        setCopiedFeedback(false);
+      }, 2500);
+    } catch (err) {
+      console.error("Failed to copy sticker:", err);
+      setCopiedSticker(url);
+      localStorage.setItem('copied_chat_sticker', url);
+      setCopiedFeedback(true);
+      setTimeout(() => {
+        setCopiedFeedback(false);
+      }, 2500);
+    }
+  };
   
   // Native voice recording states
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
@@ -826,7 +861,7 @@ export default function SeriesChat({
     }
   };
 
-  const handleSendMessage = async (e?: React.FormEvent, customTxt?: string, customImg?: string, customVid?: string, customAud?: string) => {
+  const handleSendMessage = async (e?: React.FormEvent, customTxt?: string, customImg?: string, customVid?: string, customAud?: string, isStickerOption?: boolean) => {
     if (e) e.preventDefault();
     if (isBanned) {
       alert(`عذراً، لا يمكنك التعليق! حسابك محظور في كل غرف ومسلسلات شات حكايتنا بسبب إساءة الاستخدام أو إزعاج الآخرين. 🚨\n\nالسبب: ${banReason}`);
@@ -887,6 +922,7 @@ export default function SeriesChat({
       videoUrl: finalVid || '',
       audioUrl: finalAud || '',
       createdAt: Date.now(),
+      isSticker: isStickerOption || false
     };
 
     if (replyTo) {
@@ -922,7 +958,7 @@ export default function SeriesChat({
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, isStickerUpload = false) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -961,13 +997,13 @@ export default function SeriesChat({
       
       if (uploadData.success && uploadData.url) {
         if (isImage) {
-          handleSendMessage(undefined, "", uploadData.url, "", "");
+          handleSendMessage(undefined, "", uploadData.url, "", "", isStickerUpload);
         } else if (isVideo) {
           handleSendMessage(undefined, "", "", uploadData.url, "");
         } else if (isAudio) {
           handleSendMessage(undefined, "", "", "", uploadData.url);
         } else {
-          handleSendMessage(undefined, "", uploadData.url, "", "");
+          handleSendMessage(undefined, "", uploadData.url, "", "", isStickerUpload);
         }
       } else {
         alert(isImage ? "عذراً، فشل رفع الصورة." : "عذراً، فشل رفع المقطع.");
@@ -1295,6 +1331,23 @@ export default function SeriesChat({
 
   return (
     <div className="w-full bg-[#0d0d10] sm:rounded-3xl rounded-none border-0 sm:border border-white/5 overflow-hidden flex flex-col h-full shadow-2xl relative font-sans">
+      {/* Toast Notification for successful copy */}
+      <AnimatePresence>
+        {copiedFeedback && (
+          <motion.div 
+            initial={{ opacity: 0, y: -40, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.9 }}
+            className="absolute top-16 left-1/2 -translate-x-1/2 z-[500000] bg-[#121215]/95 backdrop-blur-md border border-emerald-500/30 px-4 py-2.5 rounded-full flex items-center gap-2 shadow-2xl"
+          >
+            <div className="w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center shrink-0 shadow animate-pulse">
+              <span className="text-[10px] text-black">✓</span>
+            </div>
+            <span className="text-[11px] font-black text-white whitespace-nowrap">تم نسخ الملصق بنجاح! جاهز للإلصاق 📋🔥</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="bg-[#121215] border-b border-white/5 p-3 flex items-center justify-between z-10">
         <div className="flex items-center gap-2">
@@ -1531,15 +1584,37 @@ export default function SeriesChat({
                     )}
                     <div className="text-[13px]">{msg.userName && msg.userName.includes('حكيم') ? cleanAndRenderAiText(msg.text || '') : msg.text}</div>
                     {msg.imageUrl && (
-                      <div className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black/40 mt-2 max-w-[200px] cursor-pointer hover:opacity-90 transition active:scale-[0.98]">
-                        <img 
-                          src={msg.imageUrl} 
-                          alt="تعليق مصور" 
-                          referrerPolicy="no-referrer"
-                          onClick={(e) => { e.stopPropagation(); setPreviewImage(msg.imageUrl || null); }}
-                          className="w-full h-auto max-h-[160px] object-cover rounded-xl"
-                        />
-                      </div>
+                      isMessageSticker(msg) ? (
+                        <div 
+                          className="relative group/sticker mt-2 max-w-[130px] cursor-pointer hover:scale-105 active:scale-95 transition-all duration-300"
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            handleCopySticker(msg.imageUrl!);
+                          }}
+                          title="انقر لنسخ الملصق 📋"
+                        >
+                          <img 
+                            src={msg.imageUrl} 
+                            alt="ملصق شات" 
+                            referrerPolicy="no-referrer"
+                            className="w-full h-auto max-h-[110px] object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.4)]"
+                          />
+                          <div className="absolute -top-1.5 -right-1.5 bg-black/85 backdrop-blur-md text-primary border border-primary/20 scale-90 opacity-0 group-hover/sticker:opacity-100 transition-all duration-200 px-2 py-0.5 rounded-full text-[9px] font-black flex items-center gap-1 shadow-lg">
+                            <Copy className="w-2.5 h-2.5" />
+                            <span>نسخ 📋</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black/40 mt-2 max-w-[200px] cursor-pointer hover:opacity-90 transition active:scale-[0.98]">
+                          <img 
+                            src={msg.imageUrl} 
+                            alt="تعليق مصور" 
+                            referrerPolicy="no-referrer"
+                            onClick={(e) => { e.stopPropagation(); setPreviewImage(msg.imageUrl || null); }}
+                            className="w-full h-auto max-h-[160px] object-cover rounded-xl"
+                          />
+                        </div>
+                      )
                     )}
                     {msg.videoUrl && (
                       <div 
@@ -1769,6 +1844,44 @@ export default function SeriesChat({
             </div>
           )}
 
+          {copiedSticker && (
+            <div className="flex items-center gap-3.5 mr-auto ml-3 mb-2 p-2 bg-gradient-to-r from-zinc-900 via-zinc-950 to-zinc-900 border border-primary/30 rounded-2xl shadow-lg relative max-w-sm">
+              <div className="w-10 h-10 bg-black/40 rounded-xl overflow-hidden relative shrink-0 border border-white/5 flex items-center justify-center p-1">
+                <img src={copiedSticker} alt="Copied Sticker" className="w-full h-full object-contain" />
+              </div>
+              <div className="flex-1 text-right flex flex-col min-w-0 pr-1 select-none font-sans">
+                <p className="text-[10px] font-black text-primary flex items-center gap-1 justify-end">
+                  ملصق منسوخ جاهز لِلصق 📋✨
+                </p>
+                <p className="text-[8px] text-zinc-500 truncate">انقر إرسال أو اضغط إلصاق للتعليق</p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    handleSendMessage(undefined, "", copiedSticker, "", "", true);
+                    setCopiedSticker(null);
+                    localStorage.removeItem('copied_chat_sticker');
+                  }} 
+                  className="px-3 py-1.5 bg-primary/25 hover:bg-primary/35 border border-primary/30 text-primary hover:text-white text-[9px] font-black rounded-lg transition-all active:scale-95 whitespace-nowrap cursor-pointer"
+                >
+                  إلصاق وإرسال 🚀
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setCopiedSticker(null);
+                    localStorage.removeItem('copied_chat_sticker');
+                  }} 
+                  className="bg-black/60 text-zinc-400 hover:text-white rounded-full p-1 border border-zinc-805 duration-200 cursor-pointer"
+                  title="مسح الملصق"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* STICKER PANEL */}
           <AnimatePresence>
             {showStickerPanel && (
@@ -1789,7 +1902,7 @@ export default function SeriesChat({
                     <button
                       key={st.id}
                       onClick={() => {
-                        handleSendMessage(undefined, "", st.url, "", "");
+                        handleSendMessage(undefined, "", st.url, "", "", true);
                         setShowStickerPanel(false);
                       }}
                       className="aspect-square bg-black/40 rounded-2xl p-2 hover:bg-white/5 border border-white/5 transition-all group overflow-hidden"
@@ -1802,7 +1915,7 @@ export default function SeriesChat({
                     <Camera className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
                     <span className="text-[8px] font-black text-primary">اصنع ملصق</span>
                     <input type="file" className="hidden" accept="image/*" onChange={(e) => {
-                      handleFileUpload(e);
+                      handleFileUpload(e, true);
                       setShowStickerPanel(false);
                     }} />
                   </label>
@@ -1988,6 +2101,22 @@ export default function SeriesChat({
                   <Reply className="w-4 h-4 text-emerald-400" />
                   <span>الرد على هذا التعليق</span>
                 </button>
+
+                {/* 1.5 Sticker Copy Option */}
+                {isMessageSticker(actionMenuMessage) && (
+                  <button
+                    onClick={() => {
+                      if (actionMenuMessage && actionMenuMessage.imageUrl) {
+                        handleCopySticker(actionMenuMessage.imageUrl);
+                      }
+                      setActionMenuMessage(null);
+                    }}
+                    className="w-full flex items-center justify-between p-3 rounded-2xl bg-zinc-900/60 hover:border-primary/40 hover:text-primary border border-zinc-850 text-white font-bold text-xs transition active:scale-95 cursor-pointer"
+                  >
+                    <Copy className="w-4 h-4 text-primary" />
+                    <span>نسخ هذا الملصق 📋🔥</span>
+                  </button>
+                )}
 
                 {/* 2. Report Option */}
                 {actionMenuMessage.userId !== localStorage.getItem('guest_chat_pid') && (
