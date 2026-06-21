@@ -4,6 +4,9 @@ import { createServer as createViteServer } from "vite";
 import axios from "axios";
 import OpenAI from "openai";
 import fs from "fs";
+import os from "os";
+import { execFile } from "child_process";
+import ffmpegPath from "ffmpeg-static";
 import https from "https";
 import http from "http";
 import * as cheerio from "cheerio";
@@ -1782,13 +1785,32 @@ async function startServer() {
   });
 
   app.get("/api/v1/download-proxy", async (req, res) => {
+    let tempInPath = "";
+    let tempOutPath = "";
+    let fallbackToRaw = false;
+    let urlString = "";
+
     try {
       const { url, filename } = req.query;
       if (!url) return res.status(400).send("Missing URL");
       
       const targetUrl = decodeURIComponent(url as string);
+      urlString = targetUrl;
       const downloadName = filename ? decodeURIComponent(filename as string) : `Hekayatna_${Date.now()}.mp4`;
 
+      // Set download headers upfront
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`);
+
+      // 1. Download video file to local temporary workspace
+      const tempDir = os.tmpdir();
+      const randId = Math.random().toString(36).substring(2, 10);
+      tempInPath = path.join(tempDir, `input_${randId}.mp4`);
+      tempOutPath = path.join(tempDir, `output_${randId}.mp4`);
+
+      console.log(`[DOWNLOAD-PROXY] Watermark active. Fetching: ${targetUrl}`);
+      
+      const writer = fs.createWriteStream(tempInPath);
       const response = await axios({
         url: targetUrl,
         method: 'GET',
@@ -1797,20 +1819,119 @@ async function startServer() {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
           'Referer': new URL(targetUrl).origin + '/'
         },
-        timeout: 90000
+        timeout: 90000 // 90 seconds timeout
       });
 
-      // Force download headers
-      const contentType = (response.headers['content-type'] || 'application/octet-stream') as string;
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`);
+      response.data.pipe(writer);
+
+      await new Promise<void>((resolve, reject) => {
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+      });
+
+      console.log(`[DOWNLOAD-PROXY] Download done. Temp path size: ${fs.statSync(tempInPath).size} bytes`);
+
+      // 2. Discover /public watermark branding asset
+      let watermarkPath = path.join(process.cwd(), 'public', 'logo.png');
+      if (!fs.existsSync(watermarkPath)) {
+        watermarkPath = path.join(process.cwd(), 'public', 'logo.jpg');
+      }
+
+      const hasWatermark = fs.existsSync(watermarkPath);
+      const hasFfmpeg = !!ffmpegPath;
+
+      if (hasWatermark && hasFfmpeg) {
+        console.log(`[DOWNLOAD-PROXY] Executing static FFmpeg from path: ${ffmpegPath}`);
+        
+        // TikTok / Instagram style bouncing watermark!
+        // Moves from top-right to bottom-left every 5 seconds. Scaled to a sleek width of 120 pixels.
+        const filter = `[1:v]scale=120:-1[watermark]; [0:v][watermark]overlay='if(lt(mod(t,10),5), W-w-24, 24)':'if(lt(mod(t,10),5), 24, H-h-24)'`;
+        
+        const args = [
+          '-y',
+          '-i', tempInPath,
+          '-i', watermarkPath,
+          '-filter_complex', filter,
+          '-c:v', 'libx264',
+          '-preset', 'superfast',
+          '-crf', '24',
+          '-c:a', 'aac',
+          '-strict', 'experimental',
+          tempOutPath
+        ];
+
+        await new Promise<void>((resolve, reject) => {
+          const ffmpegProcess = execFile(ffmpegPath!, args, (error, stdout, stderr) => {
+            if (error) {
+              console.error("[DOWNLOAD-PROXY] FFmpeg error details:", stderr);
+              reject(error);
+            } else {
+              console.log("[DOWNLOAD-PROXY] Watermark merge complete!");
+              resolve();
+            }
+          });
+
+          // Timeout limits encoding time to 60 seconds
+          setTimeout(() => {
+            try {
+              ffmpegProcess.kill('SIGKILL');
+            } catch (err) {}
+            reject(new Error("FFmpeg timeout limit reached"));
+          }, 60000);
+        });
+
+        if (fs.existsSync(tempOutPath) && fs.statSync(tempOutPath).size > 0) {
+          const readStream = fs.createReadStream(tempOutPath);
+          readStream.pipe(res);
+          
+          readStream.on('end', () => {
+            cleanupTempFiles(tempInPath, tempOutPath);
+          });
+          return;
+        }
+      }
       
-      response.data.pipe(res);
+      fallbackToRaw = true;
     } catch (err: any) {
-      console.error("Download proxy error:", err.message);
-      res.status(500).send("Failed to proxy download");
+      console.warn("[DOWNLOAD-PROXY] Watermarking issue, fallback to raw direct stream:", err.message);
+      fallbackToRaw = true;
+    }
+
+    if (fallbackToRaw) {
+      cleanupTempFiles(tempInPath, tempOutPath);
+      try {
+        if (urlString) {
+          const response = await axios({
+            url: urlString,
+            method: 'GET',
+            responseType: 'stream',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+              'Referer': new URL(urlString).origin + '/'
+            },
+            timeout: 60000
+          });
+          response.data.pipe(res);
+        } else {
+          res.status(500).send("Failed to build raw fallback");
+        }
+      } catch (fallbackErr: any) {
+        console.error("[DOWNLOAD-PROXY] Raw direct fallback pipeline failed:", fallbackErr.message);
+        if (!res.headersSent) {
+          res.status(500).send("خطأ في تحميل الفيديو.");
+        }
+      }
     }
   });
+
+  function cleanupTempFiles(inP: string, outP: string) {
+    try {
+      if (inP && fs.existsSync(inP)) fs.unlinkSync(inP);
+    } catch (e) {}
+    try {
+      if (outP && fs.existsSync(outP)) fs.unlinkSync(outP);
+    } catch (e) {}
+  }
 
   // Secure Native File Uploader (Supports Large Video/Audio uploads properly without base64 overhead)
   app.post("/api/v1/upload-media", upload.single("file"), async (req, res) => {

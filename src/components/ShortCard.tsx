@@ -75,20 +75,58 @@ const ShortCard = memo(({
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const isLongPressActive = useRef(false);
   const touchStartTime = useRef(0);
+  const startX = useRef(0);
+  const startY = useRef(0);
 
   const handleStartPress = (e: React.MouseEvent | React.TouchEvent) => {
     isLongPressActive.current = false;
     touchStartTime.current = Date.now();
+
+    let clientX = 0;
+    let clientY = 0;
+    if ('touches' in e) {
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      }
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    startX.current = clientX;
+    startY.current = clientY;
+
+    // Use a solid 550ms timing for long press trigger
     longPressTimer.current = setTimeout(() => {
       isLongPressActive.current = true;
       setShowTikTokModal(true);
-    }, 600);
+    }, 550);
   };
 
-  const handleMovePress = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
+  const handleMovePress = (e: React.MouseEvent | React.TouchEvent) => {
+    let clientX = 0;
+    let clientY = 0;
+    if ('touches' in e) {
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      } else {
+        return;
+      }
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
+    const deltaX = Math.abs(clientX - startX.current);
+    const deltaY = Math.abs(clientY - startY.current);
+
+    // Only cancel the long-press timer if the movement is significant (e.g., scrolling or deliberate dragging > 15 pixels)
+    if (deltaX > 15 || deltaY > 15) {
+      if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+      }
     }
   };
 

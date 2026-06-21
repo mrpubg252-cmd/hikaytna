@@ -327,13 +327,35 @@ export default function ShortsScreen() {
   };
   const [isPlaying, setIsPlaying] = useState(true);
 
-  // Initialize unique user ID in local storage for identity management
+  // Initialize unique user ID in local storage for identity management and add robust document-wide audio unblock
   useEffect(() => {
     if (!localStorage.getItem('hek_user_id')) {
       const newUserId = crypto.randomUUID();
       localStorage.setItem('hek_user_id', newUserId);
     }
-  }, []);
+
+    const handleUnblock = () => {
+      if (!hasInteracted) {
+        setHasInteracted(true);
+        setIsMuted(false);
+        localStorage.setItem('hek_shorts_muted', 'false');
+        
+        const activeVideo = videoRefs.current[activeIndex];
+        if (activeVideo) {
+          activeVideo.muted = false;
+          activeVideo.play().catch(() => {});
+        }
+      }
+    };
+
+    window.addEventListener('click', handleUnblock, { once: true });
+    window.addEventListener('touchstart', handleUnblock, { once: true });
+    
+    return () => {
+      window.removeEventListener('click', handleUnblock);
+      window.removeEventListener('touchstart', handleUnblock);
+    };
+  }, [activeIndex, hasInteracted]);
 
   // Database series logic
   const [allDBSeries, setAllDBSeries] = useState<any[]>(() => {
@@ -691,6 +713,10 @@ export default function ShortsScreen() {
       }
       if (isBlacklistedUrl(s.videoUrl)) return false;
       
+      // EXCLUDE old clipped episodes from TV series (keep only user device custom uploads & ads)
+      const isSeriesClip = s.timeRange && s.timeRange !== 'Custom' && s.timeRange !== 'إعلان';
+      if (isSeriesClip) return false;
+
       const createdAt = (s as any).createdAt?.toMillis ? (s as any).createdAt.toMillis() : ((s as any).createdAt || now); 
       const isAncient = (now - createdAt) > thirtyDaysMs;
       const isPopular = (s.likes || 0) > 10 || (s.views || 0) > 50; // Low threshold to keep user content
