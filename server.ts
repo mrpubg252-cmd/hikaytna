@@ -8,6 +8,12 @@ import https from "https";
 import http from "http";
 import * as cheerio from "cheerio";
 import { GoogleGenAI } from "@google/genai";
+import multer from "multer";
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 } // 50 MB
+});
 
 // SIMPLE XOR ENCRYPTION FOR WIRE DATA
 const SECRET_SALT = "SERIES_APP_2024";
@@ -1649,7 +1655,56 @@ async function startServer() {
       const fileName = `media_${Date.now()}.${extension}`;
       console.log(`[UPLOADER] Received media (${buffer.length} bytes, type: ${mimeType}, ext: ${extension})`);
 
-      // 1. FREEIMAGE.HOST (For Images Only - Extremely Fast)
+      // 1. TOP4TOP.IO (Primary Priority for ALL Media Types)
+      try {
+        console.log("[UPLOADER] Attempting Top4toP.io upload...");
+        // 1a. Grab cookies & optionally session tokens
+        const getRes = await axios.get("https://top4top.io/", {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+          timeout: 6000
+        });
+
+        const setCookies = getRes.headers['set-cookie'] || [];
+        const cookieStr = setCookies.map((c: string) => c.split(';')[0]).join('; ');
+
+        const formData = new (globalThis as any).FormData();
+        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
+        formData.append("file_0_", blob, fileName);
+        formData.append("submitr", "[ رفع الملفات ]");
+
+        // 1b. Submit form
+        const uploadRes = await fetch("https://top4top.io/index.php", {
+          method: "POST",
+          body: formData,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://top4top.io/",
+            "Cookie": cookieStr
+          }
+        });
+
+        const uploadHtml = await uploadRes.text();
+        
+        // 1c. Parse response looking for the direct link (.mp4, .png, etc)
+        const rx = /https?:\/\/[a-zA-Z0-9-]+\.top4top\.(io|net)\/[a-zA-Z0-9_/.-]+\.(png|jpg|jpeg|gif|webp|mov|mp4|avi|mp3|wav|ogg|m4a|aac|webm)/gi;
+        const matches = (uploadHtml.match(rx) || []).filter((link: string) => {
+          const l = link.toLowerCase();
+          return !l.includes('s.top4top') && !l.includes('/styles/') && !l.includes('/images/') && !l.includes('favicon.ico');
+        });
+
+        if (matches.length > 0) {
+          const finalUrl = matches[0].replace(/&amp;/g, "&");
+          console.log("[UPLOADER] Top4toP Success: ", finalUrl);
+          return res.json({ success: true, url: finalUrl });
+        }
+        console.warn("[UPLOADER] Top4toP response did not match direct media URL patterns.");
+      } catch (err: any) {
+        console.warn("[UPLOADER] Top4toP failed:", err.message);
+      }
+
+      // 2. FREEIMAGE.HOST (For Images Only - Extremely Fast Fallback)
       if (isImage) {
         try {
           console.log("[UPLOADER] Attempting Freeimage.host API...");
@@ -1721,6 +1776,97 @@ async function startServer() {
       res.status(500).json({ success: false, error: "عذراً، فشلت جميع الخوادم المتاحة في رفع هذا الملف." });
     } catch (globalErr: any) {
       console.error("[UPLOADER] Critical Global Error:", globalErr);
+      res.status(500).json({ success: false, error: globalErr.message });
+    }
+  });
+
+  // Secure Native File Uploader (Supports Large Video/Audio uploads properly without base64 overhead)
+  app.post("/api/v1/upload-media", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: "لم يتم استلام أي ملف." });
+      }
+
+      const buffer = req.file.buffer;
+      const mimeType = req.file.mimetype || "application/octet-stream";
+      let extension = "mp4"; // default
+      if (req.file.originalname && req.file.originalname.includes(".")) {
+        extension = req.file.originalname.split(".").pop() || "mp4";
+      }
+
+      const fileName = `media_${Date.now()}.${extension}`;
+      console.log(`[UPLOADER NATIVE] Received media (${buffer.length} bytes, type: ${mimeType}, ext: ${extension})`);
+
+      // 1. TOP4TOP.IO (Primary Priority for ALL Media Types)
+      try {
+        console.log("[UPLOADER NATIVE] Attempting Top4toP.io upload...");
+        const getRes = await axios.get("https://top4top.io/", {
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+          timeout: 6000
+        });
+
+        const setCookies = getRes.headers['set-cookie'] || [];
+        const cookieStr = setCookies.map((c: string) => c.split(';')[0]).join('; ');
+
+        const formData = new (globalThis as any).FormData();
+        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
+        formData.append("file_0_", blob, fileName);
+        formData.append("submitr", "[ رفع الملفات ]");
+
+        const uploadRes = await fetch("https://top4top.io/index.php", {
+          method: "POST",
+          body: formData,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://top4top.io/",
+            "Cookie": cookieStr
+          }
+        });
+
+        const uploadHtml = await uploadRes.text();
+        
+        const rx = /https?:\/\/[a-zA-Z0-9-]+\.top4top\.(io|net)\/[a-zA-Z0-9_/.-]+\.(png|jpg|jpeg|gif|webp|mov|mp4|avi|mp3|wav|ogg|m4a|aac|webm)/gi;
+        const matches = (uploadHtml.match(rx) || []).filter((link: string) => {
+          const l = link.toLowerCase();
+          return !l.includes('s.top4top') && !l.includes('/styles/') && !l.includes('/images/') && !l.includes('favicon.ico');
+        });
+
+        if (matches.length > 0) {
+          const finalUrl = matches[0].replace(/&amp;/g, "&");
+          console.log("[UPLOADER NATIVE] Top4toP Success: ", finalUrl);
+          return res.json({ success: true, url: finalUrl });
+        }
+      } catch (err: any) {
+        console.warn("[UPLOADER NATIVE] Top4toP failed:", err.message);
+      }
+
+      // 2. CATBOX FALLBACK FOR MEDIA
+      try {
+        console.log("[UPLOADER NATIVE] Attempting Catbox.moe API...");
+        const formData = new (globalThis as any).FormData();
+        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
+        formData.append("reqtype", "fileupload");
+        formData.append("fileToUpload", blob, fileName);
+
+        const catboxRes = await fetch("https://catbox.moe/user/api.php", {
+          method: "POST",
+          body: formData,
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
+        });
+
+        if (catboxRes.ok) {
+          const textUrl = (await catboxRes.text()).trim();
+          if (textUrl.startsWith("http")) {
+            return res.json({ success: true, url: textUrl });
+          }
+        }
+      } catch (err: any) {
+        console.warn("[UPLOADER NATIVE] Catbox failed:", err.message);
+      }
+
+      res.status(500).json({ success: false, error: "عذراً، فشلت جميع الخوادم المتاحة في رفع هذا الملف." });
+    } catch (globalErr: any) {
+      console.error("[UPLOADER NATIVE] Critical Global Error:", globalErr);
       res.status(500).json({ success: false, error: globalErr.message });
     }
   });

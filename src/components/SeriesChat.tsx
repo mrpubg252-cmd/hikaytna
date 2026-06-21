@@ -854,41 +854,32 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
 
     setUploadingImage(true);
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64String = reader.result as string;
-        try {
-          const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-image") : "/api/v1/upload-image";
-          const uploadRes = await fetch(uploadEndpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: base64String })
-          });
-          const uploadData = await uploadRes.json();
-          if (uploadData.success && uploadData.url) {
-            if (isImage) {
-              handleSendMessage(undefined, "", uploadData.url, "", "");
-            } else if (isVideo) {
-              handleSendMessage(undefined, "", "", uploadData.url, "");
-            } else if (isAudio) {
-              handleSendMessage(undefined, "", "", "", uploadData.url);
-            } else {
-              handleSendMessage(undefined, "", uploadData.url, "", "");
-            }
-          } else {
-            alert(isImage ? "عذراً، فشل رفع الصورة." : "عذراً، فشل رفع المقطع.");
-          }
-        } catch (err) {
-          console.error("File upload failing:", err);
-          alert(isImage ? "عذراً، فشل رفع الصورة." : "عذراً، فشل رفع الملف.");
-        } finally {
-          setUploadingImage(false);
-          e.target.value = '';
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-media") : "/api/v1/upload-media";
+      const uploadRes = await fetch(uploadEndpoint, {
+        method: "POST",
+        body: formData
+      });
+      const uploadData = await uploadRes.json();
+      
+      if (uploadData.success && uploadData.url) {
+        if (isImage) {
+          handleSendMessage(undefined, "", uploadData.url, "", "");
+        } else if (isVideo) {
+          handleSendMessage(undefined, "", "", uploadData.url, "");
+        } else if (isAudio) {
+          handleSendMessage(undefined, "", "", "", uploadData.url);
+        } else {
+          handleSendMessage(undefined, "", uploadData.url, "", "");
         }
-      };
-      reader.readAsDataURL(file);
+      } else {
+        alert(isImage ? "عذراً، فشل رفع الصورة." : "عذراً، فشل رفع المقطع.");
+      }
     } catch (err) {
-      console.error("File read failed:", err);
+      console.error("File upload failing:", err);
+      alert(isImage ? "عذراً، فشل رفع الصورة." : "عذراً، فشل رفع الملف.");
     } finally {
       setUploadingImage(false);
       e.target.value = '';
@@ -920,32 +911,23 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
 
         setUploadingImage(true);
         try {
-          const reader = new FileReader();
-          reader.onloadend = async () => {
-            const base64String = reader.result as string;
-            try {
-              const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-image") : "/api/v1/upload-image";
-              const uploadRes = await fetch(uploadEndpoint, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ image: base64String })
-              });
-              const uploadData = await uploadRes.json();
-              if (uploadData.success && uploadData.url) {
-                handleSendMessage(undefined, "", "", "", uploadData.url);
-              } else {
-                alert("عذراً، فشل رفع المقطع الصوتي لخوادمنا.");
-              }
-            } catch (err) {
-              console.error("Audio upload failing:", err);
-              alert("عذراً، فشل رفع المقطع الصوتي لخوادمنا.");
-            } finally {
-              setUploadingImage(false);
-            }
-          };
-          reader.readAsDataURL(audioBlob);
+          const formData = new FormData();
+          formData.append("file", audioBlob, `voice_${Date.now()}.webm`);
+
+          const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-media") : "/api/v1/upload-media";
+          const uploadRes = await fetch(uploadEndpoint, {
+            method: "POST",
+            body: formData
+          });
+          const uploadData = await uploadRes.json();
+          if (uploadData.success && uploadData.url) {
+            handleSendMessage(undefined, "", "", "", uploadData.url);
+          } else {
+            alert("عذراً، فشل رفع المقطع الصوتي لخوادمنا.");
+          }
         } catch (err) {
-          console.error("Audio upload failed:", err);
+          console.error("Audio upload failing:", err);
+          alert("عذراً، فشل رفع المقطع الصوتي لخوادمنا.");
         } finally {
           setUploadingImage(false);
         }

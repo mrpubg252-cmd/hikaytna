@@ -1171,18 +1171,13 @@ export default function ShortsScreen() {
       }
       
       try {
-        const reader = new FileReader();
-        const base64String = await new Promise<string>((resolve, reject) => {
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(customVideoFile);
-        });
+        const formData = new FormData();
+        formData.append("file", customVideoFile);
         
-        const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-image") : "/api/v1/upload-image";
+        const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-media") : "/api/v1/upload-media";
         const uploadRes = await fetch(uploadEndpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: base64String })
+          body: formData
         });
         const uploadData = await uploadRes.json();
         
@@ -1190,7 +1185,7 @@ export default function ShortsScreen() {
           finalVideoUrl = uploadData.url;
           targetTimeRange = 'Custom';
         } else {
-          showToast("عذراً فشل رفع الفيديو لخوادمنا التخزينية.", "error");
+          showToast("عذراً، فشل رفع الفيديو لخوادمنا التخزينية.", "error");
           setIsPublishing(false);
           return;
         }

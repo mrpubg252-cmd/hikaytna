@@ -390,44 +390,36 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
 
     setUploadingImage(true);
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64String = reader.result as string;
-        try {
-          const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-image") : "/api/v1/upload-image";
-          const uploadRes = await fetch(uploadEndpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: base64String })
-          });
-          const uploadData = await uploadRes.json();
-          if (uploadData.success && uploadData.url) {
-            // Instantly send to Firebase matching the user's intent!
-            if (isImage) {
-              handleSendMessage("", uploadData.url, "", "");
-            } else if (isVideo) {
-              handleSendMessage("", "", uploadData.url, "");
-            } else if (isAudio) {
-              handleSendMessage("", "", "", uploadData.url);
-            } else {
-              handleSendMessage("", uploadData.url, "", "");
-            }
-          } else {
-            alert(uploadData.error || "عذراً فشل رفع الملف، يرجى المحاولة مرة أخرى.");
-          }
-        } catch (xhrErr) {
-          console.error("XHR file upload error:", xhrErr);
-          alert("خطأ أثناء التواصل مع خادم الرفع.");
-        } finally {
-          setUploadingImage(false);
-          // Reset target
-          e.target.value = '';
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-media") : "/api/v1/upload-media";
+      const uploadRes = await fetch(uploadEndpoint, {
+        method: "POST",
+        body: formData
+      });
+      const uploadData = await uploadRes.json();
+      
+      if (uploadData.success && uploadData.url) {
+        // Instantly send to Firebase matching the user's intent!
+        if (isImage) {
+          handleSendMessage("", uploadData.url, "", "");
+        } else if (isVideo) {
+          handleSendMessage("", "", uploadData.url, "");
+        } else if (isAudio) {
+          handleSendMessage("", "", "", uploadData.url);
+        } else {
+          handleSendMessage("", uploadData.url, "", "");
         }
-      };
-      reader.readAsDataURL(file);
-    } catch (readErr) {
-      console.error("Failed to read file:", readErr);
+      } else {
+        alert(uploadData.error || "عذراً فشل رفع الملف، يرجى المحاولة مرة أخرى.");
+      }
+    } catch (err) {
+      console.error("XHR file upload error:", err);
+      alert("خطأ أثناء التواصل مع خادم الرفع.");
+    } finally {
       setUploadingImage(false);
+      e.target.value = '';
     }
   };
 
@@ -456,33 +448,25 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
 
         setUploadingImage(true);
         try {
-          const reader = new FileReader();
-          reader.onloadend = async () => {
-            const base64String = reader.result as string;
-            try {
-              const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-image") : "/api/v1/upload-image";
-              const uploadRes = await fetch(uploadEndpoint, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ image: base64String })
-              });
-              const uploadData = await uploadRes.json();
-              if (uploadData.success && uploadData.url) {
-                // Instantly send to Firebase matching the user's intent!
-                handleSendMessage("", "", "", uploadData.url);
-              } else {
-                alert(uploadData.error || "عذراً فشل رفع الملف، يرجى المحاولة مرة أخرى.");
-              }
-            } catch (xhrErr) {
-              console.error("XHR audio upload error:", xhrErr);
-              alert("خطأ أثناء التواصل مع خادم الرفع.");
-            } finally {
-              setUploadingImage(false);
-            }
-          };
-          reader.readAsDataURL(audioBlob);
-        } catch (readErr) {
-          console.error("Failed to read audio:", readErr);
+          const formData = new FormData();
+          // specify a filename so the backend detects the extension natively!
+          formData.append("file", audioBlob, `voice_${Date.now()}.webm`);
+
+          const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-media") : "/api/v1/upload-media";
+          const uploadRes = await fetch(uploadEndpoint, {
+            method: "POST",
+            body: formData
+          });
+          const uploadData = await uploadRes.json();
+          if (uploadData.success && uploadData.url) {
+            handleSendMessage("", "", "", uploadData.url);
+          } else {
+            alert(uploadData.error || "عذراً فشل رفع الملف، يرجى المحاولة مرة أخرى.");
+          }
+        } catch (err) {
+          console.error("Audio upload error:", err);
+          alert("خطأ أثناء التواصل مع خادم الرفع.");
+        } finally {
           setUploadingImage(false);
         }
       };
