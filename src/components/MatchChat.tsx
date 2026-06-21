@@ -42,12 +42,27 @@ function CustomAudioPlayer({ src }: { src: string }) {
   const [duration, setDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const togglePlay = () => {
+  const togglePlay = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     if (!audioRef.current) return;
-    if (isPlaying) {
-      audioRef.current.pause();
+    
+    // Explicitly handle iOS Safari audio context resume or load
+    if (audioRef.current.paused) {
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          console.warn("Retrying playback for iOS Safari...", error);
+          if (audioRef.current) {
+            audioRef.current.load(); 
+            audioRef.current.play().catch(e2 => console.error("Final play attempt failed:", e2));
+          }
+        });
+      }
     } else {
-      audioRef.current.play().catch(e => console.log("Play failed", e));
+      audioRef.current.pause();
     }
   };
 
@@ -441,7 +456,18 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
-      const mediaRecorder = new MediaRecorder(stream);
+      
+      // Determine best MIME type for the browser (Safari prefers audio/mp4)
+      let mimeType = 'audio/webm';
+      if (typeof MediaRecorder.isTypeSupported === 'function') {
+        if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        } else if (MediaRecorder.isTypeSupported('audio/aac')) {
+          mimeType = 'audio/aac';
+        }
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -451,7 +477,7 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
         // Release hardware mic resource
         stream.getTracks().forEach(track => track.stop());
 
@@ -459,7 +485,8 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
         try {
           const formData = new FormData();
           // specify a filename so the backend detects the extension natively!
-          formData.append("file", audioBlob, `voice_${Date.now()}.webm`);
+          const extension = mediaRecorder.mimeType?.includes('mp4') ? 'mp4' : 'webm';
+          formData.append("file", audioBlob, `voice_${Date.now()}.${extension}`);
 
           const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-media") : "/api/v1/upload-media";
           const uploadRes = await fetch(uploadEndpoint, {
@@ -649,7 +676,13 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
                       </div>
                     ) : (
                       <div 
-                        onPointerDown={() => {
+                        onClick={(e) => {
+                          if ((e.target as HTMLElement).closest('button, a, input, [role="button"], video, audio')) return;
+                          // Optional: we can trigger long press logic here if needed, 
+                          // but for now let's just ensure it's clickable
+                        }}
+                        onPointerDown={(e) => {
+                          if ((e.target as HTMLElement).closest('button, a, input, [role="button"], video, audio')) return;
                           if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
                           longPressTimerRef.current = setTimeout(() => {
                             setActionMenuMessage(msg);
