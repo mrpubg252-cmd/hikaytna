@@ -1781,6 +1781,37 @@ async function startServer() {
     }
   });
 
+  app.get("/api/v1/download-proxy", async (req, res) => {
+    try {
+      const { url, filename } = req.query;
+      if (!url) return res.status(400).send("Missing URL");
+      
+      const targetUrl = decodeURIComponent(url as string);
+      const downloadName = filename ? decodeURIComponent(filename as string) : `Hekayatna_${Date.now()}.mp4`;
+
+      const response = await axios({
+        url: targetUrl,
+        method: 'GET',
+        responseType: 'stream',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Referer': new URL(targetUrl).origin + '/'
+        },
+        timeout: 90000
+      });
+
+      // Force download headers
+      const contentType = (response.headers['content-type'] || 'application/octet-stream') as string;
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`);
+      
+      response.data.pipe(res);
+    } catch (err: any) {
+      console.error("Download proxy error:", err.message);
+      res.status(500).send("Failed to proxy download");
+    }
+  });
+
   // Secure Native File Uploader (Supports Large Video/Audio uploads properly without base64 overhead)
   app.post("/api/v1/upload-media", upload.single("file"), async (req, res) => {
     try {

@@ -351,6 +351,7 @@ export default function SeriesChat({
   const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewVideo, setPreviewVideo] = useState<string | null>(null);
   const [showStickerPanel, setShowStickerPanel] = useState(false);
   
   // Professional Stickers
@@ -1498,19 +1499,29 @@ export default function SeriesChat({
                       </div>
                     )}
                     {msg.videoUrl && (
-                      <div className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black mt-2 max-w-[240px] group">
+                      <div 
+                        className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black mt-2 max-w-[240px] group cursor-pointer"
+                        onClick={(e) => { e.stopPropagation(); setPreviewVideo(msg.videoUrl!); }}
+                      >
                         <video 
                           src={msg.videoUrl} 
-                          controls 
                           playsInline
                           preload="metadata"
-                          className="w-full h-auto max-h-[180px] object-cover rounded-xl bg-black"
+                          className="w-full h-auto max-h-[180px] object-cover rounded-xl bg-black pointer-events-none"
                           referrerPolicy="no-referrer"
-                          onClick={(e) => e.stopPropagation()}
+                          {...{
+                            "webkit-playsinline": "true",
+                            "x5-playsinline": "true"
+                          }}
                         />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/30 transition-all">
+                          <div className="w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/10 group-hover:scale-110 transition-transform">
+                            <Play className="w-5 h-5 text-white fill-white ml-0.5" />
+                          </div>
+                        </div>
                         <a 
-                          href={msg.videoUrl} 
-                          download={`حكايتنا_${Date.now()}.mp4`}
+                          href={`/api/v1/download-proxy?url=${encodeURIComponent(msg.videoUrl)}&filename=${encodeURIComponent(`حكايتنا_${Date.now()}.mp4`)}`}
+                          download
                           className="absolute top-2 left-2 p-2 bg-black/60 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
                           onClick={(e) => e.stopPropagation()}
                           title="تحميل الفيديو"
@@ -1853,6 +1864,45 @@ export default function SeriesChat({
               className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             />
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Lightbox Video Preview Overlay */}
+      {previewVideo && createPortal(
+        <AnimatePresence>
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setPreviewVideo(null)}
+            className="fixed inset-0 z-[999999] bg-black/95 backdrop-blur-md flex items-center justify-center p-4"
+          >
+            <button 
+              onClick={() => setPreviewVideo(null)} 
+              className="absolute top-8 right-8 z-[1000000] p-3 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md border border-white/10 transition-all active:scale-90"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="w-full max-w-4xl bg-black rounded-3xl overflow-hidden shadow-2xl relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <video 
+                src={previewVideo} 
+                controls 
+                autoPlay 
+                className="w-full h-auto max-h-[85vh]"
+                referrerPolicy="no-referrer"
+                {...{
+                    "webkit-playsinline": "true",
+                    "x5-playsinline": "true"
+                }}
+              />
+            </motion.div>
           </motion.div>
         </AnimatePresence>,
         document.body
