@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, push, onValue, limitToLast, query, serverTimestamp, Database } from 'firebase/database';
 import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
-import { Send, Users, Smile, User2, MessageSquare, Flame, Camera, X, Image } from 'lucide-react';
+import { Send, Users, Smile, User2, MessageSquare, Flame, Camera, X, Image, Play, Pause, Mic, Square, Trash2, Video } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getApiUrl } from '../lib/apiConfig';
 
@@ -12,6 +12,8 @@ interface ChatMessage {
   userAvatar: string; // 'boy1' | 'boy2' | 'girl1' | 'girl2'
   text: string;
   imageUrl?: string;
+  videoUrl?: string;
+  audioUrl?: string;
   createdAt: number;
 }
 
@@ -19,6 +21,91 @@ interface MatchChatProps {
   matchId: string;
   matchTitle: string;
   onClose?: () => void;
+}
+
+function CustomAudioPlayer({ src }: { src: string }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(e => console.log("Play failed", e));
+    }
+  };
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const handleLoadedMetadata = () => setDuration(audio.duration || 0);
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+    };
+
+    audio.addEventListener('play', handlePlay);
+    audio.addEventListener('pause', handlePause);
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('ended', handleEnded);
+
+    return () => {
+      audio.removeEventListener('play', handlePlay);
+      audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('ended', handleEnded);
+    };
+  }, []);
+
+  const formatTime = (time: number) => {
+    if (isNaN(time)) return '0:00';
+    const mins = Math.floor(time / 60);
+    const secs = Math.floor(time % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleProgressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!audioRef.current) return;
+    const val = parseFloat(e.target.value);
+    audioRef.current.currentTime = val;
+    setCurrentTime(val);
+  };
+
+  return (
+    <div className="flex items-center gap-2 bg-black/40 border border-zinc-800 rounded-xl p-2 min-w-[180px] select-none text-white my-1" style={{ direction: 'ltr' }}>
+      <audio ref={audioRef} src={src} preload="metadata" className="hidden" />
+      <button 
+        type="button"
+        onClick={togglePlay} 
+        className="w-8 h-8 rounded-full bg-red-600 hover:bg-red-500 hover:scale-105 active:scale-95 flex items-center justify-center transition shrink-0 cursor-pointer text-white"
+      >
+        {isPlaying ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current translate-x-[1px]" />}
+      </button>
+      <div className="flex-1 flex flex-col gap-0.5">
+        <input 
+          type="range" 
+          min="0" 
+          max={duration || 100} 
+          value={currentTime} 
+          onChange={handleProgressChange}
+          className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-red-500"
+        />
+        <div className="flex justify-between text-[8px] text-zinc-400 font-mono">
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const AVATARS = [
@@ -70,10 +157,17 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
   const [db, setDb] = useState<Database | null>(null);
   const [isDbReady, setIsDbReady] = useState(false);
 
-  // Direct Image upload states
+  // Direct Image and file upload states
   const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+
+  // Native voice recording states
+  const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+  const [voiceSeconds, setVoiceSeconds] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const voiceTimerRef = useRef<number | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -140,6 +234,8 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
           userAvatar: value.userAvatar || 'boy1',
           text: value.text || '',
           imageUrl: value.imageUrl || '',
+          videoUrl: value.videoUrl || '',
+          audioUrl: value.audioUrl || '',
           createdAt: value.createdAt || Date.now()
         }));
         setMessages(parsed.sort((a, b) => a.createdAt - b.createdAt));
@@ -156,9 +252,9 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = (msgText: string, imgUrl?: string | null) => {
+  const handleSendMessage = (msgText: string, imgUrl?: string | null, vUrl?: string | null, aUrl?: string | null) => {
     const trimmed = msgText.trim();
-    if (!trimmed && !imgUrl) return;
+    if (!trimmed && !imgUrl && !vUrl && !aUrl) return;
     if (!isDbReady || !db) return;
 
     try {
@@ -168,6 +264,8 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
         userAvatar,
         text: trimmed,
         imageUrl: imgUrl || "",
+        videoUrl: vUrl || "",
+        audioUrl: aUrl || "",
         createdAt: serverTimestamp()
       });
       setText('');
@@ -177,9 +275,14 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const fileType = file.type;
+    const isImage = fileType.startsWith("image/");
+    const isVideo = fileType.startsWith("video/");
+    const isAudio = fileType.startsWith("audio/");
 
     // Show indicator
     setUploadingImage(true);
@@ -196,21 +299,122 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
           });
           const uploadData = await uploadRes.json();
           if (uploadData.success && uploadData.url) {
-            setAttachedImageUrl(uploadData.url);
+            // Instantly send to Firebase matching the user's intent!
+            if (isImage) {
+              handleSendMessage("", uploadData.url, "", "");
+            } else if (isVideo) {
+              handleSendMessage("", "", uploadData.url, "");
+            } else if (isAudio) {
+              handleSendMessage("", "", "", uploadData.url);
+            } else {
+              handleSendMessage("", uploadData.url, "", "");
+            }
           } else {
-            alert(uploadData.error || "عذراً فشل رفع الصورة، يرجى المحاولة مرة أخرى.");
+            alert(uploadData.error || "عذراً فشل رفع الملف، يرجى المحاولة مرة أخرى.");
           }
         } catch (xhrErr) {
-          console.error("XHR Image upload error:", xhrErr);
+          console.error("XHR file upload error:", xhrErr);
           alert("خطأ أثناء التواصل مع خادم الرفع.");
         } finally {
           setUploadingImage(false);
+          // Reset target
+          e.target.value = '';
         }
       };
       reader.readAsDataURL(file);
     } catch (readErr) {
       console.error("Failed to read file:", readErr);
       setUploadingImage(false);
+    }
+  };
+
+  const startVoiceRecording = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("متصفحك لا يدعم تسجيل الصوت أو يفتقد لصلاحية الوصول.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        // Release hardware mic resource
+        stream.getTracks().forEach(track => track.stop());
+
+        // Create base64
+        setUploadingImage(true);
+        try {
+          const reader = new FileReader();
+          reader.onloadend = async () => {
+            const base64String = reader.result as string;
+            try {
+              const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-image") : "/api/v1/upload-image";
+              const uploadRes = await fetch(uploadEndpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ image: base64String })
+              });
+              const uploadData = await uploadRes.json();
+              if (uploadData.success && uploadData.url) {
+                // Instantly send voice note to Firebase RTDB
+                handleSendMessage("", "", "", uploadData.url);
+              } else {
+                alert("عذراً، فشل رفع المقطع الصوتي للفايربيس.");
+              }
+            } catch (err) {
+              console.error("Audio upload failing:", err);
+            } finally {
+              setUploadingImage(false);
+            }
+          };
+          reader.readAsDataURL(audioBlob);
+        } catch (err) {
+          console.error("FileReader audio failed", err);
+          setUploadingImage(false);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsVoiceRecording(true);
+      setVoiceSeconds(0);
+      
+      voiceTimerRef.current = window.setInterval(() => {
+        setVoiceSeconds(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Failed to start MediaRecorder:", err);
+      alert("يرجى تفعيل صلاحية الميكروفون لتسجيل فويس بنجاح.");
+    }
+  };
+
+  const stopVoiceRecording = (cancel = false) => {
+    if (voiceTimerRef.current) {
+      clearInterval(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    
+    setIsVoiceRecording(false);
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      if (cancel) {
+        mediaRecorderRef.current.onstop = () => {
+          if (mediaRecorderRef.current) {
+            const stream = mediaRecorderRef.current.stream;
+            stream.getTracks().forEach(track => track.stop());
+          }
+        };
+      }
+      mediaRecorderRef.current.stop();
     }
   };
 
@@ -300,7 +504,8 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
                       : 'bg-zinc-900 border-zinc-800 text-zinc-350'
                   }`}
                 >
-                  {msg.text && <p className={msg.imageUrl ? "mb-2" : ""}>{msg.text}</p>}
+                  {msg.text && <p className={(msg.imageUrl || msg.videoUrl || msg.audioUrl) ? "mb-2" : ""}>{msg.text}</p>}
+                  
                   {msg.imageUrl && (
                     <div className="relative overflow-hidden rounded-xl border border-zinc-850 bg-black/40 mt-1 max-w-[200px] cursor-pointer hover:opacity-90 transition active:scale-[0.98]">
                       <img 
@@ -310,6 +515,24 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
                         onClick={() => setPreviewImage(msg.imageUrl || null)}
                         className="w-full h-auto max-h-[160px] object-cover rounded-xl"
                       />
+                    </div>
+                  )}
+
+                  {msg.videoUrl && (
+                    <div className="relative overflow-hidden rounded-xl border border-zinc-850 bg-black mt-1 max-w-[240px]">
+                      <video 
+                        src={msg.videoUrl} 
+                        controls 
+                        preload="metadata"
+                        className="w-full h-auto max-h-[180px] object-cover rounded-xl"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                  )}
+
+                  {msg.audioUrl && (
+                    <div className="mt-1">
+                      <CustomAudioPlayer src={msg.audioUrl} />
                     </div>
                   )}
                 </div>
@@ -339,7 +562,7 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
         {uploadingImage && (
           <div className="flex items-center gap-2 mb-2 bg-rose-500/10 border border-rose-500/20 text-rose-400 py-1.5 px-3 rounded-xl text-[10px] w-fit mr-auto">
             <div className="w-3.5 h-3.5 border-2 border-rose-500/30 border-t-rose-500 rounded-full animate-spin" />
-            <span>جاري رفع وتنشيط الصورة...</span>
+            <span>جاري رفع وتنشيط الملف...</span>
           </div>
         )}
         {attachedImageUrl && (
@@ -362,32 +585,70 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
           }}
           className="flex items-center gap-2"
         >
-          <button
-            type="submit"
-            disabled={!text.trim() && !attachedImageUrl}
-            className="p-2.5 bg-red-600 hover:bg-red-500 disabled:bg-zinc-900 disabled:text-zinc-600 text-white rounded-xl transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
-          >
-            <Send className="w-4 h-4 transform rotate-180" />
-          </button>
+          {isVoiceRecording ? (
+            <div className="flex-1 flex items-center justify-between bg-red-500/10 border border-red-500/20 rounded-xl px-3.5 py-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+                <span className="text-[10px] text-red-400 font-bold uppercase tracking-wider">جاري تسجيل فويس... {voiceSeconds}ث</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  type="button" 
+                  onClick={() => stopVoiceRecording(true)} 
+                  className="text-zinc-500 hover:text-red-500 hover:bg-zinc-900 duration-200 p-1 rounded-lg"
+                  title="إلغاء التسجيل"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => stopVoiceRecording(false)} 
+                  className="w-7 h-7 bg-red-600 text-white rounded-full flex items-center justify-center shadow-lg hover:scale-105 transition"
+                  title="تأكيد وإرسال"
+                >
+                  <Square className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <button
+                type="submit"
+                disabled={!text.trim() && !attachedImageUrl}
+                className="p-2.5 bg-red-600 hover:bg-red-500 disabled:bg-zinc-900 disabled:text-zinc-600 text-white rounded-xl transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
+              >
+                <Send className="w-4 h-4 transform rotate-180" />
+              </button>
 
-          <input
-            type="text"
-            placeholder="اكتب رسيلتك الحماسية هنا..."
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            className="flex-1 text-xs text-right bg-zinc-950 border border-zinc-900 rounded-xl px-3.5 py-2.5 text-white placeholder-zinc-500 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/20"
-          />
+              <input
+                type="text"
+                placeholder="اكتب رسيلتك الحماسية هنا..."
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                className="flex-1 text-xs text-right bg-zinc-950 border border-zinc-900 rounded-xl px-3.5 py-2.5 text-white placeholder-zinc-500 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/20"
+              />
 
-          <label className="p-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white rounded-xl transition cursor-pointer shrink-0 flex items-center justify-center border border-zinc-850">
-            <Camera className="w-4 h-4" />
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleImageUpload}
-              disabled={uploadingImage}
-            />
-          </label>
+              <label className="p-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white rounded-xl transition cursor-pointer shrink-0 flex items-center justify-center border border-zinc-850" title="ارفاق صورة أو فيديو">
+                <Camera className="w-4 h-4" />
+                <input
+                  type="file"
+                  accept="image/*,video/*,audio/*"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                  disabled={uploadingImage}
+                />
+              </label>
+
+              <button 
+                type="button" 
+                onClick={startVoiceRecording} 
+                className="p-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white rounded-xl transition cursor-pointer shrink-0 flex items-center justify-center border border-zinc-850"
+                title="تسجيل رسالة صوتية"
+              >
+                <Mic className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </form>
       </div>
 

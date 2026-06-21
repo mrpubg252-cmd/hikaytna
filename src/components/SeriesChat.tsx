@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, push, set, onValue, remove, get, Database, query, limitToLast } from 'firebase/database';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play } from 'lucide-react';
+import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play, Pause, Trash2, Video } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { decryptValue } from '../lib/security';
 import { useAuth } from '../context/AuthContext';
@@ -30,6 +30,7 @@ interface ChatMessage {
   text?: string;
   audioUrl?: string;
   imageUrl?: string;
+  videoUrl?: string;
   createdAt: number;
   replyTo?: {
     userName: string;
@@ -38,6 +39,91 @@ interface ChatMessage {
   sceneTime?: number;
   sceneImage?: string;
   edited?: boolean;
+}
+
+function CustomAudioPlayer({ src }: { src: string }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play().catch(e => console.log("Play failed", e));
+    }
+  };
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handlePlay = () => setIsPlaying(true);
+    const handlePause = () => setIsPlaying(false);
+    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const handleLoadedMetadata = () => setDuration(audio.duration || 0);
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+    };
+
+    audio.addEventListener('play', handlePlay);
+    audio.addEventListener('pause', handlePause);
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('ended', handleEnded);
+
+    return () => {
+      audio.removeEventListener('play', handlePlay);
+      audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('ended', handleEnded);
+    };
+  }, []);
+
+  const formatTime = (time: number) => {
+    if (isNaN(time)) return '0:00';
+    const mins = Math.floor(time / 60);
+    const secs = Math.floor(time % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleProgressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!audioRef.current) return;
+    const val = parseFloat(e.target.value);
+    audioRef.current.currentTime = val;
+    setCurrentTime(val);
+  };
+
+  return (
+    <div className="flex items-center gap-2 bg-black/40 border border-zinc-805 rounded-xl p-2 min-w-[180px] select-none text-white my-1" style={{ direction: 'ltr' }}>
+      <audio ref={audioRef} src={src} preload="metadata" className="hidden" />
+      <button 
+        type="button"
+        onClick={togglePlay} 
+        className="w-8 h-8 rounded-full bg-primary hover:bg-primary/85 hover:scale-105 active:scale-95 flex items-center justify-center transition shrink-0 cursor-pointer text-black"
+      >
+        {isPlaying ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current translate-x-[1.5px]" />}
+      </button>
+      <div className="flex-1 flex flex-col gap-0.5">
+        <input 
+          type="range" 
+          min="0" 
+          max={duration || 100} 
+          value={currentTime} 
+          onChange={handleProgressChange}
+          className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-primary"
+        />
+        <div className="flex justify-between text-[8px] text-zinc-400 font-mono">
+          <span>{formatTime(currentTime)}</span>
+          <span>{formatTime(duration)}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 interface PendingScene {
@@ -229,6 +315,13 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
   const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  
+  // Native voice recording states
+  const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+  const [voiceSeconds, setVoiceSeconds] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const voiceTimerRef = useRef<number | null>(null);
   
   // Real-time Presence, Typing indicators
   const [onlineCount, setOnlineCount] = useState<number>(1);
@@ -438,6 +531,8 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
             userAvatar: val.userAvatar || 'boy1',
             text: val.text || '',
             imageUrl: val.imageUrl || '',
+            videoUrl: val.videoUrl || '',
+            audioUrl: val.audioUrl || '',
             createdAt: timestamp,
             replyTo: val.replyTo,
             sceneTime: val.sceneTime,
@@ -625,12 +720,16 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     }
   };
 
-  const handleSendMessage = async (e?: React.FormEvent) => {
+  const handleSendMessage = async (e?: React.FormEvent, customTxt?: string, customImg?: string, customVid?: string, customAud?: string) => {
     if (e) e.preventDefault();
     if (!db) return;
 
-    const txt = inputText.trim();
-    if (!txt && !replyTo && !pendingScene && !attachedImageUrl) return;
+    const txt = customTxt !== undefined ? customTxt : inputText.trim();
+    const finalImg = customImg !== undefined ? customImg : attachedImageUrl;
+    const finalVid = customVid !== undefined ? customVid : '';
+    const finalAud = customAud !== undefined ? customAud : '';
+
+    if (!txt && !replyTo && !pendingScene && !finalImg && !finalVid && !finalAud) return;
 
     // Safety checks
     if (!userName || !userAvatar) return;
@@ -664,7 +763,9 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
       userName: senderName,
       userAvatar,
       text: txt || (pendingScene ? `شوفوا هاذ اللقطة عند الدقيقة ${pendingScene.timeStr} 🔥` : ''),
-      imageUrl: attachedImageUrl || '',
+      imageUrl: finalImg || '',
+      videoUrl: finalVid || '',
+      audioUrl: finalAud || '',
       createdAt: Date.now(),
     };
 
@@ -701,10 +802,16 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const fileType = file.type;
+    const isImage = fileType.startsWith("image/");
+    const isVideo = fileType.startsWith("video/");
+    const isAudio = fileType.startsWith("audio/");
+
+    // Show indicator
     setUploadingImage(true);
     try {
       const reader = new FileReader();
@@ -719,21 +826,122 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
           });
           const uploadData = await uploadRes.json();
           if (uploadData.success && uploadData.url) {
-            setAttachedImageUrl(uploadData.url);
+            // Instantly send to Firebase matching user intent!
+            if (isImage) {
+              handleSendMessage(undefined, "", uploadData.url, "", "");
+            } else if (isVideo) {
+              handleSendMessage(undefined, "", "", uploadData.url, "");
+            } else if (isAudio) {
+              handleSendMessage(undefined, "", "", "", uploadData.url);
+            } else {
+              handleSendMessage(undefined, "", uploadData.url, "", "");
+            }
           } else {
-            alert(uploadData.error || "عذراً فشل رفع الصورة، يرجى المحاولة مرة أخرى.");
+            alert(uploadData.error || "عذراً فشل رفع الملف، يرجى المحاولة مرة أخرى.");
           }
         } catch (xhrErr) {
-          console.error("XHR Image upload error:", xhrErr);
+          console.error("XHR file upload error:", xhrErr);
           alert("خطأ أثناء التواصل مع خادم الرفع.");
         } finally {
           setUploadingImage(false);
+          // Clear input target
+          e.target.value = '';
         }
       };
       reader.readAsDataURL(file);
     } catch (readErr) {
       console.error("Failed to read file:", readErr);
       setUploadingImage(false);
+    }
+  };
+
+  const startVoiceRecording = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("متصفحك لا يدعم تسجيل الصوت أو يفتقد لصلاحية الوصول.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        // Release hardware mic resource
+        stream.getTracks().forEach(track => track.stop());
+
+        // Create base64
+        setUploadingImage(true);
+        try {
+          const reader = new FileReader();
+          reader.onloadend = async () => {
+            const base64String = reader.result as string;
+            try {
+              const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-image") : "/api/v1/upload-image";
+              const uploadRes = await fetch(uploadEndpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ image: base64String })
+              });
+              const uploadData = await uploadRes.json();
+              if (uploadData.success && uploadData.url) {
+                // Instantly send voice note to Firebase RTDB
+                handleSendMessage(undefined, "", "", "", uploadData.url);
+              } else {
+                alert("عذراً، فشل رفع المقطع الصوتي للفايربيس.");
+              }
+            } catch (err) {
+              console.error("Audio upload failing:", err);
+            } finally {
+              setUploadingImage(false);
+            }
+          };
+          reader.readAsDataURL(audioBlob);
+        } catch (err) {
+          console.error("FileReader audio failed", err);
+          setUploadingImage(false);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsVoiceRecording(true);
+      setVoiceSeconds(0);
+      
+      voiceTimerRef.current = window.setInterval(() => {
+        setVoiceSeconds(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Failed to start MediaRecorder:", err);
+      alert("يرجى تفعيل صلاحية الميكروفون لتسجيل فويس بنجاح.");
+    }
+  };
+
+  const stopVoiceRecording = (cancel = false) => {
+    if (voiceTimerRef.current) {
+      clearInterval(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    
+    setIsVoiceRecording(false);
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      if (cancel) {
+        mediaRecorderRef.current.onstop = () => {
+          if (mediaRecorderRef.current) {
+            const stream = mediaRecorderRef.current.stream;
+            stream.getTracks().forEach(track => track.stop());
+          }
+        };
+      }
+      mediaRecorderRef.current.stop();
     }
   };
 
@@ -1172,6 +1380,23 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
                         />
                       </div>
                     )}
+                    {msg.videoUrl && (
+                      <div className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black mt-2 max-w-[240px]">
+                        <video 
+                          src={msg.videoUrl} 
+                          controls 
+                          preload="metadata"
+                          className="w-full h-auto max-h-[180px] object-cover rounded-xl"
+                          referrerPolicy="no-referrer"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                    )}
+                    {msg.audioUrl && (
+                      <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                        <CustomAudioPlayer src={msg.audioUrl} />
+                      </div>
+                    )}
                     {msg.edited && <span className="text-[8px] opacity-50 mr-1">(تم التعديل)</span>}
                       {msg.sceneTime !== undefined && (
                       <button 
@@ -1366,7 +1591,7 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
           {uploadingImage && (
             <div className="flex items-center gap-2 mb-2 bg-primary/10 border border-primary/20 text-primary py-1.5 px-3 rounded-xl text-[10px] w-fit mr-auto ml-3">
               <div className="w-3.5 h-3.5 border-2 border-primary/25 border-t-primary rounded-full animate-spin" />
-              <span>جاري رفع وتأكيد الصورة...</span>
+              <span>جاري رفع وتنشيط الملف...</span>
             </div>
           )}
           {attachedImageUrl && (
@@ -1383,7 +1608,34 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
           )}
 
           <form onSubmit={handleSendMessage} className="p-3 flex gap-2 items-center">
-            {isRecording ? (
+            {isVoiceRecording ? (
+              <div className="flex-1 flex items-center justify-between bg-zinc-900/60 border border-primary/20 rounded-2xl px-4 py-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-primary animate-ping" />
+                  <div className="text-[10px] font-black text-primary uppercase tracking-widest">
+                    جاري تسجيل فويس... {voiceSeconds}ث
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button 
+                    type="button" 
+                    onClick={() => stopVoiceRecording(true)} 
+                    className="p-1 px-2.5 text-zinc-500 hover:text-rose-500 transition-colors duration-200 text-xs"
+                    title="إلغاء التسجيل"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => stopVoiceRecording(false)} 
+                    className="w-8 h-8 bg-primary text-black rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition"
+                    title="تأكيد وإرسال"
+                  >
+                    <Square className="w-3.5 h-3.5 fill-current" />
+                  </button>
+                </div>
+              </div>
+            ) : isRecording ? (
               <div className="flex-1 flex items-center justify-between bg-primary/10 border border-primary/20 rounded-2xl px-4 py-2">
                 <div className="flex items-center gap-3">
                   <Wand2 className="w-4 h-4 text-primary animate-pulse" />
@@ -1396,18 +1648,19 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
                 <button type="submit" disabled={!inputText.trim() && !replyTo && !pendingScene && !attachedImageUrl} className={cn("w-10 h-10 rounded-full flex items-center justify-center shadow-lg shrink-0 transition-all", (inputText.trim() || replyTo || pendingScene || attachedImageUrl) ? "bg-primary text-black" : "bg-white/5 text-zinc-500 opacity-20")}><Send className={cn("w-4.5 h-4.5 -rotate-45", editingMsg && "rotate-0")} /></button>
                 <input type="text" dir="rtl" value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder={pendingScene ? "اكتب تعليقك على اللقطة..." : editingMsg ? "اكتب التعديل..." : "اكتب تعليقك أو اسأل حكيم..."} className="flex-1 bg-white/5 border border-white/5 rounded-full py-2.5 px-5 text-xs outline-none text-white focus:ring-1 focus:ring-primary/40 placeholder-zinc-600 font-semibold" />
                 
-                <label className="w-10 h-10 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-full flex items-center justify-center shrink-0 transition-colors cursor-pointer border border-white/5">
+                <label className="w-10 h-10 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-full flex items-center justify-center shrink-0 transition-colors cursor-pointer border border-white/5" title="إرفاق صورة أو فيديو">
                   <Camera className="w-4.5 h-4.5" />
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/*,video/*,audio/*"
                     className="hidden"
-                    onChange={handleImageUpload}
+                    onChange={handleFileUpload}
                     disabled={uploadingImage}
                   />
                 </label>
                 
-                <button type="button" onClick={startRecording} className="w-10 h-10 bg-zinc-800 text-zinc-400 rounded-full flex items-center justify-center hover:text-white shrink-0 transition-colors"><Mic className="w-4.5 h-4.5" /></button>
+                <button type="button" onClick={startVoiceRecording} className="w-10 h-10 bg-zinc-800 text-zinc-400 rounded-full flex items-center justify-center hover:text-white shrink-0 transition-colors" title="تسجيل رسالة صوتية"><Mic className="w-4.5 h-4.5" /></button>
+                <button type="button" onClick={startRecording} className="w-8 h-8 bg-zinc-900 border border-zinc-800 text-zinc-550 rounded-full flex items-center justify-center hover:text-primary shrink-0 transition-colors text-[9px]" title="تحويل الصوت لنص">تخطيط</button>
               </>
             )}
           </form>
