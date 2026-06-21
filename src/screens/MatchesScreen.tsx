@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Tv, Calendar, RefreshCw, Play, X, Loader2, Sparkles, CheckCircle, Info, Flame, AlertCircle, MessageSquare, Pencil } from 'lucide-react';
+import { Trophy, Tv, Calendar, RefreshCw, Play, X, Loader2, Sparkles, CheckCircle, Info, Flame, AlertCircle, MessageSquare, Pencil, Trash } from 'lucide-react';
 import Header from '../components/Header';
 import BottomNav from '../components/BottomNav';
 import MatchChat from '../components/MatchChat';
@@ -45,6 +45,100 @@ export default function MatchesScreen() {
 
   // Custom stream overrides dictionary: matchId -> custom url
   const [customStreams, setCustomStreams] = useState<Record<string, string>>({});
+
+  const [showAddMatchModal, setShowAddMatchModal] = useState(false);
+  const [newMatchForm, setNewMatchForm] = useState({
+    team1: '',
+    team2: '',
+    logo1: '',
+    logo2: '',
+    league: 'الدوري الإسباني',
+    channel: 'beIN Sports Live',
+    commentator: 'حفيظ دراجي',
+    time: '22:00',
+    result: '-',
+    statusText: 'تبدأ قريباً',
+    live: true,
+    streamUrl: ''
+  });
+
+  const handleSaveAddMatch = async () => {
+    if (!newMatchForm.team1.trim() || !newMatchForm.team2.trim()) {
+      alert('الرجاء إدخال أسماء الفريقين المتباريين 🤝');
+      return;
+    }
+    setLoading(true);
+    try {
+      const uniqueId = `custom_match_${Date.now()}`;
+      
+      await setDoc(doc(firestore, "custom_matches", uniqueId), {
+        team1: newMatchForm.team1,
+        team2: newMatchForm.team2,
+        logo1: newMatchForm.logo1 || 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png',
+        logo2: newMatchForm.logo2 || 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png',
+        matchPageUrl: `https://yalla-shoot-custom/${uniqueId}`,
+        channel: newMatchForm.channel,
+        commentator: newMatchForm.commentator,
+        time: newMatchForm.time,
+        result: newMatchForm.result,
+        statusText: newMatchForm.statusText,
+        league: newMatchForm.league,
+        live: newMatchForm.live,
+        ended: false,
+        createdAt: Date.now()
+      });
+
+      if (newMatchForm.streamUrl.trim()) {
+        const val = newMatchForm.streamUrl.trim();
+        await setDoc(doc(firestore, "match_streams", uniqueId), { url: val, updatedAt: Date.now() });
+        try {
+          await set(ref(db, `match_streams/${uniqueId}`), val);
+        } catch (rtdbErr) {}
+        setCustomStreams(prev => ({ ...prev, [uniqueId]: val }));
+      }
+
+      alert('تم إضافة وجدولة المباراة الجديدة بثبات بنجاح! 🏆');
+      setShowAddMatchModal(false);
+      
+      setNewMatchForm({
+        team1: '',
+        team2: '',
+        logo1: '',
+        logo2: '',
+        league: 'الدوري الإسباني',
+        channel: 'beIN Sports Live',
+        commentator: 'غير معروف',
+        time: '22:00',
+        result: '-',
+        statusText: 'تبدأ قريباً',
+        live: true,
+        streamUrl: ''
+      });
+
+      fetchMatches();
+    } catch (e) {
+      console.error(e);
+      alert('حدث خطأ أثناء حفظ المباراة.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteCustomMatch = async (matchId: string) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذه المباراة تماماً من جدول العرض؟')) return;
+    try {
+      await deleteDoc(doc(firestore, "custom_matches", matchId));
+      await deleteDoc(doc(firestore, "match_streams", matchId));
+      try {
+        await set(ref(db, `match_streams/${matchId}`), null);
+      } catch (e) {}
+      fetchMatches();
+      alert('تمت إزالة المباراة بالكامل بنجاح! 🗑️');
+    } catch (e) {
+      console.error(e);
+      alert('فشل حذف المباراة من جدول العرض.');
+    }
+  };
 
   const handleOpenOutsideEditor = async (match: Match) => {
     setEditingMatch(match);
@@ -208,13 +302,52 @@ export default function MatchesScreen() {
     if (!isRefresh) setLoading(true);
     setError(null);
     try {
+      // 1. Fetch scraped match feed
       const res = await fetch(getApiUrl('/api/v1/matches/scrape'));
       const data = await res.json();
+      let scrapedList: Match[] = [];
       if (data.status && Array.isArray(data.matches)) {
-        setMatches(data.matches);
-      } else {
-        setError('لا يوجد خوادم بث حي نشطة حالياً. يرجى المتابعة لاحقاً.');
+        scrapedList = data.matches;
       }
+
+      // 2. Fetch custom matches from Firestore of persistent schedules
+      let customList: Match[] = [];
+      try {
+        const customSnap = await getDocs(collection(firestore, "custom_matches"));
+        customSnap.forEach((doc) => {
+          const mData = doc.data();
+          if (mData) {
+            customList.push({
+              id: doc.id,
+              team1: mData.team1 || '',
+              team2: mData.team2 || '',
+              logo1: mData.logo1 || mData.team1Logo || '',
+              logo2: mData.logo2 || mData.team2Logo || '',
+              matchPageUrl: mData.matchPageUrl || '',
+              channel: mData.channel || 'beIN Sports Live',
+              commentator: mData.commentator || 'غير معروف',
+              time: mData.time || '22:00',
+              result: mData.result || '-',
+              statusText: mData.statusText || 'تبدأ قريباً',
+              league: mData.league || 'الدوري الإسباني',
+              live: mData.live !== undefined ? mData.live : true,
+              ended: mData.ended !== undefined ? mData.ended : false,
+            });
+          }
+        });
+      } catch (firestoreErr) {
+        console.warn("Could not load custom matches:", firestoreErr);
+      }
+
+      // 3. Prevent duplicate overlaps by ID (Custom matches override duplicates)
+      const combined: Match[] = [...customList];
+      scrapedList.forEach((sMatch) => {
+        if (!combined.some(c => c.id === sMatch.id)) {
+          combined.push(sMatch);
+        }
+      });
+
+      setMatches(combined);
     } catch (err: any) {
       setError('خطأ في الاتصال بالخادم الرئيسي لقنوات البث. يرجى التحديث.');
     } finally {
@@ -414,6 +547,14 @@ export default function MatchesScreen() {
           <div className="flex items-center gap-2.5">
             <div className="w-1.5 h-6 bg-red-600 rounded-full" />
             <h1 className="text-base font-black text-white">جدول مباريات اليوم</h1>
+            {isAdmin && (
+              <button
+                onClick={() => setShowAddMatchModal(true)}
+                className="mr-3 px-4 py-2 bg-gradient-to-r from-red-650 to-amber-600 hover:from-red-700 hover:to-amber-700 text-white text-[10px] font-black rounded-xl shadow-lg hover:shadow-red-500/20 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>إضافة مباراة مخصصة 🏆</span>
+              </button>
+            )}
           </div>
 
           {/* Search Input & Refresh Button */}
@@ -625,13 +766,26 @@ export default function MatchesScreen() {
 
                     <div className="flex items-center gap-2">
                       {isAdmin && (
-                        <button
-                          onClick={() => handleOpenOutsideEditor(m)}
-                          className="p-2.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 rounded-2xl transition cursor-pointer shrink-0"
-                          title="تعديل رابط البث المباشر للجميع"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={() => handleOpenOutsideEditor(m)}
+                            className="p-2.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 rounded-2xl transition cursor-pointer shrink-0"
+                            title="تعديل رابط البث المباشر للجميع"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          
+                          {/* Trash icon if custom match */}
+                          {m.id.startsWith('custom_') && (
+                            <button
+                              onClick={() => handleDeleteCustomMatch(m.id)}
+                              className="p-2.5 bg-red-600/10 hover:bg-red-600/20 border border-red-500/20 text-red-500 rounded-2xl transition cursor-pointer shrink-0"
+                              title="حذف هذه المباراة بالكامل"
+                            >
+                              <Trash className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       )}
                       <button
                         onClick={() => (m.live || isCustomized) && handleWatchStream(m)}
@@ -939,6 +1093,201 @@ export default function MatchesScreen() {
                     خادم البث آمن وبجودة تلقائية متعددة الاستقرار
                   </span>
                   <span>الدردشة تخضع للرقابة التلقائية المباشرة، التزم بالتشجيع النظيف 💬</span>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ADD NEW CUSTOM MATCH MODAL */}
+        <AnimatePresence>
+          {showAddMatchModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[1200] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 overflow-y-auto font-sans"
+            >
+              <div 
+                className="absolute inset-0" 
+                onClick={() => setShowAddMatchModal(false)}
+              />
+              
+              <motion.div
+                initial={{ scale: 0.9, y: 30 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 30 }}
+                className="relative bg-zinc-950 border border-zinc-900 rounded-[2.5rem] w-full max-w-lg p-7 overflow-hidden shadow-2xl space-y-5"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between flex-row-reverse border-b border-zinc-900/60 pb-3">
+                  <h3 className="text-sm font-black text-rose-500">إضافة مباراة وجدولة بث جديد 🏆</h3>
+                  <button
+                    onClick={() => setShowAddMatchModal(false)}
+                    className="p-2 hover:bg-zinc-900 rounded-full text-zinc-400 hover:text-white transition cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-4 text-right font-sans max-h-[70vh] overflow-y-auto no-scrollbar pr-1">
+                  {/* Teams Inputs */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-zinc-400">اسم الفريق الأول (اليمين):</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: ريال مدريد"
+                        value={newMatchForm.team1}
+                        onChange={(e) => setNewMatchForm(prev => ({ ...prev, team1: e.target.value }))}
+                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-zinc-400">اسم الفريق الثاني (اليسار):</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: برشلونة"
+                        value={newMatchForm.team2}
+                        onChange={(e) => setNewMatchForm(prev => ({ ...prev, team2: e.target.value }))}
+                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Logo URLs (optional) */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-zinc-400">شعار الفريق الأول (رابط اختياري):</label>
+                      <input
+                        type="text"
+                        placeholder="https://..."
+                        value={newMatchForm.logo1}
+                        onChange={(e) => setNewMatchForm(prev => ({ ...prev, logo1: e.target.value }))}
+                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550 font-mono text-left"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-zinc-400">شعار الفريق الثاني (رابط اختياري):</label>
+                      <input
+                        type="text"
+                        placeholder="https://..."
+                        value={newMatchForm.logo2}
+                        onChange={(e) => setNewMatchForm(prev => ({ ...prev, logo2: e.target.value }))}
+                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550 font-mono text-left"
+                      />
+                    </div>
+                  </div>
+
+                  {/* League and Channel */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-zinc-400">البطولة / الدوري:</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: الدوري الإنجليزي الممتاز"
+                        value={newMatchForm.league}
+                        onChange={(e) => setNewMatchForm(prev => ({ ...prev, league: e.target.value }))}
+                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-zinc-400">قناة البث الافتراضية:</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: beIN Sports HD 1"
+                        value={newMatchForm.channel}
+                        onChange={(e) => setNewMatchForm(prev => ({ ...prev, channel: e.target.value }))}
+                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Commentator and Time */}
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-zinc-400">المعلق الرياضي:</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: عصام الشوالي"
+                        value={newMatchForm.commentator}
+                        onChange={(e) => setNewMatchForm(prev => ({ ...prev, commentator: e.target.value }))}
+                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-zinc-400">توقيت المباراة أو حالتها:</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: 22:00 بتوقيت مكة"
+                        value={newMatchForm.time}
+                        onChange={(e) => setNewMatchForm(prev => ({ ...prev, time: e.target.value }))}
+                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Status, Result, Live Boolean */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-zinc-400">شعار الحالة:</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: جارية الآن"
+                        value={newMatchForm.statusText}
+                        onChange={(e) => setNewMatchForm(prev => ({ ...prev, statusText: e.target.value }))}
+                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-zinc-400">النتيجة:</label>
+                      <input
+                        type="text"
+                        placeholder="مثال: 0 - 0"
+                        value={newMatchForm.result}
+                        onChange={(e) => setNewMatchForm(prev => ({ ...prev, result: e.target.value }))}
+                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-zinc-400">حالة البث:</label>
+                      <select
+                        value={newMatchForm.live ? "live" : "upcoming"}
+                        onChange={(e) => setNewMatchForm(prev => ({ ...prev, live: e.target.value === "live" }))}
+                        className="w-full bg-[#101014] border border-zinc-950 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550"
+                      >
+                        <option value="live">جاهز للبث (مباشر)</option>
+                        <option value="upcoming">مجدولة لاحقاً</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Stream URL */}
+                  <div className="space-y-1">
+                    <label className="block text-[10px] font-bold text-zinc-400">رابط البث الحي (إجباري لتشغيل المشاهدة):</label>
+                    <textarea
+                      rows={3}
+                      placeholder="أدخل رابط البث (رابط مباشر أو iframe)..."
+                      value={newMatchForm.streamUrl}
+                      onChange={(e) => setNewMatchForm(prev => ({ ...prev, streamUrl: e.target.value }))}
+                      className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550 font-mono text-left"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2.5 pt-3 border-t border-zinc-900">
+                  <button
+                    onClick={handleSaveAddMatch}
+                    className="flex-1 bg-gradient-to-r from-red-650 to-amber-600 hover:from-red-700 hover:to-amber-700 text-white font-black text-xs py-3.5 rounded-xl transition active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer shadow-lg"
+                  >
+                    <span>تأكيد وجدولة البث 🚀</span>
+                  </button>
+                  <button
+                    onClick={() => setShowAddMatchModal(false)}
+                    className="px-6 py-3.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-400 font-extrabold text-xs rounded-xl transition cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
                 </div>
               </motion.div>
             </motion.div>

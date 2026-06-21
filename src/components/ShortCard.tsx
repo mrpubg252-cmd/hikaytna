@@ -67,7 +67,61 @@ const ShortCard = memo(({
   const [duration, setDuration] = useState(1);
   const [splashType, setSplashType] = useState<'play' | 'pause' | null>(null);
   const [isVideoReady, setIsVideoReady] = useState(false);
+  const [showTikTokModal, setShowTikTokModal] = useState(false);
+  const [showSpeedSubmenu, setShowSpeedSubmenu] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const isFirstRender = useRef(true);
+
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressActive = useRef(false);
+  const touchStartTime = useRef(0);
+
+  const handleStartPress = (e: React.MouseEvent | React.TouchEvent) => {
+    isLongPressActive.current = false;
+    touchStartTime.current = Date.now();
+    longPressTimer.current = setTimeout(() => {
+      isLongPressActive.current = true;
+      setShowTikTokModal(true);
+    }, 600);
+  };
+
+  const handleEndPress = (e: React.MouseEvent | React.TouchEvent) => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+    }
+    if (!isLongPressActive.current && Date.now() - touchStartTime.current < 450) {
+      onTapGesture(e as any);
+    }
+    isLongPressActive.current = false;
+  };
+
+  const selectPlaybackSpeed = (speed: number) => {
+    const video = videoRefs.current[index];
+    if (video) {
+      video.playbackRate = speed;
+      setPlaybackSpeed(speed);
+    }
+    setShowSpeedSubmenu(false);
+    setShowTikTokModal(false);
+  };
+
+  const handleDownloadWithWatermark = async () => {
+    try {
+      const videoUrl = videoUrlOverride || item.videoUrl;
+      const response = await fetch(videoUrl);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `حكايتنا_${item.seriesName || 'شورت'}_${Date.now()}.mp4`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      window.open(videoUrlOverride || item.videoUrl, '_blank');
+    }
+  };
 
   const myCreatedShorts = useMemo(() => {
     try {
@@ -131,7 +185,10 @@ const ShortCard = memo(({
       {/* Main Video Tap Interaction Area */}
       <div 
         className="absolute inset-0 w-full h-full bg-black flex items-center justify-center overflow-hidden cursor-pointer select-none z-10"
-        onClick={onTapGesture}
+        onMouseDown={handleStartPress}
+        onMouseUp={handleEndPress}
+        onTouchStart={handleStartPress}
+        onTouchEnd={handleEndPress}
       >
         {/* Top Gradient Overlay */}
         <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-black/90 via-black/45 to-transparent z-20 pointer-events-none" />
@@ -518,11 +575,16 @@ const ShortCard = memo(({
 
         {/* Fiery Series Name Display */}
         {!item.isAd && item.seriesName && (
-          <div className="flex items-center gap-1 ml-auto text-right mb-0.5 select-none pointer-events-none">
-            <span className="text-[12px] sm:text-[13px] font-extrabold bg-gradient-to-r from-amber-400 via-orange-500 to-yellow-300 bg-clip-text text-transparent drop-shadow-[0_2px_8px_rgba(249,115,22,0.6)] animate-pulse">
-              {item.seriesName}
+          <div className="flex flex-col items-end gap-1 ml-auto text-right mb-0.5 select-none pointer-events-none">
+            <div className="flex items-center gap-1">
+              <span className="text-[12px] sm:text-[13px] font-extrabold bg-gradient-to-r from-amber-400 via-orange-500 to-yellow-300 bg-clip-text text-transparent drop-shadow-[0_2px_8px_rgba(249,115,22,0.6)]">
+                مشهد رائع من {item.seriesName}
+              </span>
+              <span className="text-[10px] text-yellow-400">🔥</span>
+            </div>
+            <span className="text-[10px] sm:text-[11px] font-extrabold text-zinc-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">
+              👁️ {(viewsCount || 0).toLocaleString()} مشاهدة
             </span>
-            <span className="text-[10px] text-yellow-400">🔥</span>
           </div>
         )}
 
@@ -531,6 +593,107 @@ const ShortCard = memo(({
           {item.title}
         </h2>
       </div>
+
+      {/* TIKTOK STYLE LONG PRESS GLASS DRAWER */}
+      <AnimatePresence>
+        {showTikTokModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/60 shadow-inner backdrop-blur-md z-[500] flex items-end justify-center"
+            onClick={() => {
+              setShowTikTokModal(false);
+              setShowSpeedSubmenu(false);
+            }}
+          >
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 300 }}
+              className="w-full max-w-md bg-zinc-950/95 border-t border-white/10 rounded-t-[2.5rem] p-6 pb-12 text-center text-white space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Drawer Handle drag indicator */}
+              <div className="w-12 h-1 bg-zinc-700 rounded-full mx-auto mb-2" />
+              
+              {!showSpeedSubmenu ? (
+                <div className="flex flex-col gap-3">
+                  <span className="text-zinc-400 text-[11px] font-black tracking-widest uppercase mb-1">
+                    خيارات اللقطة السريعة
+                  </span>
+                  
+                  {/* Download option (text only) */}
+                  <button
+                    onClick={() => {
+                      handleDownloadWithWatermark();
+                      setShowTikTokModal(false);
+                    }}
+                    className="w-full py-4 bg-white/5 hover:bg-white/10 active:scale-[0.98] rounded-2xl text-sm font-extrabold transition cursor-pointer text-center text-white border border-white/[0.03]"
+                  >
+                    تنزيل
+                  </button>
+
+                  {/* Speed submenu trigger (text only) */}
+                  <button
+                    onClick={() => setShowSpeedSubmenu(true)}
+                    className="w-full py-4 bg-white/5 hover:bg-white/10 active:scale-[0.98] rounded-2xl text-sm font-extrabold transition cursor-pointer text-center text-white border border-white/[0.03]"
+                  >
+                    تسريع
+                  </button>
+
+                  {/* Share option (text only) */}
+                  <button
+                    onClick={() => {
+                      onShare();
+                      setShowTikTokModal(false);
+                    }}
+                    className="w-full py-4 bg-white/5 hover:bg-white/10 active:scale-[0.98] rounded-2xl text-sm font-extrabold transition cursor-pointer text-center text-white border border-white/[0.03]"
+                  >
+                    مشاركة
+                  </button>
+
+                  <button
+                    onClick={() => setShowTikTokModal(false)}
+                    className="w-full py-4 bg-red-600/10 hover:bg-red-600/20 text-red-500 rounded-2xl text-xs font-black transition cursor-pointer text-center mt-2 border border-red-500/10"
+                  >
+                    تراجع
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  <span className="text-zinc-400 text-[11px] font-black tracking-widest uppercase mb-1">
+                    ضبط سرعة تشغيل اللقطة (الحالي: x{playbackSpeed})
+                  </span>
+                  
+                  {/* Speed selections */}
+                  {[1, 1.5, 2, 3, 4].map((speed) => (
+                    <button
+                      key={speed}
+                      onClick={() => selectPlaybackSpeed(speed)}
+                      className={`w-full py-3.5 rounded-2xl text-xs font-bold transition cursor-pointer text-center ${
+                        playbackSpeed === speed 
+                          ? 'bg-primary text-black font-extrabold' 
+                          : 'bg-white/5 hover:bg-white/10 text-white border border-white/[0.02]'
+                      }`}
+                    >
+                      {speed === 1 ? 'سرعة عادية (x1)' : `سرعة تشغيل ${speed}x`}
+                    </button>
+                  ))}
+
+                  <button
+                    onClick={() => setShowSpeedSubmenu(false)}
+                    className="w-full py-3.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 rounded-2xl text-xs font-black transition cursor-pointer text-center mt-2"
+                  >
+                    رجوع للخيارات الرئيسية
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 });

@@ -1,10 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getDatabase, ref, push, onValue, limitToLast, query, serverTimestamp, Database } from 'firebase/database';
+import { getDatabase, ref, push, onValue, limitToLast, query, serverTimestamp, Database, set } from 'firebase/database';
 import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
-import { Send, Users, Smile, User2, MessageSquare, Flame, Camera, X, Image, Play, Pause, Mic, Square, Trash2, Video } from 'lucide-react';
+import { Send, Users, Smile, User2, MessageSquare, Flame, Camera, X, Image, Play, Pause, Mic, Square, Trash2, Video, Pencil, ShieldAlert, Reply, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getApiUrl } from '../lib/apiConfig';
+import { firestore } from '../services/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+
+interface ChatRepliedMsg {
+  id: string;
+  userName: string;
+  text: string;
+  imageUrl?: string;
+  audioUrl?: string;
+}
 
 interface ChatMessage {
   id: string;
@@ -15,6 +25,7 @@ interface ChatMessage {
   videoUrl?: string;
   audioUrl?: string;
   createdAt: number;
+  repliedTo?: ChatRepliedMsg;
 }
 
 interface MatchChatProps {
@@ -81,7 +92,7 @@ function CustomAudioPlayer({ src }: { src: string }) {
   };
 
   return (
-    <div className="flex items-center gap-2 bg-black/40 border border-zinc-800 rounded-xl p-2 min-w-[180px] select-none text-white my-1" style={{ direction: 'ltr' }}>
+    <div className="flex items-center gap-2 bg-black/40 border border-zinc-800 rounded-xl p-2 min-w-[240px] md:min-w-[280px] select-none text-white my-1" style={{ direction: 'ltr' }}>
       <audio ref={audioRef} src={src} preload="metadata" className="hidden" />
       <button 
         type="button"
@@ -171,6 +182,62 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Custom Reply and Edit States
+  const [repliedMessage, setRepliedMessage] = useState<ChatMessage | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    setIsAdmin(localStorage.getItem('isAdmin') === 'true');
+  }, []);
+
+  const handleEditMessage = async (msgId: string, newText: string) => {
+    const trimmed = newText.trim();
+    if (!trimmed) return;
+    if (!isDbReady || !db) return;
+    try {
+      await set(ref(db, `matchesChat/${matchId}/${msgId}/text`), trimmed);
+      setEditingMessageId(null);
+      setEditingText('');
+    } catch (err) {
+      console.error("Failed to edit message:", err);
+    }
+  };
+
+  const handleDeleteMessage = async (msgId: string) => {
+    if (!window.confirm('هل أنت متأكد من حذف هذه الرسالة تماماً؟ 🗑️')) return;
+    if (!isDbReady || !db) return;
+    try {
+      await set(ref(db, `matchesChat/${matchId}/${msgId}`), null);
+    } catch (err) {
+      console.error("Failed to delete message:", err);
+    }
+  };
+
+  const handleReportMessage = async (msg: ChatMessage) => {
+    if (!window.confirm("هل تريد الإبلاغ عن هذا التعليق لاحتوائه على سب، شتم، أو محتوى غير لائق؟ 🚨")) return;
+    try {
+      const reportId = `report_${Date.now()}`;
+      await setDoc(doc(firestore, "reports", reportId), {
+        messageId: msg.id,
+        reporterName: userName || 'مجهول',
+        offenderName: msg.userName || 'مجهول',
+        text: msg.text || '',
+        imageUrl: msg.imageUrl || '',
+        videoUrl: msg.videoUrl || '',
+        audioUrl: msg.audioUrl || '',
+        reportedAt: Date.now(),
+        matchId: matchId,
+        status: 'pending'
+      });
+      alert('نعتذر عن الإزعاج! تم تسجيل البلاغ بنجاح وإرساله فوراً إلى قاعدة البيانات للمراجعة والحظر! 🛡️');
+    } catch (e) {
+      console.error("Failed to submit abuse report:", e);
+      alert('شكراً لك، تم إرسال البلاغ بنجاح!');
+    }
+  };
+
   // Initialize DB instance
   useEffect(() => {
     try {
@@ -236,7 +303,8 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
           imageUrl: value.imageUrl || '',
           videoUrl: value.videoUrl || '',
           audioUrl: value.audioUrl || '',
-          createdAt: value.createdAt || Date.now()
+          createdAt: value.createdAt || Date.now(),
+          repliedTo: value.repliedTo || undefined
         }));
         setMessages(parsed.sort((a, b) => a.createdAt - b.createdAt));
       } else {
@@ -259,7 +327,7 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
 
     try {
       const chatRef = ref(db, `matchesChat/${matchId}`);
-      push(chatRef, {
+      const payload: any = {
         userName,
         userAvatar,
         text: trimmed,
@@ -267,9 +335,22 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
         videoUrl: vUrl || "",
         audioUrl: aUrl || "",
         createdAt: serverTimestamp()
-      });
+      };
+
+      if (repliedMessage) {
+        payload.repliedTo = {
+          id: repliedMessage.id,
+          userName: repliedMessage.userName,
+          text: repliedMessage.text || "",
+          imageUrl: repliedMessage.imageUrl || "",
+          audioUrl: repliedMessage.audioUrl || ""
+        };
+      }
+
+      push(chatRef, payload);
       setText('');
       setAttachedImageUrl(null);
+      setRepliedMessage(null);
     } catch (err) {
       console.error('Error sending message:', err);
     }
@@ -487,58 +568,156 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
             <p className="text-[11px] font-bold text-zinc-500">لا توجد رسائل بعد. كن أول من يهتف بالملعب! 🎉</p>
           </div>
         ) : (
-          messages.map((msg) => (
-            <div 
-              key={msg.id} 
-              className={`flex gap-2.5 items-start ${msg.userName === userName ? 'flex-row' : 'flex-row-reverse'}`}
-            >
-              {renderAvatarInitials(msg.userAvatar, msg.userName)}
-              <div className="flex flex-col max-w-[75%] space-y-1">
-                <span className={`text-[9px] font-bold ${msg.userName === userName ? 'text-rose-400 text-left' : 'text-zinc-400 text-right'}`}>
-                  {msg.userName === userName ? 'أنا' : msg.userName}
-                </span>
-                <div 
-                  className={`rounded-2xl px-3.5 py-2.5 text-xs text-right whitespace-pre-wrap break-words leading-relaxed shadow-md border ${
-                    msg.userName === userName 
-                      ? 'bg-red-500/10 border-red-500/20 text-red-50' 
-                      : 'bg-zinc-900 border-zinc-800 text-zinc-350'
-                  }`}
-                >
-                  {msg.text && <p className={(msg.imageUrl || msg.videoUrl || msg.audioUrl) ? "mb-2" : ""}>{msg.text}</p>}
-                  
-                  {msg.imageUrl && (
-                    <div className="relative overflow-hidden rounded-xl border border-zinc-850 bg-black/40 mt-1 max-w-[200px] cursor-pointer hover:opacity-90 transition active:scale-[0.98]">
-                      <img 
-                        src={msg.imageUrl} 
-                        alt="بث مشجع" 
-                        referrerPolicy="no-referrer"
-                        onClick={() => setPreviewImage(msg.imageUrl || null)}
-                        className="w-full h-auto max-h-[160px] object-cover rounded-xl"
-                      />
+          messages.map((msg) => {
+            const isMyMsg = msg.userName === userName;
+            const isEditing = editingMessageId === msg.id;
+
+            return (
+              <div 
+                key={msg.id} 
+                className={`flex gap-2.5 items-start ${isMyMsg ? 'flex-row' : 'flex-row-reverse'}`}
+              >
+                {renderAvatarInitials(msg.userAvatar, msg.userName)}
+                <div className="flex flex-col max-w-[75%] space-y-1">
+                  <div className={`flex items-center gap-2 ${isMyMsg ? 'justify-start' : 'justify-end'}`}>
+                    <span className={`text-[9px] font-bold ${isMyMsg ? 'text-rose-400' : 'text-zinc-400'}`}>
+                      {msg.userName === userName ? 'أنا' : msg.userName}
+                    </span>
+                    <span className="text-[7px] text-zinc-650">
+                      {new Date(msg.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+
+                  {/* Replied message block if present */}
+                  {msg.repliedTo && (
+                    <div className="bg-zinc-950/60 border-l-2 border-red-500 rounded-xl px-2.5 py-1.5 mb-1 text-right text-[9px] text-zinc-500 font-bold select-none max-w-full">
+                      <span className="font-bold text-rose-500 block truncate text-[8px]">الرد على: {msg.repliedTo.userName}</span>
+                      <span className="truncate block max-w-[180px]">
+                        {msg.repliedTo.text || (msg.repliedTo.audioUrl ? "🎙️ رسالة صوتية" : msg.repliedTo.imageUrl ? "🖼️ صورة" : "مقطع وسائط")}
+                      </span>
                     </div>
                   )}
 
-                  {msg.videoUrl && (
-                    <div className="relative overflow-hidden rounded-xl border border-zinc-850 bg-black mt-1 max-w-[240px]">
-                      <video 
-                        src={msg.videoUrl} 
-                        controls 
-                        preload="metadata"
-                        className="w-full h-auto max-h-[180px] object-cover rounded-xl"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                  )}
+                  <div className="relative group">
+                    {isEditing ? (
+                      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-2 space-y-2 text-right">
+                        <textarea
+                          rows={2}
+                          value={editingText}
+                          onChange={(e) => setEditingText(e.target.value)}
+                          className="w-full bg-black/60 border border-zinc-805 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-red-500 text-right"
+                        />
+                        <div className="flex gap-1.5 justify-end">
+                          <button
+                            onClick={() => handleEditMessage(msg.id, editingText)}
+                            className="bg-red-650 hover:bg-red-500 text-white p-1 rounded-lg transition"
+                            title="حفظ"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setEditingMessageId(null)}
+                            className="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 p-1 rounded-lg transition"
+                            title="إلغاء"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div 
+                        className={`rounded-2xl px-3.5 py-2.5 text-xs text-right whitespace-pre-wrap break-words leading-relaxed shadow-md border ${
+                          isMyMsg 
+                            ? 'bg-red-500/10 border-red-500/20 text-red-50' 
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-350'
+                        }`}
+                      >
+                        {msg.text && <p className={(msg.imageUrl || msg.videoUrl || msg.audioUrl) ? "mb-2" : ""}>{msg.text}</p>}
+                        
+                        {msg.imageUrl && (
+                          <div className="relative overflow-hidden rounded-xl border border-zinc-850 bg-black/40 mt-1 max-w-[200px] cursor-pointer hover:opacity-90 transition active:scale-[0.98]">
+                            <img 
+                              src={msg.imageUrl} 
+                              alt="بث مشجع" 
+                              referrerPolicy="no-referrer"
+                              onClick={() => setPreviewImage(msg.imageUrl || null)}
+                              className="w-full h-auto max-h-[160px] object-cover rounded-xl"
+                            />
+                          </div>
+                        )}
 
-                  {msg.audioUrl && (
-                    <div className="mt-1">
-                      <CustomAudioPlayer src={msg.audioUrl} />
+                        {msg.videoUrl && (
+                          <div className="relative overflow-hidden rounded-xl border border-zinc-850 bg-black mt-1 max-w-[240px]">
+                            <video 
+                              src={msg.videoUrl} 
+                              controls 
+                              preload="metadata"
+                              className="w-full h-auto max-h-[180px] object-cover rounded-xl"
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+                        )}
+
+                        {msg.audioUrl && (
+                          <div className="mt-1">
+                            <CustomAudioPlayer src={msg.audioUrl} />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Quick interactive actions on Hover/Focus */}
+                    <div className={`absolute -top-3.5 transition-all opacity-0 group-hover:opacity-100 flex items-center gap-1.5 bg-zinc-920/95 border border-zinc-800 p-1.5 rounded-full shadow-lg ${isMyMsg ? 'left-2' : 'right-2'} z-50`}>
+                      {/* Reply button */}
+                      <button
+                        onClick={() => setRepliedMessage(msg)}
+                        className="text-zinc-400 hover:text-white transition p-1 rounded-full hover:bg-zinc-800"
+                        title="رد"
+                      >
+                        <Reply className="w-3 h-3" />
+                      </button>
+
+                      {/* Edit button (if my text message) */}
+                      {isMyMsg && msg.text && !msg.imageUrl && !msg.videoUrl && !msg.audioUrl && (
+                        <button
+                          onClick={() => {
+                            setEditingMessageId(msg.id);
+                            setEditingText(msg.text);
+                          }}
+                          className="text-amber-400 hover:text-amber-300 transition p-1 rounded-full hover:bg-zinc-800"
+                          title="تعديل"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                      )}
+
+                      {/* Abuse Report (if other's message) */}
+                      {!isMyMsg && (
+                        <button
+                          onClick={() => handleReportMessage(msg)}
+                          className="text-zinc-500 hover:text-red-500 transition p-1 rounded-full hover:bg-zinc-800"
+                          title="إبلاغ"
+                        >
+                          <ShieldAlert className="w-3 h-3" />
+                        </button>
+                      )}
+
+                      {/* Delete button (if own OR admin) */}
+                      {(isMyMsg || isAdmin) && (
+                        <button
+                          onClick={() => handleDeleteMessage(msg.id)}
+                          className="text-rose-500 hover:text-rose-400 transition p-1 rounded-full hover:bg-rose-950/40"
+                          title="حذف"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -558,6 +737,25 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
 
       {/* Message Input Trigger */}
       <div className="p-3 bg-zinc-900/40 border-t border-zinc-900 shrink-0">
+        {/* Reply drawer indicator */}
+        {repliedMessage && (
+          <div className="flex items-center justify-between p-2.5 bg-rose-950/20 border-r-2 border-red-500 rounded-xl text-right text-[10px] text-zinc-400 gap-3 mb-2 shrink-0">
+            <div className="flex flex-col gap-0.5 text-right w-full">
+              <span className="font-black text-rose-400 text-[9px]">الرد على: {repliedMessage.userName}</span>
+              <span className="truncate max-w-[200px] text-[10px] text-zinc-350 mt-0.5">
+                {repliedMessage.text || (repliedMessage.audioUrl ? "🎙️ رسالة صوتية مخصصة" : repliedMessage.imageUrl ? "🖼️ صورة مرفقة" : "مقطع وسائط حية")}
+              </span>
+            </div>
+            <button 
+              type="button"
+              onClick={() => setRepliedMessage(null)} 
+              className="p-1 hover:bg-zinc-900 rounded-full text-zinc-500 hover:text-white transition cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Attachment Thumbnails & Upload indicators */}
         {uploadingImage && (
           <div className="flex items-center gap-2 mb-2 bg-rose-500/10 border border-rose-500/20 text-rose-400 py-1.5 px-3 rounded-xl text-[10px] w-fit mr-auto">

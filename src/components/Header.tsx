@@ -10,6 +10,18 @@ export default function Header() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [viewportHeight, setViewportHeight] = useState('100dvh');
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  useEffect(() => {
+    const checkStatus = () => {
+      const isStandaloneMode = 
+        window.matchMedia('(display-mode: standalone)').matches || 
+        (window.navigator as any).standalone ||
+        document.referrer.includes('android-app://');
+      setIsStandalone(!!isStandaloneMode);
+    };
+    checkStatus();
+  }, []);
 
   // Multi-resilient dynamic mobile visual viewport resize listener (fixes keyboard cut-off on Chrome/Safari mobile platforms)
   useEffect(() => {
@@ -136,20 +148,24 @@ export default function Header() {
             {location.pathname === '/' && (
               <>
                 <SettingsMenu />
-                <button
-                  onClick={() => window.dispatchEvent(new Event('trigger-install-wizard'))}
-                  className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-black hover:bg-white/10 active:scale-95 text-zinc-300 hover:text-white transition-all cursor-pointer shadow-lg shadow-black/20"
-                >
-                  <Smartphone className="w-3.5 h-3.5 text-primary" />
-                  <span>تثبيت التطبيق / اختصار 🍿</span>
-                </button>
-                <button
-                  onClick={() => window.dispatchEvent(new Event('trigger-install-wizard'))}
-                  className="flex sm:hidden items-center justify-center p-2.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 text-zinc-400 hover:text-white transition-all cursor-pointer shadow-lg shadow-black/20"
-                  title="تحميل التطبيق أو الاختصار"
-                >
-                  <Smartphone className="w-4 h-4 text-primary animate-pulse" />
-                </button>
+                {!isStandalone && (
+                  <>
+                    <button
+                      onClick={() => window.dispatchEvent(new Event('trigger-install-wizard'))}
+                      className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-black hover:bg-white/10 active:scale-95 text-zinc-300 hover:text-white transition-all cursor-pointer shadow-lg shadow-black/20"
+                    >
+                      <Smartphone className="w-3.5 h-3.5 text-primary" />
+                      <span>تثبيت التطبيق / اختصار 🍿</span>
+                    </button>
+                    <button
+                      onClick={() => window.dispatchEvent(new Event('trigger-install-wizard'))}
+                      className="flex sm:hidden items-center justify-center p-2.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 text-zinc-400 hover:text-white transition-all cursor-pointer shadow-lg shadow-black/20"
+                      title="تحميل التطبيق أو الاختصار"
+                    >
+                      <Smartphone className="w-4 h-4 text-primary animate-pulse" />
+                    </button>
+                  </>
+                )}
               </>
             )}
           </div>
