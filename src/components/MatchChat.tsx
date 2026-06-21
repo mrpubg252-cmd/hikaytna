@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, push, onValue, limitToLast, query, serverTimestamp, Database, set } from 'firebase/database';
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
 import { Send, Users, Smile, User2, MessageSquare, Flame, Camera, X, Image, Play, Pause, Mic, Square, Trash2, Video, Pencil, ShieldAlert, Reply, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -387,7 +388,6 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
     const isVideo = fileType.startsWith("video/");
     const isAudio = fileType.startsWith("audio/");
 
-    // Show indicator
     setUploadingImage(true);
     try {
       const reader = new FileReader();
@@ -454,7 +454,6 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
         // Release hardware mic resource
         stream.getTracks().forEach(track => track.stop());
 
-        // Create base64
         setUploadingImage(true);
         try {
           const reader = new FileReader();
@@ -469,20 +468,21 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
               });
               const uploadData = await uploadRes.json();
               if (uploadData.success && uploadData.url) {
-                // Instantly send voice note to Firebase RTDB
+                // Instantly send to Firebase matching the user's intent!
                 handleSendMessage("", "", "", uploadData.url);
               } else {
-                alert("عذراً، فشل رفع المقطع الصوتي للفايربيس.");
+                alert(uploadData.error || "عذراً فشل رفع الملف، يرجى المحاولة مرة أخرى.");
               }
-            } catch (err) {
-              console.error("Audio upload failing:", err);
+            } catch (xhrErr) {
+              console.error("XHR audio upload error:", xhrErr);
+              alert("خطأ أثناء التواصل مع خادم الرفع.");
             } finally {
               setUploadingImage(false);
             }
           };
           reader.readAsDataURL(audioBlob);
-        } catch (err) {
-          console.error("FileReader audio failed", err);
+        } catch (readErr) {
+          console.error("Failed to read audio:", readErr);
           setUploadingImage(false);
         }
       };

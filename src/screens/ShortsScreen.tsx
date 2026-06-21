@@ -9,6 +9,9 @@ import { db, firestore, fetchAllFromFirebase } from '../services/firebase';
 import { fetchAllSeries } from '../services/dataService';
 import { ref as rtdbRef, onValue, push, set, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
 import { collection, onSnapshot, addDoc, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { initializeApp, getApps } from 'firebase/app';
+import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
 import { fetchEpisodesFromAPI, fetchPlayUrlFromAPI } from '../services/api';
 import BottomNav from '../components/BottomNav';
 import SeriesChat from '../components/SeriesChat';
@@ -1155,75 +1158,117 @@ export default function ShortsScreen() {
       return;
     }
     
-    // Convert MM:SS to total seconds for the fragment
-    const startTimeInSecs = parseTimeToSeconds(pubStartTime);
-    const endTimeInSecs = parseTimeToSeconds(pubEndTime);
-    
-    if (endTimeInSecs <= startTimeInSecs) {
-        showToast('يجب أن تكون نهاية اللقطة بعد بدايتها.', "error");
-        return;
-    }
-    
     setIsPublishing(true);
-    
-    // Search the full series archive from our real Firebase database state (`allDBSeries`)
-    const matchedSeries = allDBSeries.find(s => s.title === pubSeriesName);
-    
-    let baseSourceVideo = '';
-    if (matchedSeries) {
-      let episodesArr = matchedSeries.episodes 
-        ? (Array.isArray(matchedSeries.episodes) ? matchedSeries.episodes : Object.values(matchedSeries.episodes))
-        : [];
+
+    let finalVideoUrl = '';
+    let targetTimeRange = '';
+
+    if (uploadMode === 'from_device') {
+      if (!customVideoFile) {
+        showToast('يرجى اختيار فيديو أولاً!', "error");
+        setIsPublishing(false);
+        return;
+      }
+      
+      try {
+        const reader = new FileReader();
+        const base64String = await new Promise<string>((resolve, reject) => {
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(customVideoFile);
+        });
         
-      if (episodesArr.length === 0 && matchedSeries.url) {
-        try {
-          episodesArr = await fetchEpisodesFromAPI(matchedSeries.url);
-        } catch (err) {
-          console.warn(`Failed to fetch API episodes for ${matchedSeries.title}`, err);
+        const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-image") : "/api/v1/upload-image";
+        const uploadRes = await fetch(uploadEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: base64String })
+        });
+        const uploadData = await uploadRes.json();
+        
+        if (uploadData.success && uploadData.url) {
+          finalVideoUrl = uploadData.url;
+          targetTimeRange = 'Custom';
+        } else {
+          showToast("عذراً فشل رفع الفيديو لخوادمنا التخزينية.", "error");
+          setIsPublishing(false);
+          return;
+        }
+      } catch (err) {
+        showToast("فقد الاتصال لرفع الفيديو، تأكد من الإنترنت", "error");
+        console.error("Upload error: ", err);
+        setIsPublishing(false);
+        return;
+      }
+    } else {
+      // from_series logic
+      const startTimeInSecs = parseTimeToSeconds(pubStartTime);
+      const endTimeInSecs = parseTimeToSeconds(pubEndTime);
+      
+      if (endTimeInSecs <= startTimeInSecs) {
+          showToast('يجب أن تكون نهاية اللقطة بعد بدايتها.', "error");
+          setIsPublishing(false);
+          return;
+      }
+      
+      // Search the full series archive from our real Firebase database state (`allDBSeries`)
+      const matchedSeries = allDBSeries.find(s => s.title === pubSeriesName);
+      
+      let baseSourceVideo = '';
+      if (matchedSeries) {
+        let episodesArr = matchedSeries.episodes 
+          ? (Array.isArray(matchedSeries.episodes) ? matchedSeries.episodes : Object.values(matchedSeries.episodes))
+          : [];
+          
+        if (episodesArr.length === 0 && matchedSeries.url) {
+          try {
+            episodesArr = await fetchEpisodesFromAPI(matchedSeries.url);
+          } catch (err) {
+            console.warn(`Failed to fetch API episodes for ${matchedSeries.title}`, err);
+          }
+        }
+        
+        if (episodesArr && episodesArr.length > 0) {
+          const epIdx = parseInt(pubEpisodeNum) - 1;
+          const matchedEp = episodesArr[epIdx] || episodesArr[0];
+          if (matchedEp) {
+            // Extract the real video link
+            let rawEpUrl = matchedEp.link1 || matchedEp.url || matchedEp.link2 || matchedEp.link3 || '';
+            // Try to fetch the direct playable URL from api using our play proxy if it's an API episode URL lacking direct mp4
+            if (rawEpUrl && !rawEpUrl.endsWith('.mp4') && !rawEpUrl.endsWith('.m3u8')) {
+               try {
+                  const fromApi = await fetchPlayUrlFromAPI(rawEpUrl);
+                  if (fromApi) rawEpUrl = fromApi;
+               } catch { }
+            }
+            baseSourceVideo = rawEpUrl;
+          }
         }
       }
       
-      if (episodesArr && episodesArr.length > 0) {
-        const epIdx = parseInt(pubEpisodeNum) - 1;
-        const matchedEp = episodesArr[epIdx] || episodesArr[0];
-        if (matchedEp) {
-          // Extract the real video link
-          let rawEpUrl = matchedEp.link1 || matchedEp.url || matchedEp.link2 || matchedEp.link3 || '';
-          // Try to fetch the direct playable URL from api using our play proxy if it's an API episode URL lacking direct mp4
-          if (rawEpUrl && !rawEpUrl.endsWith('.mp4') && !rawEpUrl.endsWith('.m3u8')) {
-             try {
-                const fromApi = await fetchPlayUrlFromAPI(rawEpUrl);
-                if (fromApi) rawEpUrl = fromApi;
-             } catch { }
-          }
-          baseSourceVideo = rawEpUrl;
-        }
+      // Validate if it is a blacklisted video
+      if (isBlacklistedUrl(baseSourceVideo)) {
+        showToast("عذراً، هذا الرابط غير مدعوم أو لا يحتوي على محتوى صالح.", "error");
+        setIsPublishing(false);
+        return;
       }
+      
+      // If absolutely no video link found, DO NOT fall back to templates. Show error!
+      if (!baseSourceVideo || baseSourceVideo.includes('example.com')) {
+        showToast("عذراً، لا يمكن العثور على رابط فيديو صالح لهذه الحلقة.", "error");
+        setIsPublishing(false);
+        return;
+      }
+      
+      finalVideoUrl = `${baseSourceVideo}#t=${startTimeInSecs},${endTimeInSecs}`;
+      targetTimeRange = `${pubStartTime} - ${pubEndTime}`;
     }
-    
-    // Validate if it is a blacklisted video
-    if (isBlacklistedUrl(baseSourceVideo)) {
-      showToast("عذراً، هذا الرابط غير مدعوم أو لا يحتوي على محتوى صالح.", "error");
-      setIsPublishing(false);
-      return;
-    }
-    
-    // If absolutely no video link found, DO NOT fall back to templates. Show error!
-    if (!baseSourceVideo || baseSourceVideo.includes('example.com')) {
-      showToast("عذراً، لا يمكن العثور على رابط فيديو صالح لهذه الحلقة.", "error");
-      setIsPublishing(false);
-      return;
-    }
-    
-    // Embed the fragment parameter on URL so that the video starts seeking instantly
-    const videoUrlWithFragment = `${baseSourceVideo}#t=${startTimeInSecs},${endTimeInSecs}`;
 
     const publisherName = authorName;
     const finalTitle = pubTitleSuffix.trim() ? pubTitleSuffix.trim() : `لقطة رائعة من ${pubSeriesName} 🎬🔥`;
-    const targetTimeRange = `${pubStartTime} - ${pubEndTime}`;
 
     // Check if exactly this clip already exists
-    const isDuplicate = filteredShorts.some(s => s.videoUrl === videoUrlWithFragment && s.timeRange === targetTimeRange);
+    const isDuplicate = filteredShorts.some(s => s.videoUrl === finalVideoUrl && s.timeRange === targetTimeRange);
     if (isDuplicate) {
       showToast("هذه اللقطة موجودة بالفعل وتم نشرها مسبقاً! 🎬", "error");
       setIsPublishing(false);
@@ -1235,7 +1280,7 @@ export default function ShortsScreen() {
         title: finalTitle,
         seriesName: pubSeriesName,
         episodeNum: pubEpisodeNum,
-        videoUrl: videoUrlWithFragment,
+        videoUrl: finalVideoUrl,
         thumbnail: 'https://images.unsplash.com/photo-1543508282-6319a3e2621d?q=80&w=400&auto=format&fit=crop',
         likes: Math.floor(Math.random() * 10) + 15, 
         views: Math.floor(Math.random() * 80) + 120, // default dummy organic startup views
@@ -1802,6 +1847,40 @@ export default function ShortsScreen() {
 
               <form onSubmit={handlePublishShort} className="space-y-4 max-h-[65vh] overflow-y-auto no-scrollbar pb-4">
                 
+                {/* Upload Mode Tabs */}
+                <div className="flex rounded-xl overflow-hidden bg-black border border-white/10 p-1 mb-4">
+                   <button
+                     type="button"
+                     onClick={() => setUploadMode('from_series')}
+                     className={`flex-1 py-2 text-[11px] font-bold transition-all rounded-lg ${uploadMode === 'from_series' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                   >
+                     قص من حلقة ✂️
+                   </button>
+                   <button
+                     type="button"
+                     onClick={() => setUploadMode('from_device')}
+                     className={`flex-1 py-2 text-[11px] font-bold transition-all rounded-lg ${uploadMode === 'from_device' ? 'bg-primary text-black' : 'text-zinc-500 hover:text-zinc-300'}`}
+                   >
+                     رفع لقطة من عندك 📱
+                   </button>
+                </div>
+
+                {uploadMode === 'from_device' && (
+                  <div className="space-y-2 mb-4">
+                    <label className="block text-[11px] font-black text-zinc-400">اختر فيديو من جهازك (MP4)</label>
+                    <input 
+                       type="file" 
+                       accept="video/*"
+                       onChange={(e) => {
+                         if (e.target.files && e.target.files.length > 0) {
+                           setCustomVideoFile(e.target.files[0]);
+                         }
+                       }}
+                       className="w-full text-xs text-white file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-black hover:file:bg-primary/90"
+                    />
+                  </div>
+                )}
+                
                 {/* Search Series */}
                 <div className="space-y-4">
                   <div className="relative">
@@ -1867,75 +1946,79 @@ export default function ShortsScreen() {
                       </select>
                     </div>
 
-                    {/* Micro segment selection (Precise Time Entry) */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="block text-[11px] font-black text-zinc-400">من الوقت (MM:SS) *</label>
-                        <input 
-                          type="text"
-                          required
-                          placeholder="مثال: 10:00"
-                          value={pubStartTime}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (/^[0-9:]*$/.test(val)) setPubStartTime(val);
-                          }}
-                          className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-center text-xs text-white focus:outline-none focus:border-primary font-bold"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="block text-[11px] font-black text-zinc-400">إلى الوقت (MM:SS) *</label>
-                        <input 
-                          type="text"
-                          required
-                          placeholder="مثال: 10:45"
-                          value={pubEndTime}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (/^[0-9:]*$/.test(val)) setPubEndTime(val);
-                          }}
-                          className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-center text-xs text-white focus:outline-none focus:border-primary font-bold"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-zinc-500 font-bold text-center bg-zinc-950/50 py-1.5 rounded-lg border border-white/5">
-                       💡 استخدم تنسيق (دقيقة:ثانية) مثل 05:30 أو فقط (ثانية) مثل 90
-                    </p>
+                    {uploadMode === 'from_series' && (
+                      <>
+                        {/* Micro segment selection (Precise Time Entry) */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="block text-[11px] font-black text-zinc-400">من الوقت (MM:SS) *</label>
+                            <input 
+                              type="text"
+                              required
+                              placeholder="مثال: 10:00"
+                              value={pubStartTime}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (/^[0-9:]*$/.test(val)) setPubStartTime(val);
+                              }}
+                              className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-center text-xs text-white focus:outline-none focus:border-primary font-bold"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="block text-[11px] font-black text-zinc-400">إلى الوقت (MM:SS) *</label>
+                            <input 
+                              type="text"
+                              required
+                              placeholder="مثال: 10:45"
+                              value={pubEndTime}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (/^[0-9:]*$/.test(val)) setPubEndTime(val);
+                              }}
+                              className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-center text-xs text-white focus:outline-none focus:border-primary font-bold"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-zinc-500 font-bold text-center bg-zinc-950/50 py-1.5 rounded-lg border border-white/5">
+                           💡 استخدم تنسيق (دقيقة:ثانية) مثل 05:30 أو فقط (ثانية) مثل 90
+                        </p>
 
-                    {/* Preview Button */}
-                    <div className="space-y-2">
-                      <button 
-                        type="button"
-                    onClick={handlePreviewScene}
-                    disabled={previewLoading}
-                    className="w-full bg-zinc-950 border border-white/10 hover:border-amber-500/50 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black text-amber-500 transition active:scale-95"
-                  >
-                    {previewLoading ? <div className="w-3 h-3 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                    {previewLoading ? 'جاري تحضير المعاينة...' : 'معاينة اللقطة قبل النشر 🎞️'}
-                  </button>
+                        {/* Preview Button */}
+                        <div className="space-y-2">
+                          <button 
+                            type="button"
+                            onClick={handlePreviewScene}
+                            disabled={previewLoading}
+                            className="w-full bg-zinc-950 border border-white/10 hover:border-amber-500/50 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black text-amber-500 transition active:scale-95"
+                          >
+                            {previewLoading ? <div className="w-3 h-3 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                            {previewLoading ? 'جاري تحضير المعاينة...' : 'معاينة اللقطة قبل النشر 🎞️'}
+                          </button>
 
-                  {previewUrl && (
-                    <motion.div 
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      className="rounded-xl overflow-hidden border border-white/10 bg-black aspect-video relative"
-                    >
-                      <video 
-                        src={previewUrl} 
-                        className="w-full h-full object-contain" 
-                        controls 
-                        autoPlay 
-                        muted
-                      />
-                      <button 
-                        onClick={() => setPreviewUrl('')}
-                        className="absolute top-2 right-2 p-1 bg-black/60 rounded-full text-white hover:bg-black"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </motion.div>
-                  )}
-                </div>
+                          {previewUrl && (
+                            <motion.div 
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              className="rounded-xl overflow-hidden border border-white/10 bg-black aspect-video relative"
+                            >
+                              <video 
+                                src={previewUrl} 
+                                className="w-full h-full object-contain" 
+                                controls 
+                                autoPlay 
+                                muted
+                              />
+                              <button 
+                                onClick={() => setPreviewUrl('')}
+                                className="absolute top-2 right-2 p-1 bg-black/60 rounded-full text-white hover:bg-black"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </motion.div>
+                          )}
+                        </div>
+                      </>
+                    )}
 
                 {/* Custom Title detail description */}
                 <div className="space-y-1">

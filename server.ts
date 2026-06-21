@@ -1612,7 +1612,7 @@ async function startServer() {
     }
   });
 
-  // Secure Image & Media Uploader Proxy Endpoint (Proxy to Top4toP with Catbox/Freeimage fallback)
+  // Secure Image & Media Uploader Proxy Endpoint
   app.post("/api/v1/upload-image", async (req, res) => {
     try {
       const { image, file: fileKey } = req.body;
@@ -1626,119 +1626,33 @@ async function startServer() {
       const base64Data = originalPayload.replace(/^data:[^;]+;base64,/, "");
       const buffer = Buffer.from(base64Data, "base64");
 
-      // Verify file size limit (25MB) for movies/audio recordings/gifs
-      if (buffer.length > 25 * 1024 * 1024) {
-        return res.status(400).json({ success: false, error: "حجم الملف كبير جداً. الحد الأقصى المسموح به هو 25 ميجابايت." });
+      if (buffer.length > 35 * 1024 * 1024) {
+        return res.status(400).json({ success: false, error: "حجم الملف كبير جداً. الحد الأقصى هو 35 ميجابايت." });
       }
 
-      // Determine extension
       let extension = "jpg";
       if (mimeType.includes("png")) extension = "png";
       else if (mimeType.includes("gif")) extension = "gif";
       else if (mimeType.includes("webp")) extension = "webp";
       else if (mimeType.includes("mp4")) extension = "mp4";
-      else if (mimeType.includes("quicktime") || mimeType.includes("mov")) extension = "mov";
+      else if (mimeType.includes("mov")) extension = "mov";
       else if (mimeType.includes("mpeg") || mimeType.includes("mp3")) extension = "mp3";
       else if (mimeType.includes("wav")) extension = "wav";
       else if (mimeType.includes("ogg") || mimeType.includes("opus")) extension = "ogg";
-      else if (mimeType.includes("m4a") || mimeType.includes("x-m4a")) extension = "m4a";
       else if (mimeType.includes("webm")) extension = "webm";
       else {
         const parts = mimeType.split("/");
-        if (parts.length > 1) {
-          extension = parts[1].replace(/[^a-zA-Z0-9]/g, "");
-        }
+        if (parts.length > 1) extension = parts[1].replace(/[^a-zA-Z0-9]/g, "");
       }
 
-      console.log(`[UPLOADER] Received media file to upload (${buffer.length} bytes, type: ${mimeType}, extension: ${extension})`);
+      const isImage = mimeType.startsWith("image/");
+      const fileName = `media_${Date.now()}.${extension}`;
+      console.log(`[UPLOADER] Received media (${buffer.length} bytes, type: ${mimeType}, ext: ${extension})`);
 
-      // 1. TRY TOP4TOP FIRST (Primary Choice - Supports audios, video, images)
-      try {
-        console.log("[UPLOADER] Attempting upload to top4top.io...");
-        const getRes = await axios.get("https://top4top.io/", {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-          },
-          timeout: 6000
-        });
-
-        const html = getRes.data || "";
-        const sidMatch = html.match(/name="sid"\s+value="([^"]+)"/);
-        const sid = sidMatch ? sidMatch[1] : "";
-
-        // Extract Cookies
-        const setCookies = getRes.headers['set-cookie'] || [];
-        const cookieStr = setCookies.map(c => c.split(';')[0]).join('; ');
-
-        // Construct standard multipart data
-        const formData = new (globalThis as any).FormData();
-        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
-        formData.append("file_0_", blob, `media_${Date.now()}.${extension}`);
-        formData.append("submitr", "[ رفع الملفات ]");
-        if (sid) {
-          formData.append("sid", sid);
-        }
-
-        const uploadRes = await fetch("https://top4top.io/index.php", {
-          method: "POST",
-          body: formData,
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-            "Referer": "https://top4top.io/",
-            "Cookie": cookieStr
-          }
-        });
-
-        const uploadHtml = await uploadRes.text();
-        const rx = /https?:\/\/[a-zA-Z0-9-]+\.top4top\.(io|net)\/[a-zA-Z0-9_/.-]+\.(png|jpg|jpeg|gif|webp|mov|mp4|avi|mp3|wav|ogg|m4a|aac|webm)/gi;
-        const matches = (uploadHtml.match(rx) || []).filter((link: string) => {
-          const l = link.toLowerCase();
-          return !l.includes('s.top4top') && !l.includes('/styles/') && !l.includes('/images/') && !l.includes('favicon.ico');
-        });
-
-        if (matches.length > 0) {
-          const finalUrl = matches[0].replace(/&amp;/g, "&");
-          console.log("[UPLOADER] Successfully processed Top4toP: ", finalUrl);
-          return res.json({ success: true, url: finalUrl });
-        }
-        console.warn("[UPLOADER] Top4toP response did not match direct media URL patterns.");
-      } catch (err: any) {
-        console.warn("[UPLOADER] Top4toP primary upload failed:", err.message);
-      }
-
-      // 2. FALLBACK TO CATBOX (Highly reliable backup hosting for video, audio & image)
-      try {
-        console.log("[UPLOADER] Attempting fallback upload to catbox.moe...");
-        const formData = new (globalThis as any).FormData();
-        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
-        formData.append("reqtype", "fileupload");
-        formData.append("fileToUpload", blob, `media_${Date.now()}.${extension}`);
-
-        const fallbackRes = await fetch("https://catbox.moe/user/api.php", {
-          method: "POST",
-          body: formData,
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          }
-        });
-
-        if (fallbackRes.ok) {
-          const textUrl = (await fallbackRes.text()).trim();
-          if (textUrl.startsWith("http")) {
-            console.log("[UPLOADER] Sandbox Fallback Success: ", textUrl);
-            return res.json({ success: true, url: textUrl });
-          }
-        }
-        console.warn("[UPLOADER] Fallback catbox.moe response not OK");
-      } catch (fallbackErr: any) {
-        console.error("[UPLOADER] Fallback catbox.moe failed:", fallbackErr.message);
-      }
-
-      // 3. SECOND FALLBACK: IMGBB PUBLIC API ROUTE (Only works if the uploaded file is an image)
-      if (mimeType.startsWith("image/")) {
+      // 1. FREEIMAGE.HOST (For Images Only - Extremely Fast)
+      if (isImage) {
         try {
-          console.log("[UPLOADER] Attempting second fallback upload to freeimage.host...");
+          console.log("[UPLOADER] Attempting Freeimage.host API...");
           const formData = new (globalThis as any).FormData();
           formData.append("key", "6d207e02198a847aa98d0a2a901485a5");
           formData.append("action", "upload");
@@ -1750,15 +1664,61 @@ async function startServer() {
           });
 
           if (imgbbRes.data && imgbbRes.data.image && imgbbRes.data.image.url) {
-            console.log("[UPLOADER] Freeimage Success:", imgbbRes.data.image.url);
             return res.json({ success: true, url: imgbbRes.data.image.url });
           }
-        } catch (imgbbErr: any) {
-          console.error("[UPLOADER] Second fallback failed:", imgbbErr.message);
+        } catch (err: any) {
+          console.warn("[UPLOADER] freeimage failed:", err.message);
         }
       }
 
-      res.status(500).json({ success: false, error: "عذراً، فشلت جميع محاولات الرفع لجميع الخوادم المتاحة." });
+      // 2. CATBOX (For Video, Audio, and Fallback for Images)
+      try {
+        console.log("[UPLOADER] Attempting Catbox.moe API...");
+        const formData = new (globalThis as any).FormData();
+        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
+        formData.append("reqtype", "fileupload");
+        formData.append("fileToUpload", blob, fileName);
+
+        const catboxRes = await fetch("https://catbox.moe/user/api.php", {
+          method: "POST",
+          body: formData,
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
+        });
+
+        if (catboxRes.ok) {
+          const textUrl = (await catboxRes.text()).trim();
+          if (textUrl.startsWith("http")) {
+            return res.json({ success: true, url: textUrl });
+          }
+        }
+      } catch (err: any) {
+        console.warn("[UPLOADER] Catbox failed:", err.message);
+      }
+
+      // 3. POMF.LAIN.LA (Secondary Fallback for Videos/Audios)
+      try {
+        console.log("[UPLOADER] Attempting Pomf.lain.la API...");
+        const formData = new (globalThis as any).FormData();
+        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
+        formData.append("files[]", blob, fileName);
+
+        const pomfRes = await fetch("https://pomf.lain.la/upload.php", {
+          method: "POST",
+          body: formData,
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+        });
+
+        if (pomfRes.ok) {
+          const jsonRes = await pomfRes.json();
+          if (jsonRes.success && jsonRes.files && jsonRes.files.length > 0) {
+            return res.json({ success: true, url: jsonRes.files[0].url });
+          }
+        }
+      } catch (err: any) {
+        console.warn("[UPLOADER] Pomf failed:", err.message);
+      }
+
+      res.status(500).json({ success: false, error: "عذراً، فشلت جميع الخوادم المتاحة في رفع هذا الملف." });
     } catch (globalErr: any) {
       console.error("[UPLOADER] Critical Global Error:", globalErr);
       res.status(500).json({ success: false, error: globalErr.message });

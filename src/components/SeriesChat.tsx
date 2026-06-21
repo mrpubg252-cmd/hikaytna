@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, push, set, onValue, remove, get, Database, query, limitToLast } from 'firebase/database';
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play, Pause, Trash2, Video, Pencil } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -851,7 +852,6 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     const isVideo = fileType.startsWith("video/");
     const isAudio = fileType.startsWith("audio/");
 
-    // Show indicator
     setUploadingImage(true);
     try {
       const reader = new FileReader();
@@ -866,7 +866,6 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
           });
           const uploadData = await uploadRes.json();
           if (uploadData.success && uploadData.url) {
-            // Instantly send to Firebase matching user intent!
             if (isImage) {
               handleSendMessage(undefined, "", uploadData.url, "", "");
             } else if (isVideo) {
@@ -877,21 +876,22 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
               handleSendMessage(undefined, "", uploadData.url, "", "");
             }
           } else {
-            alert(uploadData.error || "عذراً فشل رفع الملف، يرجى المحاولة مرة أخرى.");
+            alert(isImage ? "عذراً، فشل رفع الصورة." : "عذراً، فشل رفع المقطع.");
           }
-        } catch (xhrErr) {
-          console.error("XHR file upload error:", xhrErr);
-          alert("خطأ أثناء التواصل مع خادم الرفع.");
+        } catch (err) {
+          console.error("File upload failing:", err);
+          alert(isImage ? "عذراً، فشل رفع الصورة." : "عذراً، فشل رفع الملف.");
         } finally {
           setUploadingImage(false);
-          // Clear input target
           e.target.value = '';
         }
       };
       reader.readAsDataURL(file);
-    } catch (readErr) {
-      console.error("Failed to read file:", readErr);
+    } catch (err) {
+      console.error("File read failed:", err);
+    } finally {
       setUploadingImage(false);
+      e.target.value = '';
     }
   };
 
@@ -918,7 +918,6 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
         // Release hardware mic resource
         stream.getTracks().forEach(track => track.stop());
 
-        // Create base64
         setUploadingImage(true);
         try {
           const reader = new FileReader();
@@ -933,20 +932,21 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
               });
               const uploadData = await uploadRes.json();
               if (uploadData.success && uploadData.url) {
-                // Instantly send voice note to Firebase RTDB
                 handleSendMessage(undefined, "", "", "", uploadData.url);
               } else {
-                alert("عذراً، فشل رفع المقطع الصوتي للفايربيس.");
+                alert("عذراً، فشل رفع المقطع الصوتي لخوادمنا.");
               }
             } catch (err) {
               console.error("Audio upload failing:", err);
+              alert("عذراً، فشل رفع المقطع الصوتي لخوادمنا.");
             } finally {
               setUploadingImage(false);
             }
           };
           reader.readAsDataURL(audioBlob);
         } catch (err) {
-          console.error("FileReader audio failed", err);
+          console.error("Audio upload failed:", err);
+        } finally {
           setUploadingImage(false);
         }
       };
