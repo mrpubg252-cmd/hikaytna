@@ -5,8 +5,9 @@ import BottomNav from '../components/BottomNav';
 import MatchChat from '../components/MatchChat';
 import { motion, AnimatePresence } from 'motion/react';
 import { getApiUrl } from '../lib/apiConfig';
-import { db } from '../services/firebase';
+import { db, firestore } from '../services/firebase';
 import { ref, get, set, onValue } from 'firebase/database';
+import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 interface Match {
   id: string;
@@ -42,16 +43,28 @@ export default function MatchesScreen() {
   const [isSavingCustomUrl, setIsSavingCustomUrl] = useState(false);
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
 
+  // Custom stream overrides dictionary: matchId -> custom url
+  const [customStreams, setCustomStreams] = useState<Record<string, string>>({});
+
   const handleOpenOutsideEditor = async (match: Match) => {
     setEditingMatch(match);
     setCustomUrlInput('');
-    try {
-      const snap = await get(ref(db, `match_streams/${match.id}`));
-      if (snap.exists() && snap.val()) {
-        setCustomUrlInput(snap.val());
+    
+    // Check local loaded cache map first
+    if (customStreams[match.id]) {
+      setCustomUrlInput(customStreams[match.id]);
+    } else {
+      // Fallback query from Firestore
+      try {
+        const snap = await getDocs(collection(firestore, "match_streams"));
+        snap.forEach((doc) => {
+          if (doc.id === match.id) {
+            setCustomUrlInput(doc.data().url || '');
+          }
+        });
+      } catch (e) {
+        console.error("Could not fetch stream override from Firestore:", e);
       }
-    } catch (e) {
-      console.error("Could not fetch stream override:", e);
     }
   };
 
@@ -64,7 +77,20 @@ export default function MatchesScreen() {
     }
     setIsSavingCustomUrl(true);
     try {
-      await set(ref(db, `match_streams/${editingMatch.id}`), val);
+      // 1. Write to Firestore (Guaranteed to work securely)
+      const docRef = doc(firestore, "match_streams", editingMatch.id);
+      await setDoc(docRef, { url: val, updatedAt: Date.now() });
+
+      // 2. Try warning-free write to Realtime Database
+      try {
+        await set(ref(db, `match_streams/${editingMatch.id}`), val);
+      } catch (rtdbErr) {
+        console.warn("RTDB write warning (handled gracefully):", rtdbErr);
+      }
+
+      // Update local state map
+      setCustomStreams(prev => ({ ...prev, [editingMatch.id]: val }));
+
       alert('تم حفظ وتعميم رابط البث المباشر للجميع بنجاح! 🚀');
       setEditingMatch(null);
     } catch (err) {
@@ -80,7 +106,24 @@ export default function MatchesScreen() {
     if (!window.confirm('هل أنت متأكد من حذف البث المخصص والرجوع للبث التلقائي؟')) return;
     setIsSavingCustomUrl(true);
     try {
-      await set(ref(db, `match_streams/${editingMatch.id}`), null);
+      // 1. Delete from Firestore
+      const docRef = doc(firestore, "match_streams", editingMatch.id);
+      await deleteDoc(docRef);
+
+      // 2. Try warning-free delete on Realtime Database
+      try {
+        await set(ref(db, `match_streams/${editingMatch.id}`), null);
+      } catch (rtdbErr) {
+        console.warn("RTDB delete warning (handled gracefully):", rtdbErr);
+      }
+
+      // Update local state map
+      setCustomStreams(prev => {
+        const next = { ...prev };
+        delete next[editingMatch.id];
+        return next;
+      });
+
       alert('تم استرجاع البث التلقائي الافتراضي بنجاح! 🔄');
       setEditingMatch(null);
     } catch (err) {
@@ -91,9 +134,44 @@ export default function MatchesScreen() {
     }
   };
 
-  // Authenticate admin on mount
+  // Authenticate admin on mount & load custom stream overrides
   useEffect(() => {
     setIsAdmin(localStorage.getItem('short_admin_access') === 'true');
+
+    const loadCustomStreams = async () => {
+      try {
+        const snap = await getDocs(collection(firestore, "match_streams"));
+        const overrides: Record<string, string> = {};
+        snap.forEach((doc) => {
+          const dData = doc.data();
+          if (dData && dData.url) {
+            overrides[doc.id] = dData.url;
+          }
+        });
+        setCustomStreams(overrides);
+      } catch (e) {
+        console.error("Failed to load custom stream overrides from Firestore:", e);
+      }
+    };
+    loadCustomStreams();
+
+    // Listen to Realtime Database `/match_streams` for direct live updates if authorized
+    try {
+      const rtdbRef = ref(db, 'match_streams');
+      const unsubscribe = onValue(rtdbRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const val = snapshot.val();
+          if (val) {
+            setCustomStreams(prev => ({ ...prev, ...val }));
+          }
+        }
+      }, (error) => {
+        console.warn("RTDB direct subscription ignored gracefully:", error);
+      });
+      return () => unsubscribe();
+    } catch (e) {
+      console.warn("RTDB listener failed setup:", e);
+    }
   }, []);
 
   // Helper to determine if a match has ended
@@ -154,15 +232,24 @@ export default function MatchesScreen() {
 
     setLoadingStream(match.id);
     try {
-      // 1. Direct query from Firebase Realtime Database first for admin override stream link
+      // 1. Direct query from Firestore cache map first (fully secure and robust)
+      const customUrl = customStreams[match.id];
+      if (customUrl && customUrl.trim() !== "") {
+        setActiveStream({ match, iframeUrl: customUrl.trim(), streamError: false });
+        return;
+      }
+
+      // 2. Direct query from Firebase Realtime Database first for admin override stream link as fallback
       const customStreamRef = ref(db, `match_streams/${match.id}`);
       const snap = await get(customStreamRef);
       if (snap.exists() && snap.val() && snap.val().trim() !== "") {
         setActiveStream({ match, iframeUrl: snap.val().trim(), streamError: false });
+        // Update cache state
+        setCustomStreams(prev => ({ ...prev, [match.id]: snap.val().trim() }));
         return;
       }
 
-      // 2. Fall back to scraping the standard portal
+      // 3. Fall back to scraping the standard portal
       const res = await fetch(getApiUrl(`/api/v1/matches/stream?url=${encodeURIComponent(match.matchPageUrl)}`));
       const data = await res.json();
       if (data.status && data.iframeUrl) {
@@ -200,20 +287,34 @@ export default function MatchesScreen() {
   const handleSaveCustomStream = async () => {
     if (!activeStream) return;
     const matchId = activeStream.match.id;
-    if (!customUrlInput.trim()) {
+    const urlVal = customUrlInput.trim();
+    if (!urlVal) {
       alert('الرجاء إدخال رابط بث صحيح');
       return;
     }
     
     setIsSavingCustomUrl(true);
     try {
-      await set(ref(db, `match_streams/${matchId}`), customUrlInput.trim());
-      setActiveStream(prev => prev ? { ...prev, iframeUrl: customUrlInput.trim(), streamError: false } : null);
+      // 1. Write to Firestore (Primary & 100% reliable)
+      const streamDocRef = doc(firestore, "match_streams", matchId);
+      await setDoc(streamDocRef, { url: urlVal, updatedAt: Date.now() });
+
+      // 2. Try warning-free write to RTDB (secondary)
+      try {
+        await set(ref(db, `match_streams/${matchId}`), urlVal);
+      } catch (rtdbErr) {
+        console.warn("RTDB write warning (fully expected on restricted databases):", rtdbErr);
+      }
+
+      // Update local state map
+      setCustomStreams(prev => ({ ...prev, [matchId]: urlVal }));
+
+      setActiveStream(prev => prev ? { ...prev, iframeUrl: urlVal, streamError: false } : null);
       setIsAdminEditing(false);
       alert('تم حفظ وتعميم رابط البث المباشر المخصص بنجاح للجميع! 🚀');
     } catch (err: any) {
       console.error("Error setting custom match stream:", err);
-      alert('حدث خطأ أثناء حفظ الرابط السحابي');
+      alert('حدث خطأ أثناء حفظ الرابط السحابي في Firestore.');
     } finally {
       setIsSavingCustomUrl(false);
     }
@@ -226,8 +327,24 @@ export default function MatchesScreen() {
 
     setIsSavingCustomUrl(true);
     try {
-      await set(ref(db, `match_streams/${matchId}`), null);
-      
+      // 1. Delete from Firestore
+      const streamDocRef = doc(firestore, "match_streams", matchId);
+      await deleteDoc(streamDocRef);
+
+      // 2. Try RTDB deletion
+      try {
+        await set(ref(db, `match_streams/${matchId}`), null);
+      } catch (rtdbErr) {
+        console.warn("RTDB delete warning (fully expected on restricted databases):", rtdbErr);
+      }
+
+      // Update local state map
+      setCustomStreams(prev => {
+        const next = { ...prev };
+        delete next[matchId];
+        return next;
+      });
+
       // Force refresh of stream by calling scraper
       setIsAdminEditing(false);
       handleWatchStream(activeStream.match, true);
@@ -359,35 +476,44 @@ export default function MatchesScreen() {
               layout
               className="grid grid-cols-1 md:grid-cols-2 gap-6"
             >
-              {filteredMatches.map((m, index) => (
-                <motion.div
-                  key={m.id || index}
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.3, delay: index * 0.05 }}
-                  className="relative bg-zinc-950/40 border border-zinc-900/60 hover:border-red-950 rounded-[2rem] p-6 transition-all duration-300 flex flex-col justify-between group overflow-hidden"
-                >
-                  {/* Subtle Background Red Ripple Accent */}
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 blur-[50px] rounded-full pointer-events-none group-hover:bg-red-600/10 transition-colors" />
+              {filteredMatches.map((m, index) => {
+                const isCustomized = !!customStreams[m.id];
+                return (
+                  <motion.div
+                    key={m.id || index}
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.3, delay: index * 0.05 }}
+                    className={`relative bg-zinc-950/40 border rounded-[2rem] p-6 transition-all duration-300 flex flex-col justify-between group overflow-hidden ${
+                      isCustomized ? "border-emerald-650/40 hover:border-emerald-500/80" : "border-zinc-900/60 hover:border-red-950"
+                    }`}
+                  >
+                    {/* Subtle Background Red Ripple Accent */}
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 blur-[50px] rounded-full pointer-events-none group-hover:bg-red-600/10 transition-colors" />
 
-                  {/* Match Header */}
-                  <div className="relative z-10 flex items-center justify-between text-[11px] mb-6">
-                    <span className="font-black text-zinc-300 bg-zinc-900/60 border border-zinc-850 py-1.5 px-3.5 rounded-full shrink-0">
-                      🏆 {m.league}
-                    </span>
-                    {m.live ? (
-                      <span className="flex items-center gap-1.5 font-bold text-red-400 bg-red-950/40 border border-red-500/25 px-2.5 py-1 rounded-full text-[10px] animate-pulse">
-                        <span className="w-2 h-2 rounded-full bg-red-500" />
-                        بث مباشر
+                    {/* Match Header */}
+                    <div className="relative z-10 flex items-center justify-between text-[11px] mb-6">
+                      <span className="font-black text-zinc-300 bg-zinc-900/60 border border-zinc-850 py-1.5 px-3.5 rounded-full shrink-0">
+                        🏆 {m.league}
                       </span>
-                    ) : (
-                      <span className="text-zinc-400 font-bold flex items-center gap-1 text-[10px] bg-zinc-900/30 px-2.5 py-1 rounded-full border border-zinc-850">
-                        <Calendar className="w-3.5 h-3.5 text-zinc-500 animate-pulse" />
-                        {m.statusText || m.time}
-                      </span>
-                    )}
-                  </div>
+                      {isCustomized ? (
+                        <span className="flex items-center gap-1.5 font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-500/25 px-2.5 py-1 rounded-full text-[10px] animate-pulse">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          بث مباشر متاح
+                        </span>
+                      ) : m.live ? (
+                        <span className="flex items-center gap-1.5 font-bold text-red-400 bg-red-950/40 border border-red-500/25 px-2.5 py-1 rounded-full text-[10px] animate-pulse">
+                          <span className="w-2 h-2 rounded-full bg-red-500" />
+                          بث مباشر
+                        </span>
+                      ) : (
+                        <span className="text-zinc-400 font-bold flex items-center gap-1 text-[10px] bg-zinc-900/30 px-2.5 py-1 rounded-full border border-zinc-850">
+                          <Calendar className="w-3.5 h-3.5 text-zinc-500 animate-pulse" />
+                          {m.statusText || m.time}
+                        </span>
+                      )}
+                    </div>
 
                   {/* Teams and vs Block */}
                   <div className="relative z-10 flex items-center justify-between gap-4 py-2">
@@ -437,7 +563,11 @@ export default function MatchesScreen() {
                         </span>
                       )}
                       
-                      {m.statusText && (
+                      {isCustomized ? (
+                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-950/40 border-emerald-500/20 animate-pulse">
+                          بث مخصص نشط ⚡
+                        </span>
+                      ) : m.statusText ? (
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${
                           m.live 
                             ? 'text-red-400 bg-red-950/40 border-red-500/20 animate-pulse'
@@ -445,7 +575,7 @@ export default function MatchesScreen() {
                         }`}>
                           {m.statusText}
                         </span>
-                      )}
+                      ) : null}
                     </div>
 
                     {/* Team 2 */}
@@ -491,31 +621,35 @@ export default function MatchesScreen() {
                         </button>
                       )}
                       <button
-                        onClick={() => m.live && handleWatchStream(m)}
-                        disabled={loadingStream !== null || !m.live}
+                        onClick={() => (m.live || isCustomized) && handleWatchStream(m)}
+                        disabled={loadingStream !== null || (!m.live && !isCustomized)}
                         className={`py-2.5 px-6 rounded-2xl text-[11px] font-black flex items-center gap-2 transition duration-250 shrink-0 ${
-                          m.live 
-                            ? "bg-red-600 hover:bg-red-500 text-white cursor-pointer shadow-lg shadow-red-600/10 hover:shadow-red-600/25 active:scale-95" 
-                            : "bg-zinc-950 border border-zinc-900 text-zinc-505 cursor-not-allowed"
+                          isCustomized 
+                            ? "bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer shadow-lg shadow-emerald-600/10 hover:shadow-emerald-600/25 active:scale-95 border border-emerald-500/20" 
+                            : m.live 
+                              ? "bg-red-600 hover:bg-red-500 text-white cursor-pointer shadow-lg shadow-red-600/10 hover:shadow-red-600/25 active:scale-95" 
+                              : "bg-zinc-950 border border-zinc-900 text-zinc-500 cursor-not-allowed"
                         }`}
                       >
                         {loadingStream === m.id ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
                         ) : (
-                          <Play className={`w-3.5 h-3.5 ${m.live ? 'fill-current text-white' : 'text-zinc-750'}`} />
+                          <Play className={`w-3.5 h-3.5 ${m.live || isCustomized ? 'fill-current text-white' : 'text-zinc-750'}`} />
                         )}
                         <span>
-                          {m.live 
-                            ? "شاهد المباراة والدردشة" 
-                            : isMatchEnded(m)
-                              ? "انتهت المباراة" 
-                              : "لم تبدأ بعد"}
+                          {isCustomized 
+                            ? "اضغط لمشاهدة البث" 
+                            : m.live 
+                              ? "شاهد المباراة والدردشة" 
+                              : isMatchEnded(m)
+                                ? "انتهت المباراة" 
+                                : "لم تبدأ بعد"}
                         </span>
                       </button>
                     </div>
                   </div>
                 </motion.div>
-              ))}
+              );})}
             </motion.div>
           )}
         </AnimatePresence>
