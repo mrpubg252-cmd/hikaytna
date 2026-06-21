@@ -287,8 +287,15 @@ export default function SeriesChat({
   useEffect(() => {
     let savedName = localStorage.getItem('guest_chat_name');
     const savedAvatar = localStorage.getItem('guest_chat_avatar');
-    if (savedName && savedAvatar) {
+    const customAvatar = localStorage.getItem('user_avatar_url');
+    
+    if (savedName) {
       setUserName(savedName);
+    }
+    
+    if (customAvatar) {
+      setUserAvatar(customAvatar);
+    } else if (savedAvatar) {
       setUserAvatar(savedAvatar);
     } else {
       setIsProfileModalOpen(true);
@@ -344,6 +351,15 @@ export default function SeriesChat({
   const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [showStickerPanel, setShowStickerPanel] = useState(false);
+  
+  // Professional Stickers
+  const STICKERS = [
+    { id: 'st1', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/vV07p7lS8JzUu8kY9S/giphy.gif' },
+    { id: 'st2', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/v3HwU9Z8R2u9k867p8/giphy.gif' },
+    { id: 'st3', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/vO8fJ2Zp6uR2P6w4zM/giphy.gif' },
+    { id: 'st4', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/vNfR9Xp1o2k5X2R5W9/giphy.gif' },
+  ];
   
   // Native voice recording states
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
@@ -773,7 +789,7 @@ export default function SeriesChat({
       commentText: msg.text || '[وسائط]',
       authorName: msg.userName,
       chatType: 'series',
-      channelName: seriesName || 'مسلسل',
+      channelName: seriesTitle || 'مسلسل',
       reporterName: userName || 'مستخدم'
     });
     if (success) {
@@ -797,6 +813,12 @@ export default function SeriesChat({
     const finalAud = customAud !== undefined ? customAud : '';
 
     if (!txt && !replyTo && !pendingScene && !finalImg && !finalVid && !finalAud) return;
+
+    if (!userName || userName === 'مشاهد' || userName.includes('غير مسجل')) {
+      alert("يرجى إدخال اسمك أولاً في الملف الشخصي لتتمكن من الدردشة! ✍️");
+      setIsProfileModalOpen(true);
+      return;
+    }
 
     // Safety checks
     if (!userName || !userAvatar) return;
@@ -1476,17 +1498,25 @@ export default function SeriesChat({
                       </div>
                     )}
                     {msg.videoUrl && (
-                      <div className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black mt-2 max-w-[240px]">
+                      <div className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black mt-2 max-w-[240px] group">
                         <video 
                           src={msg.videoUrl} 
                           controls 
                           playsInline
-                          webkit-playsinline="true"
                           preload="metadata"
                           className="w-full h-auto max-h-[180px] object-cover rounded-xl bg-black"
                           referrerPolicy="no-referrer"
                           onClick={(e) => e.stopPropagation()}
                         />
+                        <a 
+                          href={msg.videoUrl} 
+                          download={`حكايتنا_${Date.now()}.mp4`}
+                          className="absolute top-2 left-2 p-2 bg-black/60 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                          onClick={(e) => e.stopPropagation()}
+                          title="تحميل الفيديو"
+                        >
+                          <Share2 className="w-4 h-4" />
+                        </a>
                       </div>
                     )}
                     {msg.audioUrl && (
@@ -1685,6 +1715,48 @@ export default function SeriesChat({
             </div>
           )}
 
+          {/* STICKER PANEL */}
+          <AnimatePresence>
+            {showStickerPanel && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="mx-3 mb-2 bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-[1.5rem] p-4 z-[200] shadow-2xl max-h-[220px] overflow-y-auto scrollbar-hide"
+              >
+                <div className="flex items-center justify-between mb-3 px-2">
+                  <span className="text-[10px] font-black text-white/40 uppercase tracking-widest">ملصقات احترافية 🔥</span>
+                  <button onClick={() => setShowStickerPanel(false)} className="text-zinc-500 hover:text-white transition">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-3">
+                  {STICKERS.map((st) => (
+                    <button
+                      key={st.id}
+                      onClick={() => {
+                        handleSendMessage(undefined, "", st.url, "", "");
+                        setShowStickerPanel(false);
+                      }}
+                      className="aspect-square bg-black/40 rounded-2xl p-2 hover:bg-white/5 border border-white/5 transition-all group overflow-hidden"
+                    >
+                      <img src={st.url} className="w-full h-full object-contain group-hover:scale-110 transition-transform" alt="Sticker" />
+                    </button>
+                  ))}
+                  {/* Option to create sticker from device */}
+                  <label className="aspect-square bg-primary/10 rounded-2xl border-2 border-dashed border-primary/20 flex flex-col items-center justify-center cursor-pointer hover:bg-primary/20 transition-all gap-1 group">
+                    <Camera className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
+                    <span className="text-[8px] font-black text-primary">اصنع ملصق</span>
+                    <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                      handleFileUpload(e);
+                      setShowStickerPanel(false);
+                    }} />
+                  </label>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <form onSubmit={handleSendMessage} className="p-3 flex gap-2 items-center">
             {isVoiceRecording ? (
               <div className="flex-1 flex items-center justify-between bg-zinc-900/60 border border-primary/20 rounded-2xl px-4 py-2">
@@ -1737,7 +1809,18 @@ export default function SeriesChat({
                   />
                 </label>
                 
-                <button type="button" onClick={() => alert("قريباً: ملصقات حكايتنا الحصرية! ✨")} className="w-10 h-10 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-primary rounded-full flex items-center justify-center shrink-0 transition-colors border border-white/5" title="ملصقات"><Smile className="w-4.5 h-4.5" /></button>
+                {/* Stickers Button */}
+                <button 
+                  type="button" 
+                  onClick={() => setShowStickerPanel(!showStickerPanel)} 
+                  className={cn(
+                    "w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all border border-white/5",
+                    showStickerPanel ? "bg-primary text-black" : "bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-primary"
+                  )}
+                  title="ملصقات حكايتنا"
+                >
+                  <Sparkles className="w-4.5 h-4.5" />
+                </button>
                 <button type="button" onClick={startVoiceRecording} className="w-10 h-10 bg-zinc-800 text-zinc-400 rounded-full flex items-center justify-center hover:text-white shrink-0 transition-colors" title="تسجيل رسالة صوتية"><Mic className="w-4.5 h-4.5" /></button>
                 <button type="button" onClick={startRecording} className="w-8 h-8 bg-zinc-900 border border-zinc-800 text-zinc-550 rounded-full flex items-center justify-center hover:text-primary shrink-0 transition-colors text-[9px]" title="تحويل الصوت لنص">تخطيط</button>
               </>

@@ -471,6 +471,27 @@ const ShortCard = memo(({
           </span>
         </div>
 
+        {/* Download Link */}
+        <div className="flex flex-col items-center gap-1">
+          <motion.button 
+            whileHover={{ scale: 1.15 }}
+            whileTap={{ scale: 0.85 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDownloadWithWatermark();
+            }}
+            className="w-14 h-14 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 shadow-2xl hover:bg-black/60 transition-all cursor-pointer flex items-center justify-center"
+            title="تحميل اللقطة"
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+          </motion.button>
+          <span className="text-[11px] font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">
+            تحميل
+          </span>
+        </div>
+
         {/* Custom Edit Option for Owners or Admins */}
         {onEditTitle && (isOwner || isAdmin) && (
           <div className="flex flex-col items-center gap-1">

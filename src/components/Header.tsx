@@ -121,6 +121,22 @@ export default function Header() {
     }
   };
 
+  const [userName, setUserName] = useState(() => localStorage.getItem('guest_chat_name') || '');
+  const [userAvatar, setUserAvatar] = useState(() => localStorage.getItem('user_avatar_url') || '');
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setUserName(localStorage.getItem('guest_chat_name') || '');
+      setUserAvatar(localStorage.getItem('user_avatar_url') || '');
+    };
+    window.addEventListener('name-updated', handleUpdate);
+    window.addEventListener('avatar-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('name-updated', handleUpdate);
+      window.removeEventListener('avatar-updated', handleUpdate);
+    };
+  }, []);
+
   const handleSearch = (e?: React.FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
     const queryToSearch = (customQuery !== undefined ? customQuery : searchQuery).trim();
@@ -193,6 +209,17 @@ export default function Header() {
               >
                 <Search className="w-5 h-5" />
               </button>
+              <Link 
+                to="/profile" 
+                className="w-10 h-10 rounded-full overflow-hidden bg-zinc-900 border border-white/10 flex items-center justify-center hover:border-primary/50 transition-all group shrink-0"
+                title={userName || "حسابي"}
+              >
+                {userAvatar ? (
+                  <img src={userAvatar} className="w-full h-full object-cover" alt="Profile" />
+                ) : (
+                  <User className="w-5 h-5 text-zinc-400 group-hover:text-primary" />
+                )}
+              </Link>
             <Link to="/chat" className="p-1.5 sm:p-2 text-zinc-400 hover:text-primary transition-colors hidden sm:block">
               <MessageSquare className="w-5 h-5" />
             </Link>

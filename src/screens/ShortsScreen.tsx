@@ -492,7 +492,7 @@ export default function ShortsScreen() {
   const [isPublishing, setIsPublishing] = useState(false);
   const [uploadMode, setUploadMode] = useState<'from_series' | 'from_device'>('from_device');
   const [customVideoFile, setCustomVideoFile] = useState<File | null>(null);
-  const [pubSeriesName, setPubSeriesName] = useState(ALLOWED_SERIES[0]);
+  const [pubSeriesName, setPubSeriesName] = useState('');
   const [pubEpisodeNum, setPubEpisodeNum] = useState('1');
   const [pubStartTime, setPubStartTime] = useState('10:00');
   const [pubEndTime, setPubEndTime] = useState('11:00');
@@ -1177,6 +1177,12 @@ export default function ShortsScreen() {
 
     if (!pubTitleSuffix.trim()) {
       showToast("يرجى إدخال عنوان جذاب للقطة! ✍️", "error");
+      setIsPublishing(false);
+      return;
+    }
+
+    if (uploadMode === 'from_series' && !pubSeriesName) {
+      showToast("يرجى اختيار المسلسل أولاً! 🎬", "error");
       setIsPublishing(false);
       return;
     }
