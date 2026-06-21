@@ -29,6 +29,7 @@ interface ChatMessage {
   userAvatar: string; // id of avatar in AVATARS
   text?: string;
   audioUrl?: string;
+  imageUrl?: string;
   createdAt: number;
   replyTo?: {
     userName: string;
@@ -223,6 +224,11 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [dbError, setDbError] = useState<string>('');
   const [isDbReady, setIsDbReady] = useState(false);
+
+  // Direct image uploading and lightbox preview states
+  const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   
   // Real-time Presence, Typing indicators
   const [onlineCount, setOnlineCount] = useState<number>(1);
@@ -431,6 +437,7 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
             userName: val.userName || 'مشاهد غامض',
             userAvatar: val.userAvatar || 'boy1',
             text: val.text || '',
+            imageUrl: val.imageUrl || '',
             createdAt: timestamp,
             replyTo: val.replyTo,
             sceneTime: val.sceneTime,
@@ -623,7 +630,7 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     if (!db) return;
 
     const txt = inputText.trim();
-    if (!txt && !replyTo && !pendingScene) return;
+    if (!txt && !replyTo && !pendingScene && !attachedImageUrl) return;
 
     // Safety checks
     if (!userName || !userAvatar) return;
@@ -657,6 +664,7 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
       userName: senderName,
       userAvatar,
       text: txt || (pendingScene ? `شوفوا هاذ اللقطة عند الدقيقة ${pendingScene.timeStr} 🔥` : ''),
+      imageUrl: attachedImageUrl || '',
       createdAt: Date.now(),
     };
 
@@ -675,6 +683,7 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     setInputText('');
     setReplyTo(null);
     setPendingScene(null);
+    setAttachedImageUrl(null);
 
     try {
       await set(newMsgRef, msgData);
@@ -689,6 +698,42 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     } catch (error) {
       console.error("Failed to send message to RTDB:", error);
       setDbError("فشل إرسال التعليق!");
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64String = reader.result as string;
+        try {
+          const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-image") : "/api/v1/upload-image";
+          const uploadRes = await fetch(uploadEndpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: base64String })
+          });
+          const uploadData = await uploadRes.json();
+          if (uploadData.success && uploadData.url) {
+            setAttachedImageUrl(uploadData.url);
+          } else {
+            alert(uploadData.error || "عذراً فشل رفع الصورة، يرجى المحاولة مرة أخرى.");
+          }
+        } catch (xhrErr) {
+          console.error("XHR Image upload error:", xhrErr);
+          alert("خطأ أثناء التواصل مع خادم الرفع.");
+        } finally {
+          setUploadingImage(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (readErr) {
+      console.error("Failed to read file:", readErr);
+      setUploadingImage(false);
     }
   };
 
@@ -1116,6 +1161,17 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
                       </div>
                     )}
                     <div className="text-[13px]">{msg.userName && msg.userName.includes('حكيم') ? cleanAndRenderAiText(msg.text || '') : msg.text}</div>
+                    {msg.imageUrl && (
+                      <div className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black/40 mt-2 max-w-[200px] cursor-pointer hover:opacity-90 transition active:scale-[0.98]">
+                        <img 
+                          src={msg.imageUrl} 
+                          alt="تعليق مصور" 
+                          referrerPolicy="no-referrer"
+                          onClick={(e) => { e.stopPropagation(); setPreviewImage(msg.imageUrl || null); }}
+                          className="w-full h-auto max-h-[160px] object-cover rounded-xl"
+                        />
+                      </div>
+                    )}
                     {msg.edited && <span className="text-[8px] opacity-50 mr-1">(تم التعديل)</span>}
                       {msg.sceneTime !== undefined && (
                       <button 
@@ -1307,6 +1363,25 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
           </div>
 
           {/* Always show input, handle restriction in handleSendMessage */}
+          {uploadingImage && (
+            <div className="flex items-center gap-2 mb-2 bg-primary/10 border border-primary/20 text-primary py-1.5 px-3 rounded-xl text-[10px] w-fit mr-auto ml-3">
+              <div className="w-3.5 h-3.5 border-2 border-primary/25 border-t-primary rounded-full animate-spin" />
+              <span>جاري رفع وتأكيد الصورة...</span>
+            </div>
+          )}
+          {attachedImageUrl && (
+            <div className="relative inline-block mb-2 mr-auto ml-3 bg-zinc-900 border border-zinc-800 p-1 rounded-xl">
+              <img src={attachedImageUrl} alt="Preview" className="w-14 h-14 object-cover rounded-lg" />
+              <button 
+                type="button" 
+                onClick={() => setAttachedImageUrl(null)} 
+                className="absolute -top-1.5 -right-1.5 bg-black text-white hover:bg-rose-600 rounded-full p-0.5 border border-zinc-800 duration-200"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
           <form onSubmit={handleSendMessage} className="p-3 flex gap-2 items-center">
             {isRecording ? (
               <div className="flex-1 flex items-center justify-between bg-primary/10 border border-primary/20 rounded-2xl px-4 py-2">
@@ -1318,14 +1393,55 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
               </div>
             ) : (
               <>
-                <button type="submit" disabled={!inputText.trim() && !replyTo && !pendingScene} className={cn("w-10 h-10 rounded-full flex items-center justify-center shadow-lg shrink-0 transition-all", (inputText.trim() || replyTo || pendingScene) ? "bg-primary text-black" : "bg-white/5 text-zinc-500 opacity-20")}><Send className={cn("w-4.5 h-4.5 -rotate-45", editingMsg && "rotate-0")} /></button>
+                <button type="submit" disabled={!inputText.trim() && !replyTo && !pendingScene && !attachedImageUrl} className={cn("w-10 h-10 rounded-full flex items-center justify-center shadow-lg shrink-0 transition-all", (inputText.trim() || replyTo || pendingScene || attachedImageUrl) ? "bg-primary text-black" : "bg-white/5 text-zinc-500 opacity-20")}><Send className={cn("w-4.5 h-4.5 -rotate-45", editingMsg && "rotate-0")} /></button>
                 <input type="text" dir="rtl" value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder={pendingScene ? "اكتب تعليقك على اللقطة..." : editingMsg ? "اكتب التعديل..." : "اكتب تعليقك أو اسأل حكيم..."} className="flex-1 bg-white/5 border border-white/5 rounded-full py-2.5 px-5 text-xs outline-none text-white focus:ring-1 focus:ring-primary/40 placeholder-zinc-600 font-semibold" />
+                
+                <label className="w-10 h-10 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-full flex items-center justify-center shrink-0 transition-colors cursor-pointer border border-white/5">
+                  <Camera className="w-4.5 h-4.5" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageUpload}
+                    disabled={uploadingImage}
+                  />
+                </label>
+                
                 <button type="button" onClick={startRecording} className="w-10 h-10 bg-zinc-800 text-zinc-400 rounded-full flex items-center justify-center hover:text-white shrink-0 transition-colors"><Mic className="w-4.5 h-4.5" /></button>
               </>
             )}
           </form>
         </div>
       </div>
+
+      {/* Lightbox Image Preview Dialog overlay */}
+      <AnimatePresence>
+        {previewImage && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setPreviewImage(null)}
+            className="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
+          >
+            <button 
+              onClick={() => setPreviewImage(null)} 
+              className="absolute top-4 right-4 bg-zinc-900/80 text-white p-3 rounded-full border border-zinc-850 hover:bg-zinc-800 transition duration-200"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <motion.img 
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              src={previewImage} 
+              alt="Full Preview" 
+              referrerPolicy="no-referrer"
+              className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl border border-zinc-800"
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

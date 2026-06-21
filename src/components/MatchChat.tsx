@@ -2,14 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, push, onValue, limitToLast, query, serverTimestamp, Database } from 'firebase/database';
 import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
-import { Send, Users, Smile, User2, MessageSquare, Flame } from 'lucide-react';
+import { Send, Users, Smile, User2, MessageSquare, Flame, Camera, X, Image } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { getApiUrl } from '../lib/apiConfig';
 
 interface ChatMessage {
   id: string;
   userName: string;
   userAvatar: string; // 'boy1' | 'boy2' | 'girl1' | 'girl2'
   text: string;
+  imageUrl?: string;
   createdAt: number;
 }
 
@@ -67,6 +69,11 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
   const [inputGender, setInputGender] = useState<'boy' | 'girl'>('boy');
   const [db, setDb] = useState<Database | null>(null);
   const [isDbReady, setIsDbReady] = useState(false);
+
+  // Direct Image upload states
+  const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -132,6 +139,7 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
           userName: value.userName || 'مشجع مجهول',
           userAvatar: value.userAvatar || 'boy1',
           text: value.text || '',
+          imageUrl: value.imageUrl || '',
           createdAt: value.createdAt || Date.now()
         }));
         setMessages(parsed.sort((a, b) => a.createdAt - b.createdAt));
@@ -148,9 +156,10 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = (msgText: string) => {
+  const handleSendMessage = (msgText: string, imgUrl?: string | null) => {
     const trimmed = msgText.trim();
-    if (!trimmed || !isDbReady || !db) return;
+    if (!trimmed && !imgUrl) return;
+    if (!isDbReady || !db) return;
 
     try {
       const chatRef = ref(db, `matchesChat/${matchId}`);
@@ -158,11 +167,50 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
         userName,
         userAvatar,
         text: trimmed,
+        imageUrl: imgUrl || "",
         createdAt: serverTimestamp()
       });
       setText('');
+      setAttachedImageUrl(null);
     } catch (err) {
       console.error('Error sending message:', err);
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Show indicator
+    setUploadingImage(true);
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64String = reader.result as string;
+        try {
+          const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-image") : "/api/v1/upload-image";
+          const uploadRes = await fetch(uploadEndpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: base64String })
+          });
+          const uploadData = await uploadRes.json();
+          if (uploadData.success && uploadData.url) {
+            setAttachedImageUrl(uploadData.url);
+          } else {
+            alert(uploadData.error || "عذراً فشل رفع الصورة، يرجى المحاولة مرة أخرى.");
+          }
+        } catch (xhrErr) {
+          console.error("XHR Image upload error:", xhrErr);
+          alert("خطأ أثناء التواصل مع خادم الرفع.");
+        } finally {
+          setUploadingImage(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (readErr) {
+      console.error("Failed to read file:", readErr);
+      setUploadingImage(false);
     }
   };
 
@@ -252,7 +300,18 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
                       : 'bg-zinc-900 border-zinc-800 text-zinc-350'
                   }`}
                 >
-                  {msg.text}
+                  {msg.text && <p className={msg.imageUrl ? "mb-2" : ""}>{msg.text}</p>}
+                  {msg.imageUrl && (
+                    <div className="relative overflow-hidden rounded-xl border border-zinc-850 bg-black/40 mt-1 max-w-[200px] cursor-pointer hover:opacity-90 transition active:scale-[0.98]">
+                      <img 
+                        src={msg.imageUrl} 
+                        alt="بث مشجع" 
+                        referrerPolicy="no-referrer"
+                        onClick={() => setPreviewImage(msg.imageUrl || null)}
+                        className="w-full h-auto max-h-[160px] object-cover rounded-xl"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -266,7 +325,7 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
         {QUICK_REACTIONS.map((react, i) => (
           <button
             key={i}
-            onClick={() => handleSendMessage(react)}
+            onClick={() => handleSendMessage(react, null)}
             className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 active:scale-95 text-[10px] font-bold text-zinc-350 hover:text-white rounded-full transition border border-zinc-800 whitespace-nowrap cursor-pointer"
           >
             {react}
@@ -276,16 +335,36 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
 
       {/* Message Input Trigger */}
       <div className="p-3 bg-zinc-900/40 border-t border-zinc-900 shrink-0">
+        {/* Attachment Thumbnails & Upload indicators */}
+        {uploadingImage && (
+          <div className="flex items-center gap-2 mb-2 bg-rose-500/10 border border-rose-500/20 text-rose-400 py-1.5 px-3 rounded-xl text-[10px] w-fit mr-auto">
+            <div className="w-3.5 h-3.5 border-2 border-rose-500/30 border-t-rose-500 rounded-full animate-spin" />
+            <span>جاري رفع وتنشيط الصورة...</span>
+          </div>
+        )}
+        {attachedImageUrl && (
+          <div className="relative inline-block mb-2 mr-auto bg-zinc-900 border border-zinc-800 p-1 rounded-xl">
+            <img src={attachedImageUrl} alt="Preview" className="w-14 h-14 object-cover rounded-lg" />
+            <button 
+              type="button" 
+              onClick={() => setAttachedImageUrl(null)} 
+              className="absolute -top-1.5 -right-1.5 bg-black text-white hover:bg-rose-600 rounded-full p-0.5 border border-zinc-850 duration-200"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            handleSendMessage(text);
+            handleSendMessage(text, attachedImageUrl);
           }}
           className="flex items-center gap-2"
         >
           <button
             type="submit"
-            disabled={!text.trim()}
+            disabled={!text.trim() && !attachedImageUrl}
             className="p-2.5 bg-red-600 hover:bg-red-500 disabled:bg-zinc-900 disabled:text-zinc-600 text-white rounded-xl transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
           >
             <Send className="w-4 h-4 transform rotate-180" />
@@ -296,10 +375,50 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
             placeholder="اكتب رسيلتك الحماسية هنا..."
             value={text}
             onChange={(e) => setText(e.target.value)}
-            className="flex-1 text-xs text-right bg-zinc-950 border border-zinc-900 rounded-xl px-3.5 py-2.5 text-white placeholder-zinc-550 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/20"
+            className="flex-1 text-xs text-right bg-zinc-950 border border-zinc-900 rounded-xl px-3.5 py-2.5 text-white placeholder-zinc-500 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500/20"
           />
+
+          <label className="p-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white rounded-xl transition cursor-pointer shrink-0 flex items-center justify-center border border-zinc-850">
+            <Camera className="w-4 h-4" />
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageUpload}
+              disabled={uploadingImage}
+            />
+          </label>
         </form>
       </div>
+
+      {/* Lightbox Image Preview Dialog overlay */}
+      <AnimatePresence>
+        {previewImage && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setPreviewImage(null)}
+            className="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
+          >
+            <button 
+              onClick={() => setPreviewImage(null)} 
+              className="absolute top-4 right-4 bg-zinc-900/80 text-white p-3 rounded-full border border-zinc-800 hover:bg-zinc-800 transition duration-200"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <motion.img 
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              src={previewImage} 
+              alt="Full Preview" 
+              referrerPolicy="no-referrer"
+              className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl border border-zinc-800"
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Overlaid Profile Customization Screen */}
       <AnimatePresence>

@@ -1612,6 +1612,144 @@ async function startServer() {
     }
   });
 
+  // Secure Image Uploader Proxy Endpoint (Proxy to Top4toP with Catbox/Freeimage fallback)
+  app.post("/api/v1/upload-image", async (req, res) => {
+    try {
+      const { image } = req.body;
+      if (!image || typeof image !== "string") {
+        return res.status(400).json({ success: false, error: "لم يتم استلام ملف الصورة بشكل صحيح." });
+      }
+
+      const mimeMatch = image.match(/^data:([^;]+);base64,/);
+      const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+      const base64Data = image.replace(/^data:[^;]+;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+
+      // Verify file size limit (15MB)
+      if (buffer.length > 15 * 1024 * 1024) {
+        return res.status(400).json({ success: false, error: "حجم الصورة كبير جداً. الحد الأقصى المسموح به هو 15 ميجابايت." });
+      }
+
+      // Determine extension
+      let extension = "jpg";
+      if (mimeType.includes("png")) extension = "png";
+      else if (mimeType.includes("gif")) extension = "gif";
+      else if (mimeType.includes("webp")) extension = "webp";
+
+      console.log(`[UPLOADER] Received image to upload (${buffer.length} bytes, type: ${mimeType})`);
+
+      // 1. TRY TOP4TOP FIRST (Primary Choice)
+      try {
+        console.log("[UPLOADER] Attempting upload to top4top.io...");
+        // Fetch HTML first to gather session cookies and sid token
+        const getRes = await axios.get("https://top4top.io/", {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+          },
+          timeout: 6000
+        });
+
+        const html = getRes.data || "";
+        const sidMatch = html.match(/name="sid"\s+value="([^"]+)"/);
+        const sid = sidMatch ? sidMatch[1] : "";
+
+        // Extract Cookies
+        const setCookies = getRes.headers['set-cookie'] || [];
+        const cookieStr = setCookies.map(c => c.split(';')[0]).join('; ');
+
+        // Construct standard multipart data
+        const formData = new (globalThis as any).FormData();
+        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
+        formData.append("file_0_", blob, `image_${Date.now()}.${extension}`);
+        formData.append("submitr", "[ رفع الملفات ]");
+        if (sid) {
+          formData.append("sid", sid);
+        }
+
+        const uploadRes = await fetch("https://top4top.io/index.php", {
+          method: "POST",
+          body: formData,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+            "Referer": "https://top4top.io/",
+            "Cookie": cookieStr
+          }
+        });
+
+        const uploadHtml = await uploadRes.text();
+        const rx = /https?:\/\/[a-zA-Z0-9-]+\.top4top\.(io|net)\/[a-zA-Z0-9_/.-]+\.(png|jpg|jpeg|gif)/gi;
+        const matches = (uploadHtml.match(rx) || []).filter((link: string) => {
+          const l = link.toLowerCase();
+          return !l.includes('s.top4top') && !l.includes('/styles/') && !l.includes('/images/') && !l.includes('favicon.ico');
+        });
+
+        if (matches.length > 0) {
+          const finalUrl = matches[0].replace(/&amp;/g, "&");
+          console.log("[UPLOADER] Successfully processed Top4toP: ", finalUrl);
+          return res.json({ success: true, url: finalUrl });
+        }
+        console.warn("[UPLOADER] Top4toP response did not match custom direct URL patterns.");
+      } catch (err: any) {
+        console.warn("[UPLOADER] Top4toP primary upload failed:", err.message);
+      }
+
+      // 2. FALLBACK TO CATBOX (Highly reliable backup hosting)
+      try {
+        console.log("[UPLOADER] Attempting fallback upload to catbox.moe...");
+        const formData = new (globalThis as any).FormData();
+        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
+        formData.append("reqtype", "fileupload");
+        formData.append("fileToUpload", blob, `image_${Date.now()}.${extension}`);
+
+        const fallbackRes = await fetch("https://catbox.moe/user/api.php", {
+          method: "POST",
+          body: formData,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          }
+        });
+
+        if (fallbackRes.ok) {
+          const textUrl = (await fallbackRes.text()).trim();
+          if (textUrl.startsWith("http")) {
+            console.log("[UPLOADER] Sandbox Fallback Success: ", textUrl);
+            return res.json({ success: true, url: textUrl });
+          }
+        }
+        console.warn("[UPLOADER] Fallback catbox.moe response not OK");
+      } catch (fallbackErr: any) {
+        console.error("[UPLOADER] Fallback catbox.moe failed:", fallbackErr.message);
+      }
+
+      // 3. SECOND FALLBACK: IMGBB PUBLIC API ROUTE
+      try {
+        console.log("[UPLOADER] Attempting second fallback upload to freeimage.host...");
+        const formData = new (globalThis as any).FormData();
+        formData.append("key", "6d207e02198a847aa98d0a2a901485a5");
+        formData.append("action", "upload");
+        formData.append("source", base64Data);
+
+        const imgbbRes = await axios.post("https://freeimage.host/api/1/upload", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+          timeout: 10000
+        });
+
+        if (imgbbRes.data && imgbbRes.data.image && imgbbRes.data.image.url) {
+          console.log("[UPLOADER] Freeimage Success:", imgbbRes.data.image.url);
+          return res.json({ success: true, url: imgbbRes.data.image.url });
+        }
+      } catch (imgbbErr: any) {
+        console.error("[UPLOADER] Second fallback failed:", imgbbErr.message);
+      }
+
+      res.status(500).json({ success: false, error: "عذراً، فشلت جميع محاولات رفع الصورة على السيرفرات المتاحة حالياً." });
+    } catch (globalErr: any) {
+      console.error("[UPLOADER] Critical Global Error:", globalErr);
+      res.status(500).json({ success: false, error: globalErr.message });
+    }
+  });
+
   // Secure TMDB Query Proxy Endpoint to avoid CORS/Fetch Blocks
   app.get("/api/v1/tmdb/proxy", async (req, res) => {
     const { url } = req.query;
