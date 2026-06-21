@@ -470,6 +470,8 @@ export default function ShortsScreen() {
   // Post dynamic new short form (Episode Selection)
   const [isPublishOpen, setIsPublishOpen] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'from_series' | 'from_device'>('from_device');
+  const [customVideoFile, setCustomVideoFile] = useState<File | null>(null);
   const [pubSeriesName, setPubSeriesName] = useState(ALLOWED_SERIES[0]);
   const [pubEpisodeNum, setPubEpisodeNum] = useState('1');
   const [pubStartTime, setPubStartTime] = useState('10:00');
@@ -1141,10 +1143,17 @@ export default function ShortsScreen() {
     }
   };
 
-  // Handle dynamic publishing from episodes of series (Extracting the real episode link!)
+  // Handle dynamic publishing from episodes of series (Extracting the real episode link!) or direct file upload
   const handlePublishShort = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isPublishing) return;
+    
+    if (!authorName) {
+      showToast("يرجى إدخال اسمك أولاً عبر زر الملف الشخصي العلوي! ✍️", "error");
+      setIsPublishing(false);
+      setShowIdentityModal(true);
+      return;
+    }
     
     // Convert MM:SS to total seconds for the fragment
     const startTimeInSecs = parseTimeToSeconds(pubStartTime);
@@ -1208,13 +1217,6 @@ export default function ShortsScreen() {
     
     // Embed the fragment parameter on URL so that the video starts seeking instantly
     const videoUrlWithFragment = `${baseSourceVideo}#t=${startTimeInSecs},${endTimeInSecs}`;
-    
-    if (!authorName) {
-      showToast("يرجى إدخال اسمك أولاً عبر زر الملف الشخصي العلوي! ✍️", "error");
-      setIsPublishing(false);
-      setShowIdentityModal(true);
-      return;
-    }
 
     const publisherName = authorName;
     const finalTitle = pubTitleSuffix.trim() ? pubTitleSuffix.trim() : `لقطة رائعة من ${pubSeriesName} 🎬🔥`;
@@ -1793,12 +1795,13 @@ export default function ShortsScreen() {
                   <X className="w-4 h-4 text-white" />
                 </button>
                 <div className="flex items-center gap-1.5">
-                  <h3 className="text-sm font-black text-white">قص لقطة من حلقات المسلسل ✂️</h3>
+                  <h3 className="text-sm font-black text-white">إضافة لقطة شورت جديدة 🎬</h3>
                   <Video className="w-4.5 h-4.5 text-primary" />
                 </div>
               </div>
 
               <form onSubmit={handlePublishShort} className="space-y-4 max-h-[65vh] overflow-y-auto no-scrollbar pb-4">
+                
                 {/* Search Series */}
                 <div className="space-y-4">
                   <div className="relative">
@@ -1853,56 +1856,56 @@ export default function ShortsScreen() {
                 {/* Episode Choice directly from series list! */}
                 <div className="space-y-1">
                   <label className="block text-[11px] font-black text-zinc-400">اختر الحلقة المعنيّة للحفظ 📑</label>
-                  <select 
-                    value={pubEpisodeNum}
-                    onChange={(e) => setPubEpisodeNum(e.target.value)}
-                    className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-right text-xs text-white focus:outline-none focus:border-primary font-bold cursor-pointer"
-                  >
-                    {getSelectedSeriesEpisodes().map((epNum) => (
-                      <option key={epNum} value={epNum}>الحلقة {epNum}</option>
-                    ))}
-                  </select>
-                </div>
+                      <select 
+                        value={pubEpisodeNum}
+                        onChange={(e) => setPubEpisodeNum(e.target.value)}
+                        className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-right text-xs text-white focus:outline-none focus:border-primary font-bold cursor-pointer"
+                      >
+                        {getSelectedSeriesEpisodes().map((epNum) => (
+                          <option key={epNum} value={epNum}>الحلقة {epNum}</option>
+                        ))}
+                      </select>
+                    </div>
 
-                {/* Micro segment selection (Precise Time Entry) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="block text-[11px] font-black text-zinc-400">من الوقت (MM:SS) *</label>
-                    <input 
-                      type="text"
-                      required
-                      placeholder="مثال: 10:00"
-                      value={pubStartTime}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (/^[0-9:]*$/.test(val)) setPubStartTime(val);
-                      }}
-                      className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-center text-xs text-white focus:outline-none focus:border-primary font-bold"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="block text-[11px] font-black text-zinc-400">إلى الوقت (MM:SS) *</label>
-                    <input 
-                      type="text"
-                      required
-                      placeholder="مثال: 10:45"
-                      value={pubEndTime}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (/^[0-9:]*$/.test(val)) setPubEndTime(val);
-                      }}
-                      className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-center text-xs text-white focus:outline-none focus:border-primary font-bold"
-                    />
-                  </div>
-                </div>
-                <p className="text-[10px] text-zinc-500 font-bold text-center bg-zinc-950/50 py-1.5 rounded-lg border border-white/5">
-                   💡 استخدم تنسيق (دقيقة:ثانية) مثل 05:30 أو فقط (ثانية) مثل 90
-                </p>
+                    {/* Micro segment selection (Precise Time Entry) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="block text-[11px] font-black text-zinc-400">من الوقت (MM:SS) *</label>
+                        <input 
+                          type="text"
+                          required
+                          placeholder="مثال: 10:00"
+                          value={pubStartTime}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (/^[0-9:]*$/.test(val)) setPubStartTime(val);
+                          }}
+                          className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-center text-xs text-white focus:outline-none focus:border-primary font-bold"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block text-[11px] font-black text-zinc-400">إلى الوقت (MM:SS) *</label>
+                        <input 
+                          type="text"
+                          required
+                          placeholder="مثال: 10:45"
+                          value={pubEndTime}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (/^[0-9:]*$/.test(val)) setPubEndTime(val);
+                          }}
+                          className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-center text-xs text-white focus:outline-none focus:border-primary font-bold"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-zinc-500 font-bold text-center bg-zinc-950/50 py-1.5 rounded-lg border border-white/5">
+                       💡 استخدم تنسيق (دقيقة:ثانية) مثل 05:30 أو فقط (ثانية) مثل 90
+                    </p>
 
-                {/* Preview Button */}
-                <div className="space-y-2">
-                  <button 
-                    type="button"
+                    {/* Preview Button */}
+                    <div className="space-y-2">
+                      <button 
+                        type="button"
                     onClick={handlePreviewScene}
                     disabled={previewLoading}
                     className="w-full bg-zinc-950 border border-white/10 hover:border-amber-500/50 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black text-amber-500 transition active:scale-95"

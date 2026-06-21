@@ -115,40 +115,8 @@ export default function EpisodeGrid({
     return filteredEpisodes.slice(start, end);
   }, [filteredEpisodes, searchQuery, jumpToRange, episodes.length]);
 
-  const SOCIAL_LINKS = [
-    { name: "تيك توك", url: "https://www.tiktok.com/@hikaytna_my?_r=1&_t=ZN-97O75l6SjSw", color: "from-zinc-950 to-zinc-900 border-cyan-500/20 text-white hover:border-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.15)]", icon: "🌐" },
-    { name: "واتساب", url: "https://chat.whatsapp.com/invite_placeholder", color: "from-emerald-950/40 to-emerald-900/40 border-emerald-500/20 text-emerald-400 hover:border-emerald-400 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)]", icon: "💬" },
-    { name: "إنستغرام", url: "https://instagram.com/hakaytona", color: "from-rose-950/40 to-pink-900/40 border-pink-500/20 text-pink-450 hover:border-pink-400 hover:shadow-[0_0_15px_rgba(236,72,153,0.15)]", icon: "📷" },
-    { name: "تليجرام", url: "https://t.me/hakaytona", color: "from-sky-950/40 to-sky-900/40 border-sky-500/20 text-sky-400 hover:border-sky-400 hover:shadow-[0_0_15px_rgba(14,165,233,0.15)]", icon: "📢" }
-  ];
-
   return (
     <div className="space-y-6">
-      {/* Premium Social Media Channel List */}
-      <div className="bg-gradient-to-l from-[#0b0b0f] via-zinc-950 to-[#0b0b0f] border border-white/5 rounded-3xl p-5 text-right space-y-3.5 shadow-xl">
-        <h4 className="text-xs font-black text-rose-500 uppercase tracking-wider flex items-center justify-end gap-1.5 select-none">
-          <span>تابع حكايتنا على منصات التواصل للحصول على كواليس حصرية وسيرفرات احتياطية</span>
-          <Sparkles className="w-3.5 h-3.5 text-rose-550 animate-pulse" />
-        </h4>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {SOCIAL_LINKS.map((item, idx) => (
-            <a
-              key={idx}
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                "bg-gradient-to-br border p-3.5 rounded-2xl text-center text-xs font-black transition-all duration-300 hover:-translate-y-0.5 select-none hover:shadow-lg active:scale-95 flex items-center justify-center gap-2 cursor-pointer outline-none",
-                item.color
-              )}
-            >
-              <span className="text-base">{item.icon}</span>
-              <span>{item.name}</span>
-            </a>
-          ))}
-        </div>
-      </div>
-
       {/* 1. Header Bar: Search and Sort */}
       {!isMovie && (
         <>

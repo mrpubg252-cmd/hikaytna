@@ -577,6 +577,7 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
   // Track series changes and message additions to grow limit organically only on new posts
   const prevSeriesIdRef = useRef<string | null>(null);
   const lastMsgIdRef = useRef<string | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
   const lastMessageId = messages[messages.length - 1]?.id;
 
   // Reset displayLimit to 50 when changing series
@@ -1388,7 +1389,15 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
                       "group relative px-3.5 py-2 rounded-2xl text-[12px] font-semibold leading-relaxed shadow-lg cursor-pointer hover:scale-[0.99] active:scale-[0.97] transition-all",
                       isMe ? "bg-primary text-black rounded-tr-none hover:opacity-90" : "bg-zinc-900 border border-white/5 text-zinc-100 rounded-tl-none hover:bg-zinc-800"
                     )}
-                    onClick={() => setActionMenuMessage(msg)}
+                    onPointerDown={() => {
+                      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = setTimeout(() => {
+                        setActionMenuMessage(msg);
+                      }, 400) as unknown as number;
+                    }}
+                    onPointerUp={() => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); }}
+                    onPointerLeave={() => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); }}
+                    onPointerCancel={() => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); }}
                   >
                     {/* Always visible Reply button */}
                     <button 

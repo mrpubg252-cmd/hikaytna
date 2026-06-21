@@ -193,6 +193,7 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
   const [isBanned, setIsBanned] = useState(false);
   const [banReason, setBanReason] = useState('');
   const [actionMenuMessage, setActionMenuMessage] = useState<ChatMessage | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     setIsAdmin(localStorage.getItem('isAdmin') === 'true');
@@ -647,7 +648,15 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
                       </div>
                     ) : (
                       <div 
-                        onClick={() => setActionMenuMessage(msg)}
+                        onPointerDown={() => {
+                          if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                          longPressTimerRef.current = setTimeout(() => {
+                            setActionMenuMessage(msg);
+                          }, 400) as unknown as number;
+                        }}
+                        onPointerUp={() => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); }}
+                        onPointerLeave={() => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); }}
+                        onPointerCancel={() => { if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current); }}
                         className={`rounded-2xl px-3.5 py-2.5 text-xs text-right whitespace-pre-wrap break-words leading-relaxed shadow-md border cursor-pointer hover:scale-[0.99] transition active:scale-[0.97] ${
                           isMyMsg 
                             ? 'bg-red-500/10 border-red-500/20 text-red-50 hover:bg-red-500/15' 

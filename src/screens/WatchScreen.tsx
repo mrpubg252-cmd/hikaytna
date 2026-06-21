@@ -1163,7 +1163,7 @@ export default function WatchScreen() {
                 )}
               </div>
 
-              {/* Social Channels Call-To-Action (WhatsApp & Telegram) */}
+              {/* Social Channels Call-To-Action */}
               <div className="w-full lg:w-[420px] shrink-0 order-last lg:order-none flex flex-col gap-4">
                 
                 {/* Channels Banner */}
@@ -1181,6 +1181,23 @@ export default function WatchScreen() {
                       <div className="flex flex-col text-right truncate">
                         <span className="text-[11px] sm:text-[13px] font-black text-white truncate">الواتساب</span>
                         <span className="text-[9px] sm:text-[11px] text-[#25D366] font-bold truncate">تابع قناة حكايتنا في واتساب</span>
+                      </div>
+                    </div>
+                  </a>
+
+                  <a 
+                    href="https://www.tiktok.com/@hikaytna_my?_r=1&_t=ZN-97O75l6SjSw" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="group flex flex-1 items-center justify-between p-3 sm:px-4 sm:py-3 bg-[#00f2fe]/10 hover:bg-[#00f2fe]/20 border border-[#00f2fe]/20 rounded-2xl sm:rounded-3xl transition-all duration-300 min-w-0"
+                  >
+                    <div className="flex items-center gap-2.5 overflow-hidden">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 shrink-0 rounded-full bg-[#00f2fe]/20 flex items-center justify-center text-[#00f2fe] group-hover:scale-110 transition-transform">
+                        <svg className="w-4 h-4 sm:w-5 sm:h-5 fill-current" viewBox="0 0 24 24"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 2.23-1.11 4.39-2.79 5.86-1.63 1.4-3.83 2.15-6.02 1.94-2.19-.18-4.22-1.31-5.54-3.05-1.28-1.66-1.74-3.8-1.34-5.83.39-1.99 1.56-3.72 3.19-4.83 1.62-1.11 3.65-1.5 5.6-1.19.01 1.43.01 2.86.01 4.29-1.07-.4-2.27-.4-3.32.06-.99.41-1.76 1.25-2.08 2.26-.35 1.05-.18 2.25.43 3.15.63.89 1.71 1.43 2.8 1.44 1.12.02 2.22-.5 2.87-1.41.48-.68.73-1.5.7-2.33-.03-5.74-.01-11.48-.02-17.22z" /></svg>
+                      </div>
+                      <div className="flex flex-col text-right truncate">
+                        <span className="text-[11px] sm:text-[13px] font-black text-white truncate">تيك توك</span>
+                        <span className="text-[9px] sm:text-[11px] text-[#00f2fe] font-bold truncate">تابع حسابنا في تيك توك</span>
                       </div>
                     </div>
                   </a>
