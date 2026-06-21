@@ -289,7 +289,7 @@ export default function SeriesChat({
     const customAvatar = localStorage.getItem('user_avatar_url');
     
     // Strict onboarding: If no name or it's a generic one, force profile setup
-    if (!savedName || savedName.includes('حساب زائر') || savedName === 'مشاهد') {
+    if (!savedName || savedName.includes('حساب زائر') || savedName === 'مشاهد' || savedName.includes('مستخدم جديد')) {
       setIsProfileModalOpen(true);
     } else {
       setUserName(savedName);

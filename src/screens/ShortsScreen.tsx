@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Heart, MessageCircle, Share2, Plus, VolumeX, Volume2, X, Send, Award, Film, AlertCircle, Play, Flame, Sparkles, Smile, Video,
-  ChevronUp, ChevronDown, Eye, Trash2, Clock, ArrowRight, Edit3, Search, Upload
+  ChevronUp, ChevronDown, Eye, Trash2, Clock, ArrowRight, Edit3, Search, Upload, FileVideo
 } from 'lucide-react';
 import { db, firestore, fetchAllFromFirebase } from '../services/firebase';
 import { fetchAllSeries } from '../services/dataService';
@@ -398,11 +398,7 @@ export default function ShortsScreen() {
       return 'المدير 🛡️';
     }
     if (!s) {
-      // Auto-assign random beautiful user guest name so we never prompt them and interrupt their viewing!
-      const randomId = Math.floor(Math.random() * 900) + 100;
-      const defaultNames = ["متابع حكايتنا", "عاشق الدراما", "عاشق الحكايات", "محب المسلسلات"];
-      const chosenPrefix = defaultNames[Math.floor(Math.random() * defaultNames.length)];
-      s = `${chosenPrefix} ${randomId}`;
+      s = `مستخدم جديد 🍿`;
       localStorage.setItem('guest_chat_name', s);
       localStorage.setItem('comment_author_name', s);
     }
@@ -1059,6 +1055,22 @@ export default function ShortsScreen() {
       setActiveIndex(rawIndex);
       setIsPlaying(true);
       setPlayBlocked(false);
+      
+      // Auto-play the new video immediately with unmuted sound if user has interacted
+      setTimeout(() => {
+        const nextVideo = videoRefs.current[rawIndex];
+        if (nextVideo) {
+          nextVideo.muted = isMuted; // Reflect current mute state
+          const playP = nextVideo.play();
+          if (playP !== undefined) {
+            playP.catch(() => {
+              // fallback if blocked by browser
+              nextVideo.muted = true;
+              nextVideo.play().catch(() => {});
+            });
+          }
+        }
+      }, 50);
     }
   };
 
@@ -1919,9 +1931,55 @@ export default function ShortsScreen() {
                       </div>
                     </div>
 
+                    {/* From Device Mode - File Picker */}
+                    {uploadMode === 'from_device' && (
+                      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        <label className="flex flex-col items-center justify-center w-full h-44 border-2 border-dashed border-white/10 rounded-[2.5rem] cursor-pointer hover:bg-white/5 hover:border-primary/40 transition-all group overflow-hidden relative">
+                          {customVideoFile ? (
+                            <div className="flex flex-col items-center gap-2 p-4">
+                              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-1">
+                                <FileVideo className="w-8 h-8 text-primary" />
+                              </div>
+                              <span className="text-[11px] font-black text-white truncate max-w-[240px]">{customVideoFile.name}</span>
+                              <span className="text-[9px] font-bold text-white/30">{(customVideoFile.size / (1024 * 1024)).toFixed(1)} MB</span>
+                              <div className="mt-2 px-3 py-1 bg-white/5 rounded-full text-[8px] font-black text-primary/80 tracking-widest uppercase">جاهز للنشر ✅</div>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center gap-3">
+                              <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center group-hover:scale-110 group-hover:bg-primary/10 transition-all duration-500">
+                                <Plus className="w-8 h-8 text-white group-hover:text-primary transition-colors" />
+                              </div>
+                              <div className="text-center">
+                                <p className="text-[12px] font-black text-white tracking-widest uppercase">اضغط هنا لرفع فيديو</p>
+                                <p className="text-[9px] font-bold text-white/30 mt-1">MP4, MOV, WEBM (حد أقصى 50MB)</p>
+                              </div>
+                            </div>
+                          )}
+                          <input 
+                            type="file" 
+                            accept="video/*" 
+                            className="hidden" 
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                if (file.size > 50 * 1024 * 1024) {
+                                  showToast("حجم الملف كبير جداً! الحد الأقصى 50 ميجا.", "error");
+                                  return;
+                                }
+                                setCustomVideoFile(file);
+                              }
+                            }} 
+                          />
+                        </label>
+                      </div>
+                    )}
+
                     {/* Series Selection (Mandatory for both modes now) */}
-                    <div className="space-y-3">
-                       <label className="text-[11px] font-black text-white/40 uppercase tracking-widest px-2">اختار المسلسل (إلزامي) 🔥</label>
+                    <div className={cn("space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-700", pubSeriesName ? "opacity-100" : "opacity-90")}>
+                       <label className="text-[11px] font-black text-white/60 uppercase tracking-widest px-2 flex items-center justify-between">
+                         <span>اختار المسلسل (إلزامي للناشر) 🔥</span>
+                         {pubSeriesName && <span className="text-[9px] text-primary bg-primary/10 px-2 py-0.5 rounded-full">تم الاختيار ✅</span>}
+                       </label>
                        <div className="relative">
                           <input 
                             type="text"

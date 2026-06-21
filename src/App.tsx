@@ -64,10 +64,7 @@ function AppLayout() {
     };
 
     if (!savedName || (matchesReserved(savedName) && !isAdminToken)) {
-      const randomId = Math.floor(Math.random() * 900) + 100;
-      const defaultNames = ["متابع حكايتنا", "عاشق الدراما", "عاشق الحكايات", "محب المسلسلات"];
-      const chosenPrefix = defaultNames[Math.floor(Math.random() * defaultNames.length)];
-      const generatedName = `${chosenPrefix} ${randomId}`;
+      const generatedName = `مستخدم جديد 🍿`;
       localStorage.setItem('guest_chat_name', generatedName);
       localStorage.setItem('comment_author_name', generatedName);
       localStorage.setItem('guest_chat_avatar', 'boy1');
