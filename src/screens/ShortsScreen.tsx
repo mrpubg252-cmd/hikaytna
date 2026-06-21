@@ -1181,8 +1181,8 @@ export default function ShortsScreen() {
       return;
     }
 
-    if (uploadMode === 'from_series' && !pubSeriesName) {
-      showToast("يرجى اختيار المسلسل أولاً! 🎬", "error");
+    if (!pubSeriesName || pubSeriesName === '' || pubSeriesName === '--- اختر المسلسل ---') {
+      showToast("يرجى اختيار المسلسل أولاً لتنظيم المحتوى بشكل احترافي! 🎬", "error");
       setIsPublishing(false);
       return;
     }
@@ -1919,72 +1919,39 @@ export default function ShortsScreen() {
                       </div>
                     </div>
 
-                    {uploadMode === 'from_device' ? (
-                      <div 
-                        className={cn(
-                          "relative group h-36 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-3 cursor-pointer overflow-hidden",
-                          customVideoFile ? "border-emerald-500/50 bg-emerald-500/5" : "border-white/10 hover:border-primary/50 hover:bg-primary/5 bg-zinc-950/50"
-                        )}
-                        onClick={() => document.getElementById('short-file-upload')?.click()}
-                      >
-                         <input 
-                           id="short-file-upload"
-                           type="file" 
-                           accept="video/*"
-                           onChange={(e) => {
-                             if (e.target.files && e.target.files.length > 0) {
-                               setCustomVideoFile(e.target.files[0]);
-                             }
-                           }}
-                           className="hidden"
-                         />
-                         {customVideoFile ? (
-                           <>
-                             <div className="w-12 h-12 bg-emerald-500/20 rounded-full flex items-center justify-center">
-                               <Sparkles className="w-6 h-6 text-emerald-500" />
-                             </div>
-                             <div className="text-center">
-                               <p className="text-[11px] font-black text-emerald-400">تم اختيار الفيديو ✨</p>
-                               <p className="text-[9px] text-zinc-500 truncate max-w-[200px]">{customVideoFile.name}</p>
-                             </div>
-                           </>
-                         ) : (
-                           <>
-                             <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                               <Upload className="w-6 h-6 text-white/40 group-hover:text-primary" />
-                             </div>
-                             <p className="text-[11px] font-black text-white/40">اختر فيديو MP4 من جوالك</p>
-                           </>
-                         )}
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                         <div className="relative">
-                            <input 
-                              type="text"
-                              placeholder="ابحث عن المسلسل..."
-                              value={seriesSearchQuery}
-                              onChange={(e) => setSeriesSearchQuery(e.target.value)}
-                              className="w-full bg-zinc-950/80 border border-white/5 rounded-2xl py-3 px-10 text-[11px] text-white focus:outline-none focus:border-primary font-bold text-right"
-                            />
-                            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
-                         </div>
-                         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                           {publishSeriesOptions.slice(0, 8).map((opt) => (
-                             <button
-                               key={opt.title}
-                               type="button"
-                               onClick={() => setPubSeriesName(opt.title)}
-                               className={cn(
-                                 "flex-shrink-0 px-3 py-2 rounded-xl text-[9px] font-black transition-all border",
-                                 pubSeriesName === opt.title ? "bg-white/10 border-white/20 text-white" : "bg-black/20 border-white/5 text-white/40"
-                               )}
-                             >
-                               {opt.title}
-                             </button>
-                           ))}
-                         </div>
-                         <div className="flex gap-3">
+                    {/* Series Selection (Mandatory for both modes now) */}
+                    <div className="space-y-3">
+                       <label className="text-[11px] font-black text-white/40 uppercase tracking-widest px-2">اختار المسلسل (إلزامي) 🔥</label>
+                       <div className="relative">
+                          <input 
+                            type="text"
+                            placeholder="ابحث عن المسلسل لإضافته للقطة..."
+                            value={seriesSearchQuery}
+                            onChange={(e) => setSeriesSearchQuery(e.target.value)}
+                            className="w-full bg-zinc-950/80 border border-white/5 rounded-2xl py-3 px-10 text-[11px] text-white focus:outline-none focus:border-primary font-bold text-right"
+                          />
+                          <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                       </div>
+                       <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                         {publishSeriesOptions.slice(0, 10).map((opt) => (
+                           <button
+                             key={opt.title}
+                             type="button"
+                             onClick={() => setPubSeriesName(opt.title)}
+                             className={cn(
+                               "flex-shrink-0 px-4 py-2 rounded-xl text-[10px] font-black transition-all border whitespace-nowrap",
+                               pubSeriesName === opt.title 
+                                 ? "bg-primary text-white border-primary shadow-[0_0_15px_rgba(229,9,20,0.3)]" 
+                                 : "bg-black/20 border-white/5 text-white/40 hover:border-white/20"
+                             )}
+                           >
+                             {opt.title}
+                           </button>
+                         ))}
+                       </div>
+
+                       {uploadMode === 'from_series' && (
+                         <div className="flex gap-3 pt-2">
                             <div className="flex-1 space-y-1">
                               <label className="text-[9px] font-black text-white/30 mr-2">الحلقة</label>
                               <select 
@@ -2008,8 +1975,8 @@ export default function ShortsScreen() {
                                </div>
                             </div>
                          </div>
-                      </div>
-                    )}
+                       )}
+                    </div>
                   </div>
 
                   {/* Mandatory Title Field */}

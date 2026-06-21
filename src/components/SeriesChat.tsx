@@ -285,20 +285,22 @@ export default function SeriesChat({
   const [guestGenderInput, setGuestGenderInput] = useState<'boy' | 'girl'>('boy');
   
   useEffect(() => {
-    let savedName = localStorage.getItem('guest_chat_name');
-    const savedAvatar = localStorage.getItem('guest_chat_avatar');
+    const savedName = localStorage.getItem('guest_chat_name');
     const customAvatar = localStorage.getItem('user_avatar_url');
     
-    if (savedName) {
+    // Strict onboarding: If no name or it's a generic one, force profile setup
+    if (!savedName || savedName.includes('حساب زائر') || savedName === 'مشاهد') {
+      setIsProfileModalOpen(true);
+    } else {
       setUserName(savedName);
     }
     
     if (customAvatar) {
       setUserAvatar(customAvatar);
-    } else if (savedAvatar) {
-      setUserAvatar(savedAvatar);
     } else {
-      setIsProfileModalOpen(true);
+      // Don't assign random avatars anymore for new users
+      const savedAvatar = localStorage.getItem('guest_chat_avatar');
+      if (savedAvatar) setUserAvatar(savedAvatar);
     }
   }, []);
 
