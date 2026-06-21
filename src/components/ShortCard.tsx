@@ -558,9 +558,6 @@ const ShortCard = memo(({
                 <span className="text-[9px] font-black bg-primary text-white px-2 py-0.5 rounded-lg border border-primary/20 shadow-[0_2px_8px_rgba(229,9,20,0.3)] select-none">
                   الحلقة {item.episodeNum || '1'}
                 </span>
-                <span className="text-[10px] font-extrabold text-amber-400 drop-shadow flex items-center gap-0.5">
-                  لقطة حاسمة 🔥
-                </span>
               </div>
             </div>
           </motion.div>
@@ -568,28 +565,28 @@ const ShortCard = memo(({
 
         {/* Sponsor/Ad Indicator Badge */}
         {item.isAd && (
-          <div className="bg-amber-500/10 backdrop-blur-md px-3 py-1.5 rounded-xl border border-amber-500/20 shadow-md text-[10px] font-black text-amber-500 ml-auto">
+          <div className="bg-amber-500/10 backdrop-blur-md px-3 py-1.5 rounded-xl border border-amber-500/20 shadow-md text-[10px] font-black text-amber-500 ml-auto mr-4">
              إعلان ممول 🌟
           </div>
         )}
 
         {/* Fiery Series Name Display */}
         {!item.isAd && item.seriesName && (
-          <div className="flex flex-col items-end gap-1 ml-auto text-right mb-0.5 select-none pointer-events-none">
+          <div className="flex flex-col items-end gap-1 ml-auto text-right mb-0.5 select-none pointer-events-none mr-2">
             <div className="flex items-center gap-1">
-              <span className="text-[12px] sm:text-[13px] font-extrabold bg-gradient-to-r from-amber-400 via-orange-500 to-yellow-300 bg-clip-text text-transparent drop-shadow-[0_2px_8px_rgba(249,115,22,0.6)]">
-                مشهد رائع من {item.seriesName}
+              <span className="text-[12px] sm:text-[13px] font-extrabold bg-gradient-to-r from-amber-400 via-orange-500 to-yellow-300 bg-clip-text text-transparent drop-shadow-[0_2px_8px_rgba(249,115,22,0.6)] uppercase tracking-tight">
+                مشهد حصري من {item.seriesName}
               </span>
-              <span className="text-[10px] text-yellow-400">🔥</span>
+              <span className="text-[10px] text-yellow-400 animate-pulse">🔥</span>
             </div>
-            <span className="text-[10px] sm:text-[11px] font-extrabold text-zinc-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">
-              👁️ {(viewsCount || 0).toLocaleString()} مشاهدة
+            <span className="text-[10px] sm:text-[11px] font-extrabold text-zinc-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">
+              👁️ {(viewsCount || 0).toLocaleString()} مشاهدة بصرية
             </span>
           </div>
         )}
 
         {/* Title details */}
-        <h2 className="text-white text-[13px] sm:text-[14px] font-black leading-relaxed drop-shadow-[0_2px_12px_rgba(0,0,0,0.95)] max-w-sm ml-auto mr-0 text-right [text-wrap:balance]">
+        <h2 className="text-white text-[14px] sm:text-[16px] font-black leading-relaxed drop-shadow-[0_4px_12px_rgba(0,0,0,1)] max-w-sm ml-auto mr-2 text-right [text-wrap:balance] tracking-tight">
           {item.title}
         </h2>
       </div>

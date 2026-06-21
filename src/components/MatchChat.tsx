@@ -720,7 +720,6 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
                               playsInline
                               webkit-playsinline="true"
                               preload="metadata"
-                              crossOrigin="anonymous"
                               className="w-full h-auto max-h-[180px] object-cover rounded-xl bg-black"
                               referrerPolicy="no-referrer"
                             />

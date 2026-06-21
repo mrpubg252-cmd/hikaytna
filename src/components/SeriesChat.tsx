@@ -159,6 +159,7 @@ interface SeriesChatProps {
   onSeekTo?: (seconds: number) => void;
   isGlobal?: boolean;
   seriesImage?: string;
+  isShortsComments?: boolean;
 }
 
 export const AVATARS = [
@@ -267,7 +268,16 @@ export const AVATARS = [
   }
 ];
 
-export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل', onClose, currentPlaybackTime, onSeekTo, isGlobal, seriesImage }: SeriesChatProps) {
+export default function SeriesChat({ 
+  seriesId, 
+  seriesTitle = 'هذا العمل', 
+  onClose, 
+  currentPlaybackTime, 
+  onSeekTo, 
+  isGlobal, 
+  seriesImage,
+  isShortsComments 
+}: SeriesChatProps) {
   const [userName, setUserName] = useState<string>('مشاهد');
   const [userAvatar, setUserAvatar] = useState<string>('boy1');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -868,6 +878,13 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     const isVideo = fileType.startsWith("video/");
     const isAudio = fileType.startsWith("audio/");
 
+    if (isShortsComments && isVideo) {
+      alert("عذراً، رفع الفيديوهات غير مسموح في التعليقات. يمكنك رفع صور أو بصمات صوتية فقط! ✨");
+      setUploadingImage(false);
+      e.target.value = '';
+      return;
+    }
+
     setUploadingImage(true);
     try {
       const formData = new FormData();
@@ -1466,7 +1483,6 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
                           playsInline
                           webkit-playsinline="true"
                           preload="metadata"
-                          crossOrigin="anonymous"
                           className="w-full h-auto max-h-[180px] object-cover rounded-xl bg-black"
                           referrerPolicy="no-referrer"
                           onClick={(e) => e.stopPropagation()}
@@ -1714,13 +1730,14 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
                   <Camera className="w-4.5 h-4.5" />
                   <input
                     type="file"
-                    accept="image/*,video/*,audio/*"
+                    accept={isShortsComments ? "image/*,audio/*" : "image/*,video/*,audio/*"}
                     className="hidden"
                     onChange={handleFileUpload}
                     disabled={uploadingImage}
                   />
                 </label>
                 
+                <button type="button" onClick={() => alert("قريباً: ملصقات حكايتنا الحصرية! ✨")} className="w-10 h-10 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-primary rounded-full flex items-center justify-center shrink-0 transition-colors border border-white/5" title="ملصقات"><Smile className="w-4.5 h-4.5" /></button>
                 <button type="button" onClick={startVoiceRecording} className="w-10 h-10 bg-zinc-800 text-zinc-400 rounded-full flex items-center justify-center hover:text-white shrink-0 transition-colors" title="تسجيل رسالة صوتية"><Mic className="w-4.5 h-4.5" /></button>
                 <button type="button" onClick={startRecording} className="w-8 h-8 bg-zinc-900 border border-zinc-800 text-zinc-550 rounded-full flex items-center justify-center hover:text-primary shrink-0 transition-colors text-[9px]" title="تحويل الصوت لنص">تخطيط</button>
               </>

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Heart, MessageCircle, Share2, Plus, VolumeX, Volume2, X, Send, Award, Film, AlertCircle, Play, Flame, Sparkles, Smile, Video,
-  ChevronUp, ChevronDown, Eye, Trash2, Clock, ArrowRight, Edit3
+  ChevronUp, ChevronDown, Eye, Trash2, Clock, ArrowRight, Edit3, Search, Upload
 } from 'lucide-react';
 import { db, firestore, fetchAllFromFirebase } from '../services/firebase';
 import { fetchAllSeries } from '../services/dataService';
@@ -16,6 +16,7 @@ import { fetchEpisodesFromAPI, fetchPlayUrlFromAPI } from '../services/api';
 import BottomNav from '../components/BottomNav';
 import SeriesChat from '../components/SeriesChat';
 import ShortCard from '../components/ShortCard';
+import { cn } from '../lib/utils';
 import { getTMDBPoster, getTMDBPosterSync } from '../lib/tmdbHealing';
 import { navigateToWatchOrAds } from '../utils/watchNavigation';
 import { getApiUrl } from '../lib/apiConfig';
@@ -298,16 +299,31 @@ export default function ShortsScreen() {
     const val = localStorage.getItem('hek_shorts_muted');
     return val === null ? true : val === 'true'; // Default to true (muted) on first visit to comply with browser autoplay policy!
   });
+  const [hasInteracted, setHasInteracted] = useState(false);
   const [showVolumeBadge, setShowVolumeBadge] = useState(false);
   const [floatingHearts, setFloatingHearts] = useState<{ id: number; x: number; y: number }[]>([]);
   
   const toggleMute = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    handleGlobalInteraction();
     const newMuted = !isMuted;
     setIsMuted(newMuted);
     localStorage.setItem('hek_shorts_muted', newMuted.toString());
     setShowVolumeBadge(true);
     setTimeout(() => setShowVolumeBadge(false), 800);
+  };
+
+  const handleGlobalInteraction = () => {
+    if (!hasInteracted) {
+      setHasInteracted(true);
+      setIsMuted(false);
+      localStorage.setItem('hek_shorts_muted', 'false');
+      const activeVideo = videoRefs.current[activeIndex];
+      if (activeVideo) {
+        activeVideo.muted = false;
+        activeVideo.play().catch(() => {});
+      }
+    }
   };
   const [isPlaying, setIsPlaying] = useState(true);
 
@@ -1158,6 +1174,12 @@ export default function ShortsScreen() {
       setShowIdentityModal(true);
       return;
     }
+
+    if (!pubTitleSuffix.trim()) {
+      showToast("يرجى إدخال عنوان جذاب للقطة! ✍️", "error");
+      setIsPublishing(false);
+      return;
+    }
     
     setIsPublishing(true);
 
@@ -1276,7 +1298,12 @@ export default function ShortsScreen() {
     }
 
     const publisherName = authorName;
-    const finalTitle = pubTitleSuffix.trim() ? pubTitleSuffix.trim() : `لقطة رائعة من ${pubSeriesName} 🎬🔥`;
+    if (!pubTitleSuffix.trim()) {
+      showToast("يرجى إدخال عنوان للقطة! ✍️", "error");
+      setIsPublishing(false);
+      return;
+    }
+    const finalTitle = pubTitleSuffix.trim();
 
     // Check if exactly this clip already exists
     const isDuplicate = filteredShorts.some(s => s.videoUrl === finalVideoUrl && s.timeRange === targetTimeRange);
@@ -1664,7 +1691,10 @@ export default function ShortsScreen() {
 
 
       {/* 1. TikTok Style Immersive Device Viewport Frame Container */}
-      <div className="flex-1 flex items-center justify-center p-0 sm:p-3 relative">
+      <div 
+        onClick={handleGlobalInteraction}
+        className="flex-1 flex items-center justify-center p-0 sm:p-3 relative"
+      >
         <div className="relative w-full max-w-[420px] h-[100dvh] sm:h-[88vh] bg-zinc-950 border-0 sm:border border-white/10 rounded-none sm:rounded-[2.5rem] overflow-hidden flex flex-col shadow-2xl">
           
           {/* Top Bar Wrapper: Back Button, Profile, Upload */}
@@ -1823,7 +1853,8 @@ export default function ShortsScreen() {
                     seriesId={currentShort.id} 
                     seriesTitle={currentShort.title} 
                     seriesImage={currentShort.thumbnail}
-                    onClose={() => setIsCommentsOpen(false)} 
+                    onClose={() => setIsCommentsOpen(false)}
+                    isShortsComments={true}
                   />
                 </div>
              </motion.div>
@@ -1831,7 +1862,7 @@ export default function ShortsScreen() {
         )}
       </AnimatePresence>
 
-      {/* 4. Publisher Short Modal Box (Dynamic Episode Selector, No Raw Manual MP4 Links!) */}
+      {/* 4. Publisher Short Modal Box (Dynamic Episode Selector) */}
       <AnimatePresence>
         {isPublishOpen && (
           <div className="fixed inset-0 z-[300000] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
@@ -1856,218 +1887,170 @@ export default function ShortsScreen() {
                 </div>
               </div>
 
-              <form onSubmit={handlePublishShort} className="space-y-4 max-h-[65vh] overflow-y-auto no-scrollbar pb-4">
+              <form onSubmit={handlePublishShort} className="space-y-6 max-h-[70vh] overflow-y-auto no-scrollbar pb-6 px-1">
                 
-                {/* Upload Mode Tabs */}
-                <div className="flex rounded-xl overflow-hidden bg-black border border-white/10 p-1 mb-4">
-                   <button
-                     type="button"
-                     onClick={() => setUploadMode('from_series')}
-                     className={`flex-1 py-2 text-[11px] font-bold transition-all rounded-lg ${uploadMode === 'from_series' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
-                   >
-                     قص من حلقة ✂️
-                   </button>
-                   <button
-                     type="button"
-                     onClick={() => setUploadMode('from_device')}
-                     className={`flex-1 py-2 text-[11px] font-bold transition-all rounded-lg ${uploadMode === 'from_device' ? 'bg-primary text-black' : 'text-zinc-500 hover:text-zinc-300'}`}
-                   >
-                     رفع لقطة من عندك 📱
-                   </button>
-                </div>
-
-                {uploadMode === 'from_device' && (
-                  <div className="space-y-2 mb-4">
-                    <label className="block text-[11px] font-black text-zinc-400">اختر فيديو من جهازك (MP4)</label>
-                    <input 
-                       type="file" 
-                       accept="video/*"
-                       onChange={(e) => {
-                         if (e.target.files && e.target.files.length > 0) {
-                           setCustomVideoFile(e.target.files[0]);
-                         }
-                       }}
-                       className="w-full text-xs text-white file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-black hover:file:bg-primary/90"
-                    />
-                  </div>
-                )}
-                
-                {/* Search Series */}
                 <div className="space-y-4">
-                  <div className="relative">
-                    <input 
-                      type="text"
-                      placeholder="ابحث عن المسلسل (مثل: ليلى، المتوحش)..."
-                      value={seriesSearchQuery}
-                      onChange={(e) => setSeriesSearchQuery(e.target.value)}
-                      className="w-full bg-zinc-950 border border-white/5 rounded-2xl py-3 px-10 text-xs text-white focus:outline-none focus:border-primary/50 placeholder:text-zinc-700 font-bold text-right"
-                    />
-                    <Video className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-700" />
-                  </div>
-                </div>
-
-                {/* Visual Series Choice */}
-                <div className="space-y-2">
-                  <label className="block text-[11px] font-black text-zinc-400">اختر المسلسل لإنشاء اللقطة 🎬</label>
-                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 snap-x snap-mandatory">
-                    {publishSeriesOptions.map((opt) => (
-                      <div 
-                        key={opt.title}
-                        onClick={() => {
-                          setPubSeriesName(opt.title);
-                          setPubEpisodeNum('1');
-                        }}
-                        className={`flex-shrink-0 w-24 snap-start cursor-pointer transition-all duration-300 ${
-                          pubSeriesName === opt.title ? 'scale-105 filter-none' : 'opacity-40 grayscale blur-[1px] hover:opacity-70'
-                        }`}
-                      >
-                        <div className={`relative aspect-[3/4] rounded-xl overflow-hidden border-2 transition-colors ${
-                          pubSeriesName === opt.title ? 'border-primary shadow-lg shadow-primary/30' : 'border-white/5'
-                        }`}>
-                          <ShortsOptionImage category={opt.category} 
-                            title={opt.title} 
-                            image={opt.image} 
-                            thumbnail={opt.thumbnail} 
-                          />
-                          {pubSeriesName === opt.title && (
-                            <div className="absolute inset-0 bg-primary/10 flex items-center justify-center">
-                              <Sparkles className="w-5 h-5 text-white" />
-                            </div>
-                          )}
-                        </div>
-                        <p className={`mt-1.5 text-[9px] font-black text-center truncate ${pubSeriesName === opt.title ? 'text-primary' : 'text-zinc-500'}`}>
-                          {opt.title}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Episode Choice directly from series list! */}
-                <div className="space-y-1">
-                  <label className="block text-[11px] font-black text-zinc-400">اختر الحلقة المعنيّة للحفظ 📑</label>
-                      <select 
-                        value={pubEpisodeNum}
-                        onChange={(e) => setPubEpisodeNum(e.target.value)}
-                        className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-right text-xs text-white focus:outline-none focus:border-primary font-bold cursor-pointer"
-                      >
-                        {getSelectedSeriesEpisodes().map((epNum) => (
-                          <option key={epNum} value={epNum}>الحلقة {epNum}</option>
+                  {/* Premium Upload Mode Area */}
+                  <div className="p-4 bg-black/40 rounded-3xl border border-white/10 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-black text-white/40 uppercase tracking-widest">مصدر الفيديو</span>
+                      <div className="flex gap-2">
+                        {['from_device', 'from_series'].map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setUploadMode(mode as any)}
+                            className={cn(
+                              "px-3 py-1.5 rounded-full text-[10px] font-bold transition-all duration-300",
+                              uploadMode === mode 
+                                ? "bg-primary text-black shadow-[0_0_15px_rgba(229,9,20,0.4)]" 
+                                : "text-white/40 hover:text-white"
+                            )}
+                          >
+                            {mode === 'from_device' ? 'من جهازك' : 'من مسلسل'}
+                          </button>
                         ))}
-                      </select>
+                      </div>
                     </div>
 
-                    {uploadMode === 'from_series' && (
-                      <>
-                        {/* Micro segment selection (Precise Time Entry) */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <label className="block text-[11px] font-black text-zinc-400">من الوقت (MM:SS) *</label>
+                    {uploadMode === 'from_device' ? (
+                      <div 
+                        className={cn(
+                          "relative group h-36 rounded-2xl border-2 border-dashed transition-all flex flex-col items-center justify-center gap-3 cursor-pointer overflow-hidden",
+                          customVideoFile ? "border-emerald-500/50 bg-emerald-500/5" : "border-white/10 hover:border-primary/50 hover:bg-primary/5 bg-zinc-950/50"
+                        )}
+                        onClick={() => document.getElementById('short-file-upload')?.click()}
+                      >
+                         <input 
+                           id="short-file-upload"
+                           type="file" 
+                           accept="video/*"
+                           onChange={(e) => {
+                             if (e.target.files && e.target.files.length > 0) {
+                               setCustomVideoFile(e.target.files[0]);
+                             }
+                           }}
+                           className="hidden"
+                         />
+                         {customVideoFile ? (
+                           <>
+                             <div className="w-12 h-12 bg-emerald-500/20 rounded-full flex items-center justify-center">
+                               <Sparkles className="w-6 h-6 text-emerald-500" />
+                             </div>
+                             <div className="text-center">
+                               <p className="text-[11px] font-black text-emerald-400">تم اختيار الفيديو ✨</p>
+                               <p className="text-[9px] text-zinc-500 truncate max-w-[200px]">{customVideoFile.name}</p>
+                             </div>
+                           </>
+                         ) : (
+                           <>
+                             <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                               <Upload className="w-6 h-6 text-white/40 group-hover:text-primary" />
+                             </div>
+                             <p className="text-[11px] font-black text-white/40">اختر فيديو MP4 من جوالك</p>
+                           </>
+                         )}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                         <div className="relative">
                             <input 
                               type="text"
-                              required
-                              placeholder="مثال: 10:00"
-                              value={pubStartTime}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                if (/^[0-9:]*$/.test(val)) setPubStartTime(val);
-                              }}
-                              className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-center text-xs text-white focus:outline-none focus:border-primary font-bold"
+                              placeholder="ابحث عن المسلسل..."
+                              value={seriesSearchQuery}
+                              onChange={(e) => setSeriesSearchQuery(e.target.value)}
+                              className="w-full bg-zinc-950/80 border border-white/5 rounded-2xl py-3 px-10 text-[11px] text-white focus:outline-none focus:border-primary font-bold text-right"
                             />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="block text-[11px] font-black text-zinc-400">إلى الوقت (MM:SS) *</label>
-                            <input 
-                              type="text"
-                              required
-                              placeholder="مثال: 10:45"
-                              value={pubEndTime}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                if (/^[0-9:]*$/.test(val)) setPubEndTime(val);
-                              }}
-                              className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-center text-xs text-white focus:outline-none focus:border-primary font-bold"
-                            />
-                          </div>
-                        </div>
-                        <p className="text-[10px] text-zinc-500 font-bold text-center bg-zinc-950/50 py-1.5 rounded-lg border border-white/5">
-                           💡 استخدم تنسيق (دقيقة:ثانية) مثل 05:30 أو فقط (ثانية) مثل 90
-                        </p>
-
-                        {/* Preview Button */}
-                        <div className="space-y-2">
-                          <button 
-                            type="button"
-                            onClick={handlePreviewScene}
-                            disabled={previewLoading}
-                            className="w-full bg-zinc-950 border border-white/10 hover:border-amber-500/50 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black text-amber-500 transition active:scale-95"
-                          >
-                            {previewLoading ? <div className="w-3 h-3 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                            {previewLoading ? 'جاري تحضير المعاينة...' : 'معاينة اللقطة قبل النشر 🎞️'}
-                          </button>
-
-                          {previewUrl && (
-                            <motion.div 
-                              initial={{ height: 0, opacity: 0 }}
-                              animate={{ height: 'auto', opacity: 1 }}
-                              className="rounded-xl overflow-hidden border border-white/10 bg-black aspect-video relative"
-                            >
-                              <video 
-                                src={previewUrl} 
-                                className="w-full h-full object-contain" 
-                                controls 
-                                autoPlay 
-                                muted
-                              />
-                              <button 
-                                onClick={() => setPreviewUrl('')}
-                                className="absolute top-2 right-2 p-1 bg-black/60 rounded-full text-white hover:bg-black"
+                            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                         </div>
+                         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                           {publishSeriesOptions.slice(0, 8).map((opt) => (
+                             <button
+                               key={opt.title}
+                               type="button"
+                               onClick={() => setPubSeriesName(opt.title)}
+                               className={cn(
+                                 "flex-shrink-0 px-3 py-2 rounded-xl text-[9px] font-black transition-all border",
+                                 pubSeriesName === opt.title ? "bg-white/10 border-white/20 text-white" : "bg-black/20 border-white/5 text-white/40"
+                               )}
+                             >
+                               {opt.title}
+                             </button>
+                           ))}
+                         </div>
+                         <div className="flex gap-3">
+                            <div className="flex-1 space-y-1">
+                              <label className="text-[9px] font-black text-white/30 mr-2">الحلقة</label>
+                              <select 
+                                value={pubEpisodeNum}
+                                onChange={(e) => setPubEpisodeNum(e.target.value)}
+                                className="w-full bg-zinc-950 border border-white/5 rounded-xl p-2.5 text-right text-[10px] text-white focus:outline-none focus:border-primary font-bold cursor-pointer transition-colors"
                               >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </motion.div>
-                          )}
-                        </div>
-                      </>
+                                {getSelectedSeriesEpisodes().slice(0, 50).map((epNum) => (
+                                  <option key={epNum} value={epNum}>الحلقة {epNum}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex-[1.5] flex gap-2">
+                               <div className="flex-1 space-y-1">
+                                  <label className="text-[9px] font-black text-white/30 mr-2">من</label>
+                                  <input type="text" value={pubStartTime} onChange={(e) => setPubStartTime(e.target.value)} placeholder="00:00" className="w-full bg-zinc-950 border border-white/5 rounded-xl p-2.5 text-center text-[10px] text-white focus:outline-none font-bold" />
+                               </div>
+                               <div className="flex-1 space-y-1">
+                                  <label className="text-[9px] font-black text-white/30 mr-2">إلى</label>
+                                  <input type="text" value={pubEndTime} onChange={(e) => setPubEndTime(e.target.value)} placeholder="00:15" className="w-full bg-zinc-950 border border-white/5 rounded-xl p-2.5 text-center text-[10px] text-white focus:outline-none font-bold" />
+                               </div>
+                            </div>
+                         </div>
+                      </div>
                     )}
+                  </div>
 
-                {/* Custom Title detail description */}
-                <div className="space-y-1">
-                  <label className="block text-[11px] font-black text-zinc-400">ما هو عنوان اللقطة؟ (اختياري) ✍️</label>
-                  <p className="text-[9px] text-zinc-500 font-bold mb-1">الناشر الحالي: {authorName}</p>
-                  <input 
-                    type="text"
-                    placeholder="مثال: يامان يودع بهار وسط الدمار! 😢"
-                    value={pubTitleSuffix}
-                    onChange={(e) => setPubTitleSuffix(e.target.value)}
-                    className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-right text-xs text-white focus:outline-none focus:border-primary placeholder:text-zinc-650 font-medium"
-                  />
+                  {/* Mandatory Title Field */}
+                  <div className="group space-y-2">
+                    <label className="text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2">
+                      <Edit3 className="w-3.5 h-3.5 text-primary" />
+                      عنوان اللقطة الحماسية (إلزامي للناشر) <span className="text-primary">*</span>
+                    </label>
+                    <div className="relative group-focus-within:scale-[1.01] transition-transform">
+                      <textarea
+                        required
+                        rows={3}
+                        placeholder="اوصف اللحظة بكلمات تجذب الجمهور... (مثال: أقوى مشهد في الحلقة! 🔥)"
+                        value={pubTitleSuffix}
+                        onChange={(e) => setPubTitleSuffix(e.target.value)}
+                        className="w-full bg-black/60 border border-white/10 rounded-2xl p-4 text-right text-sm text-white focus:outline-none focus:border-primary placeholder:text-zinc-700 font-black resize-none transition-all scrollbar-hide"
+                      />
+                      <div className="absolute bottom-3 left-3 text-[10px] font-bold text-zinc-600">
+                        {pubTitleSuffix.length}/100
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Custom tags */}
-                <div className="space-y-1">
-                  <label className="block text-[11px] font-black text-zinc-400">ملصق اللقطة</label>
-                  <select 
-                    value={pubTag}
-                    onChange={(e) => setPubTag(e.target.value)}
-                    className="w-full bg-zinc-950 border border-white/10 rounded-xl p-2.5 text-right text-xs text-white focus:outline-none focus:border-primary text-slate-300 font-bold cursor-pointer"
-                  >
-                    <option value="لقطة حاسمة 🔥">لقطة حاسمة 🔥</option>
-                    <option value="أكشن مدمر ⚔️">أكشن مدمر ⚔️</option>
-                    <option value="لحظة حزينة 💔">لحظة حزينة 💔</option>
-                    <option value="مواجهة العباقرة 🧠">مواجهة العباقرة 🧠</option>
-                    <option value="نهاية صادمة 😱">نهاية صادمة 😱</option>
-                  </select>
-                </div>
-
-                {/* Submit button */}
+                {/* Main Action Button */}
                 <button 
                   type="submit"
                   disabled={isPublishing}
-                  className={`w-full ${isPublishing ? 'bg-zinc-600' : 'bg-primary hover:bg-red-700'} text-white text-xs font-black py-3 rounded-xl transition duration-250 flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-md shadow-primary/20`}
+                  className={cn(
+                    "w-full relative h-14 overflow-hidden rounded-2xl transition-all duration-300 active:scale-95 group shadow-2xl",
+                    isPublishing ? "bg-zinc-800 cursor-wait" : "bg-primary hover:bg-black hover:border-primary border border-primary/20"
+                  )}
                 >
-                  <Sparkles className="w-4 h-4 text-white" />
-                  <span>{isPublishing ? "جاري تجهيز وبث اللقطة..." : "قص ونشر اللقطة للجمهور فورا! ⚙️🎥"}</span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="flex items-center justify-center gap-3">
+                    {isPublishing ? (
+                      <>
+                        <div className="w-5 h-5 border-3 border-white/20 border-t-white rounded-full animate-spin" />
+                        <span className="text-[13px] font-black text-white">جاري النشر...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-5 h-5 text-white animate-pulse" />
+                        <span className="text-[13px] font-black text-white group-hover:tracking-wider transition-all">نشر اللقطة عالمياً الآن</span>
+                      </>
+                    )}
+                  </div>
                 </button>
               </form>
             </motion.div>
