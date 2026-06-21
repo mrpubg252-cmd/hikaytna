@@ -1175,20 +1175,26 @@ export default function ShortsScreen() {
         formData.append("file", customVideoFile);
         
         const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-media") : "/api/v1/upload-media";
-        const uploadRes = await fetch(uploadEndpoint, {
-          method: "POST",
-          body: formData
-        });
-        
-        if (!uploadRes.ok) {
-           const errorText = await uploadRes.text();
-           console.error("Upload server HTML error:", errorText);
-           showToast(`عذرًا، حدث خطأ في الخادم (حجم الملف كبير أو السيرفر مشغول).`, "error");
-           setIsPublishing(false);
-           return;
-        }
 
-        const uploadData = await uploadRes.json();
+        const uploadData = await new Promise<any>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", uploadEndpoint);
+          
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                resolve(JSON.parse(xhr.responseText));
+              } catch (e) {
+                reject(new Error("رد غير صالح من السيرفر."));
+              }
+            } else {
+              reject(new Error(`فشل الرفع برمز: ${xhr.status}`));
+            }
+          };
+          
+          xhr.onerror = () => reject(new Error("حدث خطأ في الاتصال بالشبكة."));
+          xhr.send(formData);
+        });
         
         if (uploadData.success && uploadData.url) {
           finalVideoUrl = uploadData.url;
@@ -1199,7 +1205,7 @@ export default function ShortsScreen() {
           return;
         }
       } catch (err: any) {
-        showToast("فقد الاتصال لرفع الفيديو، أو حجم الملف كبير جداً.", "error");
+        showToast(`فشل الرفع: ${err.message || "تأكد من الإنترنت أو حجم الملف"}`, "error");
         console.error("Upload error: ", err);
         setIsPublishing(false);
         return;

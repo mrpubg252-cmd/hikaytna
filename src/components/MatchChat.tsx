@@ -716,7 +716,8 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
                             <video 
                               src={msg.videoUrl} 
                               controls 
-                              preload="metadata"
+                              playsInline
+                              preload="auto"
                               className="w-full h-auto max-h-[180px] object-cover rounded-xl"
                               referrerPolicy="no-referrer"
                             />
@@ -923,7 +924,7 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setPreviewImage(null)}
-            className="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
+            className="fixed inset-0 z-[500000] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
           >
             <button 
               onClick={() => setPreviewImage(null)} 

@@ -1682,7 +1682,8 @@ async function startServer() {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
             "Referer": "https://top4top.io/",
             "Cookie": cookieStr
-          }
+          },
+          signal: AbortSignal.timeout(300000)
         });
 
         const uploadHtml = await uploadRes.text();
@@ -1820,7 +1821,8 @@ async function startServer() {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
             "Referer": "https://top4top.io/",
             "Cookie": cookieStr
-          }
+          },
+          signal: AbortSignal.timeout(300000)
         });
 
         const uploadHtml = await uploadRes.text();
@@ -1851,7 +1853,8 @@ async function startServer() {
         const catboxRes = await fetch("https://catbox.moe/user/api.php", {
           method: "POST",
           body: formData,
-          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+          signal: AbortSignal.timeout(300000)
         });
 
         if (catboxRes.ok) {
