@@ -288,23 +288,38 @@ export default function SeriesChat({
   const [guestGenderInput, setGuestGenderInput] = useState<'boy' | 'girl'>('boy');
   
   useEffect(() => {
-    const savedName = localStorage.getItem('guest_chat_name');
-    const customAvatar = localStorage.getItem('user_avatar_url');
-    
+    const updateLocalInfo = () => {
+      const savedName = localStorage.getItem('guest_chat_name');
+      const customAvatar = localStorage.getItem('user_avatar_url');
+      
+      if (savedName) {
+        setUserName(savedName);
+      }
+      if (customAvatar) {
+        setUserAvatar(customAvatar);
+      } else {
+        const savedAvatar = localStorage.getItem('guest_chat_avatar');
+        if (savedAvatar) setUserAvatar(savedAvatar);
+      }
+    };
+
+    updateLocalInfo();
+
     // Strict onboarding: If no name or it's a generic one, force profile setup
+    const savedName = localStorage.getItem('guest_chat_name');
     if (!savedName || savedName.includes('حساب زائر') || savedName === 'مشاهد' || savedName.includes('مستخدم جديد')) {
       setIsProfileModalOpen(true);
-    } else {
-      setUserName(savedName);
     }
-    
-    if (customAvatar) {
-      setUserAvatar(customAvatar);
-    } else {
-      // Don't assign random avatars anymore for new users
-      const savedAvatar = localStorage.getItem('guest_chat_avatar');
-      if (savedAvatar) setUserAvatar(savedAvatar);
-    }
+
+    window.addEventListener('profile-updated', updateLocalInfo);
+    window.addEventListener('name-updated', updateLocalInfo);
+    window.addEventListener('avatar-updated', updateLocalInfo);
+
+    return () => {
+      window.removeEventListener('profile-updated', updateLocalInfo);
+      window.removeEventListener('name-updated', updateLocalInfo);
+      window.removeEventListener('avatar-updated', updateLocalInfo);
+    };
   }, []);
 
   const saveGuestProfile = () => {
@@ -1463,6 +1478,7 @@ export default function SeriesChat({
                       src={
                         msg.userTemplate === 'saudia' ? 'https://i.ibb.co/V9mFrz8/saudia-badge.png' :
                         msg.userTemplate === 'football' ? 'https://i.ibb.co/0Xp5Z9H/ball.png' :
+                        msg.userTemplate === 'fire' ? 'https://i.ibb.co/68v8LSw/fire-badge.png' :
                         msg.userTemplate === 'crown' ? 'https://i.ibb.co/RPhPscx/crown.png' :
                         ''
                       } 
