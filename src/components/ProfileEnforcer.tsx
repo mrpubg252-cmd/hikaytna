@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { User, Camera, Check, ChevronLeft, Sparkles, Image } from 'lucide-react';
+import { User, Camera, Check, ChevronLeft, Sparkles, Image, Settings, ZoomIn, ZoomOut, Move } from 'lucide-react';
+import ProfileTemplateOverlay from './ProfileTemplateOverlay';
 
 export default function ProfileEnforcer() {
   const [show, setShow] = useState(false);
@@ -12,19 +13,20 @@ export default function ProfileEnforcer() {
   // New States for adjustment
   const [adjustingFile, setAdjustingFile] = useState<File | null>(null);
   const [tempPreviewUrl, setTempPreviewUrl] = useState<string | null>(null);
-  const [verticalPos, setVerticalPos] = useState(50); // 0 to 100
-  const [horizontalPos, setHorizontalPos] = useState(50); // 0 to 100
+  const [verticalPos, setVerticalPos] = useState(() => parseFloat(localStorage.getItem('user_avatar_pos_v') || '50'));
+  const [horizontalPos, setHorizontalPos] = useState(() => parseFloat(localStorage.getItem('user_avatar_pos_h') || '50'));
+  const [zoomVal, setZoomVal] = useState(() => parseFloat(localStorage.getItem('user_avatar_zoom') || '100')); // scale percentage: 100 to 300
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(() => localStorage.getItem('user_profile_template') || 'none');
   const [isAdjusting, setIsAdjusting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const TEMPLATES = [
-    { id: 'none', label: 'بدون', emoji: '❌', img: '' },
-    { id: 'saudia', label: 'السعودية 🇸🇦', img: 'https://i.ibb.co/V9mFrz8/saudia-badge.png' },
-    { id: 'football', label: 'كورة ⚽', img: 'https://i.ibb.co/0Xp5Z9H/ball.png' },
-    { id: 'fire', label: 'حماس 🔥', img: 'https://i.ibb.co/68v8LSw/fire-badge.png' },
-    { id: 'crown', label: 'تاج 👑', img: 'https://i.ibb.co/RPhPscx/crown.png' },
+    { id: 'none', label: 'بدون إطار', emoji: '❌' },
+    { id: 'saudia', label: 'السعودية 🇸🇦' },
+    { id: 'football', label: 'كورة ⚽' },
+    { id: 'fire', label: 'حماس 🔥' },
+    { id: 'crown', label: 'تاج 👑' },
   ];
 
   useEffect(() => {
@@ -69,6 +71,7 @@ export default function ProfileEnforcer() {
         localStorage.setItem('user_avatar_url', data.url);
         localStorage.setItem('user_avatar_pos_v', verticalPos.toString());
         localStorage.setItem('user_avatar_pos_h', horizontalPos.toString());
+        localStorage.setItem('user_avatar_zoom', zoomVal.toString());
         setIsAdjusting(false);
       }
     } catch (err) {
@@ -97,6 +100,7 @@ export default function ProfileEnforcer() {
     localStorage.setItem('profile_setup_complete', 'true');
     localStorage.setItem('user_avatar_pos_v', verticalPos.toString());
     localStorage.setItem('user_avatar_pos_h', horizontalPos.toString());
+    localStorage.setItem('user_avatar_zoom', zoomVal.toString());
     if (selectedTemplate) {
       localStorage.setItem('user_profile_template', selectedTemplate);
     } else {
@@ -164,36 +168,29 @@ export default function ProfileEnforcer() {
                   />
 
                   {isAdjusting ? (
-                    <motion.div 
-                      className="w-full h-full cursor-move"
-                      drag
-                      dragConstraints={{ left: -50, right: 50, top: -50, bottom: 50 }}
-                      onDrag={(e, info) => {
-                         const newH = Math.min(Math.max(horizontalPos - info.delta.x / 2, 0), 100);
-                         const newV = Math.min(Math.max(verticalPos - info.delta.y / 2, 0), 100);
-                         setHorizontalPos(newH);
-                         setVerticalPos(newV);
-                      }}
-                    >
+                    <div className="w-[120px] h-[120px] rounded-full overflow-hidden relative border-2 border-dashed border-zinc-700 bg-zinc-950 flex items-center justify-center">
                       <img 
                         src={tempPreviewUrl!} 
-                        className="w-[200%] h-[200%] max-w-none object-cover pointer-events-none" 
-                        style={{ objectPosition: `${horizontalPos}% ${verticalPos}%` }}
+                        className="w-full h-full object-cover transition-all" 
+                        style={{ 
+                          objectPosition: `${horizontalPos}% ${verticalPos}%`,
+                          transform: `scale(${zoomVal / 100})`
+                        }}
                         alt="Adjusting" 
                       />
                       {/* Grid overlay for professional Cropping reference */}
-                      <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-30 border border-white/20">
-                        <div className="border border-white/20" />
-                        <div className="border border-white/20" />
-                        <div className="border border-white/20" />
-                        <div className="border border-white/20" />
-                        <div className="border border-white/20" />
-                        <div className="border border-white/20" />
-                        <div className="border border-white/20" />
-                        <div className="border border-white/20" />
-                        <div className="border border-white/20" />
+                      <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-30 border border-white/10">
+                        <div className="border-b border-r border-white/20" />
+                        <div className="border-b border-r border-white/20" />
+                        <div className="border-b border-white/20" />
+                        <div className="border-b border-r border-white/20" />
+                        <div className="border-b border-r border-white/20" />
+                        <div className="border-b border-white/20" />
+                        <div className="border-r border-white/20" />
+                        <div className="border-r border-white/20" />
+                        <div className="border-transparent" />
                       </div>
-                    </motion.div>
+                    </div>
                   ) : (
                     <div className="w-full h-full relative flex flex-col items-center justify-center p-4">
                       {customAvatar || tempPreviewUrl ? (
@@ -201,11 +198,14 @@ export default function ProfileEnforcer() {
                           <img 
                             src={customAvatar || tempPreviewUrl!} 
                             className="w-full h-full object-cover rounded-full" 
-                            style={{ objectPosition: `${horizontalPos}% ${verticalPos}%` }}
+                            style={{ 
+                              objectPosition: `${horizontalPos}% ${verticalPos}%`,
+                              transform: `scale(${zoomVal / 100})`
+                            }}
                             alt="Custom Avatar" 
                           />
                           {/* Hover Overlay */}
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center rounded-full">
                             <Camera className="w-5 h-5 text-white mb-1 animate-bounce" />
                             <span className="text-[9px] font-black text-white">تغيير الصورة</span>
                           </div>
@@ -221,14 +221,9 @@ export default function ProfileEnforcer() {
                         </div>
                       )}
                       
-                      {/* Template Overlay */}
+                      {/* Template Overlay via SVG */}
                       {selectedTemplate && selectedTemplate !== 'none' && (
-                        <motion.img 
-                          initial={{ scale: 0, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          src={TEMPLATES.find(t => t.id === selectedTemplate)?.img} 
-                          className="absolute inset-0 w-full h-full object-contain p-1.5 pointer-events-none z-30"
-                        />
+                        <ProfileTemplateOverlay template={selectedTemplate} />
                       )}
                     </div>
                   )}
@@ -240,25 +235,76 @@ export default function ProfileEnforcer() {
                 </button>
               </div>
 
-              {/* Adjustment Controls */}
+              {/* Adjustment Controls with high-quality sliders */}
               {isAdjusting && (
                 <motion.div 
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="w-full bg-white/5 border border-white/10 rounded-3xl p-4 space-y-4 text-center"
+                  className="w-full bg-zinc-900/90 border border-zinc-800/80 rounded-3xl p-5 space-y-4 text-right"
                 >
-                  <p className="text-[10px] font-black text-center text-red-500 uppercase tracking-widest animate-pulse">حرك الصورة لضبط الأبعاد 📐</p>
-                  <div className="flex gap-2">
+                  <p className="text-[11px] font-black text-center text-red-500 uppercase tracking-widest animate-pulse">شريط التحكم بالحق والزوم المتقدم 📐</p>
+                  
+                  <div className="space-y-3.5">
+                    {/* Zoom factor */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[10px] text-zinc-400 font-bold">
+                        <span>{zoomVal}%</span>
+                        <span className="flex items-center gap-1">التقريب والبعد (الزوم) 🔍</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="100" 
+                        max="300" 
+                        value={zoomVal}
+                        onChange={(e) => setZoomVal(parseFloat(e.target.value))}
+                        className="w-full accent-red-650 h-1 bg-zinc-950 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Horizontal align */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[10px] text-zinc-400 font-bold">
+                        <span>{Math.round(horizontalPos)}%</span>
+                        <span>الموضع الأفقي ↔️</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="100" 
+                        value={horizontalPos}
+                        onChange={(e) => setHorizontalPos(parseFloat(e.target.value))}
+                        className="w-full accent-red-650 h-1 bg-zinc-950 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Vertical align */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center text-[10px] text-zinc-400 font-bold">
+                        <span>{Math.round(verticalPos)}%</span>
+                        <span>الموضع العمودي ↕️</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="100" 
+                        value={verticalPos}
+                        onChange={(e) => setVerticalPos(parseFloat(e.target.value))}
+                        className="w-full accent-red-650 h-1 bg-zinc-950 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2.5 pt-2">
                     <button 
                       onClick={handleUploadAndConfirm}
                       disabled={isUploading}
-                      className="flex-1 bg-white text-black text-[11px] py-3 rounded-xl font-black transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                      className="flex-1 bg-gradient-to-r from-red-650 to-amber-600 text-white text-[11px] py-3 rounded-xl font-black transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                     >
                       {isUploading ? 'جاري الرفع...' : 'حفظ وصنع التميز ✨'}
                     </button>
                     <button 
                       onClick={() => setIsAdjusting(false)}
-                      className="px-4 bg-zinc-900 text-zinc-500 text-[11px] py-3 rounded-xl border border-zinc-800 font-black cursor-pointer"
+                      className="px-4 bg-zinc-850 text-zinc-400 text-[11px] py-3 rounded-xl border border-zinc-800 font-black cursor-pointer"
                     >
                       إلغاء
                     </button>
@@ -294,23 +340,20 @@ export default function ProfileEnforcer() {
                               {customAvatar ? (
                                 <img 
                                   src={customAvatar} 
-                                  className="w-full h-full object-cover" 
-                                  style={{ objectPosition: `${horizontalPos}% ${verticalPos}%` }}
+                                  className="w-full h-full object-cover rounded-full" 
+                                  style={{ 
+                                    objectPosition: `${horizontalPos}% ${verticalPos}%`,
+                                    transform: `scale(${zoomVal / 100})`
+                                  }}
                                   alt="Avatar" 
                                 />
                               ) : (
                                 <User className="w-5 h-5 text-zinc-600" />
                               )}
                               
-                              {/* Actual template badge overlaid on it */}
-                              {t.img ? (
-                                <img 
-                                  src={t.img} 
-                                  className="absolute inset-0 w-full h-full object-contain p-0.5 z-10 pointer-events-none" 
-                                  alt="badge" 
-                                />
-                              ) : (
-                                <span className="absolute inset-0 flex items-center justify-center text-xs pointer-events-none">{t.emoji}</span>
+                              {/* Actual vector template badge overlaid */}
+                              {t.id !== 'none' && (
+                                <ProfileTemplateOverlay template={t.id} />
                               )}
                             </div>
                             

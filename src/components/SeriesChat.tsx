@@ -15,6 +15,7 @@ import { getApiUrl } from '../lib/apiConfig';
 import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
 import { firestore } from '../services/firebase';
 import { checkBanStatus, reportComment, getOrCreateUserId } from '../services/banService';
+import ProfileTemplateOverlay from './ProfileTemplateOverlay';
 
 let db: Database | null = null;
 
@@ -33,6 +34,7 @@ interface ChatMessage {
   userAvatar: string; // id of avatar in AVATARS
   userAvatarPosV?: string;
   userAvatarPosH?: string;
+  userAvatarZoom?: string;
   userTemplate?: string;
   text?: string;
   audioUrl?: string;
@@ -614,6 +616,7 @@ export default function SeriesChat({
             userAvatar: val.userAvatar || 'boy1',
             userAvatarPosV: val.userAvatarPosV || '50',
             userAvatarPosH: val.userAvatarPosH || '50',
+            userAvatarZoom: val.userAvatarZoom || '100',
             userTemplate: val.userTemplate || '',
             text: val.text || '',
             imageUrl: val.imageUrl || '',
@@ -877,6 +880,7 @@ export default function SeriesChat({
       userAvatar,
       userAvatarPosV: localStorage.getItem('user_avatar_pos_v') || '50',
       userAvatarPosH: localStorage.getItem('user_avatar_pos_h') || '50',
+      userAvatarZoom: localStorage.getItem('user_avatar_zoom') || '100',
       userTemplate: localStorage.getItem('user_profile_template') || '',
       text: txt || (pendingScene ? `شوفوا هاذ اللقطة عند الدقيقة ${pendingScene.timeStr} 🔥` : ''),
       imageUrl: finalImg || '',
@@ -1464,8 +1468,11 @@ export default function SeriesChat({
                   {msg.userAvatar.startsWith('http') ? (
                     <img 
                       src={msg.userAvatar} 
-                      className="w-full h-full object-cover" 
-                      style={{ objectPosition: `${msg.userAvatarPosH || '50'}% ${msg.userAvatarPosV || '50'}%` }}
+                      className="w-full h-full object-cover rounded-full" 
+                      style={{ 
+                        objectPosition: `${msg.userAvatarPosH || '50'}% ${msg.userAvatarPosV || '50'}%`,
+                        transform: `scale(${(parseFloat(msg.userAvatarZoom || '100')) / 100})`
+                      }}
                       alt="Avatar" 
                     />
                   ) : (
@@ -1474,17 +1481,7 @@ export default function SeriesChat({
                   
                   {/* Template Overlay */}
                   {msg.userTemplate && msg.userTemplate !== 'none' && (
-                    <img 
-                      src={
-                        msg.userTemplate === 'saudia' ? 'https://i.ibb.co/V9mFrz8/saudia-badge.png' :
-                        msg.userTemplate === 'football' ? 'https://i.ibb.co/0Xp5Z9H/ball.png' :
-                        msg.userTemplate === 'fire' ? 'https://i.ibb.co/68v8LSw/fire-badge.png' :
-                        msg.userTemplate === 'crown' ? 'https://i.ibb.co/RPhPscx/crown.png' :
-                        ''
-                      } 
-                      className="absolute inset-0 w-full h-full object-contain p-0.5 pointer-events-none"
-                      alt="Template"
-                    />
+                    <ProfileTemplateOverlay template={msg.userTemplate} />
                   )}
                 </div>
                 <div className={`flex flex-col max-w-[75%] ${isMe ? 'items-end' : 'items-start'}`}>

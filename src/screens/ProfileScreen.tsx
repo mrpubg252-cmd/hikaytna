@@ -27,6 +27,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import Header from '../components/Header';
 import BottomNav from '../components/BottomNav';
+import ProfileTemplateOverlay from '../components/ProfileTemplateOverlay';
 
 export default function ProfileScreen() {
   const [currentName, setCurrentName] = useState(() => {
@@ -40,11 +41,11 @@ export default function ProfileScreen() {
   const [newNameInput, setNewNameInput] = useState('');
 
   const TEMPLATES = [
-    { id: 'none', label: 'بدون إطار', emoji: '❌', img: '' },
-    { id: 'saudia', label: 'السعودية 🇸🇦', img: 'https://i.ibb.co/V9mFrz8/saudia-badge.png' },
-    { id: 'football', label: 'كورة ⚽', img: 'https://i.ibb.co/0Xp5Z9H/ball.png' },
-    { id: 'fire', label: 'حماس 🔥', img: 'https://i.ibb.co/68v8LSw/fire-badge.png' },
-    { id: 'crown', label: 'تاج 👑', img: 'https://i.ibb.co/RPhPscx/crown.png' },
+    { id: 'none', label: 'بدون إطار', emoji: '❌' },
+    { id: 'saudia', label: 'السعودية 🇸🇦' },
+    { id: 'football', label: 'كورة ⚽' },
+    { id: 'fire', label: 'حماس 🔥' },
+    { id: 'crown', label: 'تاج 👑' },
   ];
 
   const [selectedTemplate, setSelectedTemplate] = useState(() => {
@@ -55,6 +56,9 @@ export default function ProfileScreen() {
   });
   const [horizontalPos, setHorizontalPos] = useState(() => {
     return parseFloat(localStorage.getItem('user_avatar_pos_h') || '50');
+  });
+  const [zoomVal, setZoomVal] = useState(() => {
+    return parseFloat(localStorage.getItem('user_avatar_zoom') || '100');
   });
 
   // Expandable sections state for setting list (accordion style)
@@ -97,6 +101,7 @@ export default function ProfileScreen() {
       setSelectedTemplate(localStorage.getItem('user_profile_template') || 'none');
       setVerticalPos(parseFloat(localStorage.getItem('user_avatar_pos_v') || '50'));
       setHorizontalPos(parseFloat(localStorage.getItem('user_avatar_pos_h') || '50'));
+      setZoomVal(parseFloat(localStorage.getItem('user_avatar_zoom') || '100'));
     };
 
     window.addEventListener('profile-updated', handleProfileChange);
@@ -250,12 +255,14 @@ export default function ProfileScreen() {
       localStorage.removeItem('user_profile_template');
       localStorage.removeItem('profile_setup_complete');
       localStorage.removeItem('guest_chat_avatar');
+      localStorage.removeItem('user_avatar_zoom');
       
       setCurrentName('غير مسجل (حساب زائر)');
       setAvatarUrl('');
       setSelectedTemplate('none');
       setVerticalPos(50);
       setHorizontalPos(50);
+      setZoomVal(100);
 
       window.dispatchEvent(new Event('profile-updated'));
       window.dispatchEvent(new Event('name-updated'));
@@ -273,13 +280,16 @@ export default function ProfileScreen() {
     }));
   };
 
-  const handleSavePosition = (axis: 'v' | 'h', value: number) => {
+  const handleSavePosition = (axis: 'v' | 'h' | 'z', value: number) => {
     if (axis === 'v') {
       setVerticalPos(value);
       localStorage.setItem('user_avatar_pos_v', value.toString());
-    } else {
+    } else if (axis === 'h') {
       setHorizontalPos(value);
       localStorage.setItem('user_avatar_pos_h', value.toString());
+    } else {
+      setZoomVal(value);
+      localStorage.setItem('user_avatar_zoom', value.toString());
     }
     window.dispatchEvent(new Event('profile-updated'));
   };
@@ -306,7 +316,10 @@ export default function ProfileScreen() {
                     <img 
                       src={avatarUrl} 
                       className="w-full h-full object-cover rounded-full" 
-                      style={{ objectPosition: `${horizontalPos}% ${verticalPos}%` }}
+                      style={{ 
+                        objectPosition: `${horizontalPos}% ${verticalPos}%`,
+                        transform: `scale(${zoomVal / 100})`
+                      }}
                       alt="Profile" 
                     />
                   ) : (
@@ -317,11 +330,7 @@ export default function ProfileScreen() {
 
                   {/* Template Overlay Badge */}
                   {selectedTemplate && selectedTemplate !== 'none' && (
-                    <img 
-                      src={TEMPLATES.find(t => t.id === selectedTemplate)?.img} 
-                      className="absolute inset-0 w-full h-full object-contain p-1 z-30 pointer-events-none animate-[fadeIn_0.5s_ease-out]"
-                      alt="Badge Frame"
-                    />
+                    <ProfileTemplateOverlay template={selectedTemplate} />
                   )}
                   
                   {/* Photo Edit Trigger on Hover */}
@@ -489,22 +498,19 @@ export default function ProfileScreen() {
                                 {avatarUrl ? (
                                   <img 
                                     src={avatarUrl} 
-                                    className="w-full h-full object-cover" 
-                                    style={{ objectPosition: `${horizontalPos}% ${verticalPos}%` }}
+                                    className="w-full h-full object-cover rounded-full" 
+                                    style={{ 
+                                      objectPosition: `${horizontalPos}% ${verticalPos}%`,
+                                      transform: `scale(${zoomVal / 100})`
+                                    }}
                                     alt="Preview Frame" 
                                   />
                                 ) : (
                                   <User className="w-5 h-5 text-zinc-650" />
                                 )}
                                 
-                                {t.img ? (
-                                  <img 
-                                    src={t.img} 
-                                    className="absolute inset-0 w-full h-full object-contain p-0.5 z-10 pointer-events-none" 
-                                    alt="Badge preview" 
-                                  />
-                                ) : (
-                                  <span className="absolute inset-0 flex items-center justify-center text-xs pointer-events-none">{t.emoji}</span>
+                                {t.id !== 'none' && (
+                                  <ProfileTemplateOverlay template={t.id} />
                                 )}
                               </div>
 
@@ -531,7 +537,23 @@ export default function ProfileScreen() {
                           <Sliders className="w-3.5 h-3.5 text-zinc-500" />
                         </div>
                         
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          {/* Zoom Control Slider */}
+                          <div className="space-y-1.5 bg-zinc-900/50 p-3 rounded-2xl border border-white/[0.02]">
+                            <div className="flex justify-between items-center text-[10px] text-zinc-400 font-bold">
+                              <span>{zoomVal}%</span>
+                              <span>التقريب والبعد (الزوم) 🔍</span>
+                            </div>
+                            <input 
+                              type="range" 
+                              min="100" 
+                              max="300" 
+                              value={zoomVal}
+                              onChange={(e) => handleSavePosition('z', parseFloat(e.target.value))}
+                              className="w-full accent-red-650 h-1 bg-zinc-950 rounded-lg appearance-none cursor-pointer"
+                            />
+                          </div>
+
                           {/* Horizontal Alignment */}
                           <div className="space-y-1.5 bg-zinc-900/50 p-3 rounded-2xl border border-white/[0.02]">
                             <div className="flex justify-between items-center text-[10px] text-zinc-400 font-bold">
