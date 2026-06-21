@@ -297,7 +297,7 @@ export default function ShortsScreen() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(() => {
     const val = localStorage.getItem('hek_shorts_muted');
-    return val === null ? true : val === 'true'; // Default to true (muted) on first visit to comply with browser autoplay policy!
+    return val === null ? false : val === 'true'; // Default to false (sound on) so video has interactive audio immediately!
   });
   const [hasInteracted, setHasInteracted] = useState(false);
   const [showVolumeBadge, setShowVolumeBadge] = useState(false);
@@ -1078,26 +1078,33 @@ export default function ShortsScreen() {
     const rawIndex = Math.round(scrollPos / elementHeight);
     
     if (rawIndex !== activeIndex && rawIndex >= 0 && rawIndex < filteredShorts.length) {
+      // IMMEDIATELY pause and mute all other videos to prevent any transient audio overlaps
+      Object.entries(videoRefs.current).forEach(([idxStr, rawVideo]) => {
+        const idx = parseInt(idxStr);
+        const video = rawVideo as HTMLVideoElement | null;
+        if (video && idx !== rawIndex) {
+          try {
+            video.pause();
+            video.muted = true;
+            video.currentTime = 0;
+          } catch (e) {}
+        }
+      });
+
       setActiveIndex(rawIndex);
       setIsPlaying(true);
       setPlayBlocked(false);
       
-      // World-class instant trigger: attempt to play the NEW video immediately
-      // This is crucial for the "Flow" feel
+      // World-class instant trigger: attempt to play the NEW video immediately with high-fidelity audio
       setTimeout(() => {
         const nextVideo = videoRefs.current[rawIndex];
         if (nextVideo) {
-          // If user has interacted at least once, we can unmute
-          if (hasInteracted) {
-             nextVideo.muted = isMuted;
-          } else {
-             nextVideo.muted = true;
-          }
+          nextVideo.muted = isMuted;
           
           const playP = nextVideo.play();
           if (playP !== undefined) {
             playP.catch((err) => {
-              console.warn("Video flow blocked by browser:", err);
+              console.warn("Video flow blocked by browser, trying muted fallback:", err);
               // Fallback to muted play if browser is strict
               nextVideo.muted = true;
               nextVideo.play().catch(() => {});

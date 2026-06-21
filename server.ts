@@ -1787,6 +1787,7 @@ async function startServer() {
   app.get("/api/v1/download-proxy", async (req, res) => {
     let tempInPath = "";
     let tempOutPath = "";
+    let tempLogoPath = "";
     let fallbackToRaw = false;
     let urlString = "";
 
@@ -1807,6 +1808,7 @@ async function startServer() {
       const randId = Math.random().toString(36).substring(2, 10);
       tempInPath = path.join(tempDir, `input_${randId}.mp4`);
       tempOutPath = path.join(tempDir, `output_${randId}.mp4`);
+      tempLogoPath = path.join(tempDir, `logo_${randId}.png`);
 
       console.log(`[DOWNLOAD-PROXY] Watermark active. Fetching: ${targetUrl}`);
       
@@ -1831,26 +1833,47 @@ async function startServer() {
 
       console.log(`[DOWNLOAD-PROXY] Download done. Temp path size: ${fs.statSync(tempInPath).size} bytes`);
 
-      // 2. Discover /public watermark branding asset
-      let watermarkPath = path.join(process.cwd(), 'public', 'logo.png');
-      if (!fs.existsSync(watermarkPath)) {
-        watermarkPath = path.join(process.cwd(), 'public', 'logo.jpg');
+      // 2. Fetch the top-tier custom watermark image from the requested URL
+      const watermarkUrl = "https://f.top4top.io/p_3824vcsjo1.png";
+      let hasWatermark = false;
+      
+      console.log(`[DOWNLOAD-PROXY] Downloading watermark image from: ${watermarkUrl}`);
+      try {
+        const logoResponse = await axios({
+          url: watermarkUrl,
+          method: 'GET',
+          responseType: 'arraybuffer',
+          timeout: 15000
+        });
+        fs.writeFileSync(tempLogoPath, logoResponse.data);
+        hasWatermark = true;
+        console.log(`[DOWNLOAD-PROXY] Custom watermark downloaded successfully: ${fs.statSync(tempLogoPath).size} bytes`);
+      } catch (logoErr: any) {
+        console.warn("[DOWNLOAD-PROXY] Custom top4top logo download issue, fallback to fallback local public logo:", logoErr.message);
+        // Fallback check
+        let localWatermark = path.join(process.cwd(), 'public', 'logo.png');
+        if (!fs.existsSync(localWatermark)) {
+          localWatermark = path.join(process.cwd(), 'public', 'logo.jpg');
+        }
+        if (fs.existsSync(localWatermark)) {
+          fs.copyFileSync(localWatermark, tempLogoPath);
+          hasWatermark = true;
+        }
       }
 
-      const hasWatermark = fs.existsSync(watermarkPath);
       const hasFfmpeg = !!ffmpegPath;
 
       if (hasWatermark && hasFfmpeg) {
-        console.log(`[DOWNLOAD-PROXY] Executing static FFmpeg from path: ${ffmpegPath}`);
+        console.log(`[DOWNLOAD-PROXY] Executing static FFmpeg with customized bouncing watermark`);
         
         // TikTok / Instagram style bouncing watermark!
-        // Moves from top-right to bottom-left every 5 seconds. Scaled to a sleek width of 120 pixels.
-        const filter = `[1:v]scale=120:-1[watermark]; [0:v][watermark]overlay='if(lt(mod(t,10),5), W-w-24, 24)':'if(lt(mod(t,10),5), 24, H-h-24)'`;
+        // Moves from top-right to bottom-left every 5 seconds. Scaled to a sleek width of 110 pixels.
+        const filter = `[1:v]scale=110:-1[watermark]; [0:v][watermark]overlay='if(lt(mod(t,10),5), W-w-24, 24)':'if(lt(mod(t,10),5), 24, H-h-24)'`;
         
         const args = [
           '-y',
           '-i', tempInPath,
-          '-i', watermarkPath,
+          '-i', tempLogoPath,
           '-filter_complex', filter,
           '-c:v', 'libx264',
           '-preset', 'superfast',
@@ -1885,7 +1908,7 @@ async function startServer() {
           readStream.pipe(res);
           
           readStream.on('end', () => {
-            cleanupTempFiles(tempInPath, tempOutPath);
+            cleanupTempFiles(tempInPath, tempOutPath, tempLogoPath);
           });
           return;
         }
@@ -1898,7 +1921,7 @@ async function startServer() {
     }
 
     if (fallbackToRaw) {
-      cleanupTempFiles(tempInPath, tempOutPath);
+      cleanupTempFiles(tempInPath, tempOutPath, tempLogoPath);
       try {
         if (urlString) {
           const response = await axios({
@@ -1924,12 +1947,15 @@ async function startServer() {
     }
   });
 
-  function cleanupTempFiles(inP: string, outP: string) {
+  function cleanupTempFiles(inP: string, outP: string, logoP?: string) {
     try {
       if (inP && fs.existsSync(inP)) fs.unlinkSync(inP);
     } catch (e) {}
     try {
       if (outP && fs.existsSync(outP)) fs.unlinkSync(outP);
+    } catch (e) {}
+    try {
+      if (logoP && fs.existsSync(logoP)) fs.unlinkSync(logoP);
     } catch (e) {}
   }
 

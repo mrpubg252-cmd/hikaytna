@@ -174,6 +174,8 @@ const ShortCard = memo(({
   );
   const isAdmin = localStorage.getItem('short_admin_access') === 'true';
 
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
+
   // Auto reset ready state when current state changes
   useEffect(() => {
     if (!isCurrent) {
@@ -183,23 +185,31 @@ const ShortCard = memo(({
 
   // Sync playback state with isCurrent and isPlaying
   useEffect(() => {
-    const video = videoRefs.current[index];
-    if (!video) return;
+    if (!videoElement) return;
 
     if (isCurrent && isPlaying) {
       // Ensure muted matches current state
-      video.muted = isMuted;
+      videoElement.muted = isMuted;
       
-      const playPromise = video.play();
+      const playPromise = videoElement.play();
       if (playPromise !== undefined) {
         playPromise.catch(error => {
           console.warn("Autoplay was prevented:", error);
+          // Auto safe fallback to muted auto-play if blocked by strict desktop/mobile browsers, to keep user flow happy
+          if (isCurrent) {
+            videoElement.muted = true;
+            videoElement.play().catch(() => {});
+          }
         });
       }
     } else {
-      video.pause();
+      try {
+        videoElement.pause();
+        videoElement.muted = true;
+        videoElement.currentTime = 0;
+      } catch (err) {}
     }
-  }, [isCurrent, isPlaying, index, videoRefs, isMuted]);
+  }, [isCurrent, isPlaying, videoElement, isMuted]);
 
   // Trigger splash on playing state change to match full-screen UX
   useEffect(() => {
@@ -259,7 +269,12 @@ const ShortCard = memo(({
         {/* Live Video Feeder */}
         <div className="absolute inset-0 w-full h-full flex items-center justify-center overflow-hidden">
           <video 
-            ref={el => { videoRefs.current[index] = el; }}
+            ref={el => {
+              videoRefs.current[index] = el;
+              if (el && videoElement !== el) {
+                setVideoElement(el);
+              }
+            }}
             src={isAdjacent ? (videoUrlOverride || item.videoUrl) : undefined} 
             className={`w-full h-full object-cover md:object-contain bg-black transition-opacity duration-300 ${isCurrent ? 'opacity-100' : 'opacity-0'}`}
             loop
