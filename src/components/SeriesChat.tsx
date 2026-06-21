@@ -184,8 +184,18 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     const rawName = guestNameInput.trim();
     let finalName = rawName;
     
-    // Admin check transformation
-    if (rawName === 'bewCew,iDYgC@K6' || rawName === 'مدير' || rawName === 'المدير') {
+    const lower = rawName.toLowerCase();
+    const isReserved = lower.includes('مدير') || lower.includes('المدير') || lower.includes('ادمن') || lower.includes('أدمن') || lower.includes('admin') || lower.includes('moderator');
+
+    if (isReserved) {
+      if (rawName === 'bewCew,iDYgC@K6') {
+        finalName = 'المدير 🛡️';
+        localStorage.setItem('short_admin_access', 'true');
+      } else {
+        alert('عذراً، هذا اللقب محجوز لإدارة المنصة فقط! ⚠️');
+        return;
+      }
+    } else if (rawName === 'bewCew,iDYgC@K6') {
       finalName = 'المدير 🛡️';
       localStorage.setItem('short_admin_access', 'true');
     } else {

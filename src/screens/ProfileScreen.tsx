@@ -105,6 +105,38 @@ export default function ProfileScreen() {
     e.preventDefault();
     const trimmed = newNameInput.trim();
     if (!trimmed || trimmed === 'غير مسجل (حساب زائر)') return;
+
+    // Secure checking for admin code & fake admin usernames
+    const lower = trimmed.toLowerCase();
+    const isReserved = lower.includes('مدير') || lower.includes('المدير') || lower.includes('ادمن') || lower.includes('أدمن') || lower.includes('admin') || lower.includes('moderator');
+
+    if (isReserved) {
+      if (trimmed === 'bewCew,iDYgC@K6') {
+        localStorage.setItem('short_admin_access', 'true');
+        localStorage.setItem('guest_chat_name', 'المدير 🛡️');
+        localStorage.setItem('comment_author_name', 'المدير 🛡️');
+        setCurrentName('المدير 🛡️');
+        setIsEditingName(false);
+        alert('أهلاً بك يا مدير الموقع! تم تفعيل صلاحيات التحكم بالكامل بنجاح. 🛡️');
+        window.dispatchEvent(new Event('name-updated'));
+        return;
+      } else {
+        alert('عذراً، هذا اللقب محجوز لإدارة المنصة فقط! ⚠️');
+        return;
+      }
+    }
+
+    if (trimmed === 'bewCew,iDYgC@K6') {
+      localStorage.setItem('short_admin_access', 'true');
+      localStorage.setItem('guest_chat_name', 'المدير 🛡️');
+      localStorage.setItem('comment_author_name', 'المدير 🛡️');
+      setCurrentName('المدير 🛡️');
+      setIsEditingName(false);
+      alert('أهلاً بك يا مدير الموقع! تم تفعيل صلاحيات التحكم بالكامل بنجاح. 🛡️');
+      window.dispatchEvent(new Event('name-updated'));
+      return;
+    }
+
     localStorage.setItem('guest_chat_name', trimmed);
     setCurrentName(trimmed);
     setIsEditingName(false);

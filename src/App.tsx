@@ -55,7 +55,15 @@ function AppLayout() {
   React.useEffect(() => {
     // 0. Ensure user has a default guest name initialized immediately on startup
     const savedName = localStorage.getItem('guest_chat_name');
-    if (!savedName) {
+    const isAdminToken = localStorage.getItem('short_admin_access') === 'true';
+    
+    // Check for fake admins or if savedName is not configured, or if they forged a reserved admin name
+    const matchesReserved = (name: string) => {
+      const lower = name.toLowerCase();
+      return lower.includes('مدير') || lower.includes('المدير') || lower.includes('ادمن') || lower.includes('أدمن') || lower.includes('admin') || lower.includes('moderator');
+    };
+
+    if (!savedName || (matchesReserved(savedName) && !isAdminToken)) {
       const randomId = Math.floor(Math.random() * 900) + 100;
       const defaultNames = ["متابع حكايتنا", "عاشق الدراما", "عاشق الحكايات", "محب المسلسلات"];
       const chosenPrefix = defaultNames[Math.floor(Math.random() * defaultNames.length)];
@@ -63,6 +71,9 @@ function AppLayout() {
       localStorage.setItem('guest_chat_name', generatedName);
       localStorage.setItem('comment_author_name', generatedName);
       localStorage.setItem('guest_chat_avatar', 'boy1');
+      if (matchesReserved(savedName || '')) {
+        localStorage.setItem('short_admin_access', 'false');
+      }
     }
 
     // 0b. Ensure user has a referral ID initialized immediately on startup

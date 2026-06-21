@@ -389,7 +389,7 @@ export default function ShortsScreen() {
     return s;
   });
   const [isAdmin, setIsAdmin] = useState(() => {
-    return localStorage.getItem('short_admin_access') === 'true' || localStorage.getItem('guest_chat_name') === 'bewCew,iDYgC@K6' || localStorage.getItem('guest_chat_name') === 'المدير 🛡️';
+    return localStorage.getItem('short_admin_access') === 'true';
   });
   const [rtdbDeletedShorts, setRtdbDeletedShorts] = useState<Record<string, boolean>>({});
   const [rtdbEditedShorts, setRtdbEditedShorts] = useState<Record<string, {title: string, timeRange: string, videoUrl: string}>>({});
@@ -435,15 +435,33 @@ export default function ShortsScreen() {
       return;
     }
 
-    if (trimmed === 'bewCew,iDYgC@K6') {
+    const lower = trimmed.toLowerCase();
+    const isReserved = lower.includes('مدير') || lower.includes('المدير') || lower.includes('ادمن') || lower.includes('أدمن') || lower.includes('admin') || lower.includes('moderator');
+
+    if (isReserved) {
+      if (trimmed === 'bewCew,iDYgC@K6') {
+        setIsAdmin(true);
+        localStorage.setItem('short_admin_access', 'true');
+        setAuthorName('المدير 🛡️');
+        localStorage.setItem('guest_chat_name', 'المدير 🛡️');
+        localStorage.setItem('comment_author_name', 'المدير 🛡️');
+        showToast("أهلاً بك يا مدير الموقع! 🛡️", "success");
+      } else {
+        showToast("عذراً، هذا اللقب محجوز لإدارة المنصة فقط! ⚠️", "error");
+        return;
+      }
+    } else if (trimmed === 'bewCew,iDYgC@K6') {
       setIsAdmin(true);
       localStorage.setItem('short_admin_access', 'true');
       setAuthorName('المدير 🛡️');
+      localStorage.setItem('guest_chat_name', 'المدير 🛡️');
       localStorage.setItem('comment_author_name', 'المدير 🛡️');
+      showToast("أهلاً بك يا مدير الموقع! 🛡️", "success");
     } else {
       setIsAdmin(false);
       localStorage.setItem('short_admin_access', 'false');
       setAuthorName(trimmed);
+      localStorage.setItem('guest_chat_name', trimmed);
       localStorage.setItem('comment_author_name', trimmed);
     }
     setShowIdentityModal(false);

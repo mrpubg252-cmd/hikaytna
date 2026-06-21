@@ -235,8 +235,8 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
   }
 
   // Ensure background synchronization is triggered if cache was cleared
-  if (forceRefresh) {
-    // Already forced
+  if (isBackground) {
+    // Already forced or background
   } else {
     triggerBackgroundFetch();
   }
@@ -366,6 +366,20 @@ if (typeof window !== "undefined") {
       }
     });
   } catch (err) {}
+
+  // 1b. Subscribe to global updates timestamp to invalidate client-side cache across all tabs immediately
+  try {
+    const updateRef = ref(db, 'last_series_update');
+    onValue(updateRef, (snapshot) => {
+      const val = snapshot.val();
+      if (typeof val === "number" && val > lastFetchTime) {
+        clearCache();
+        triggerBackgroundFetch();
+      }
+    });
+  } catch (err) {
+    console.warn("Could not subscribe to global last_series_update timestamp:", err);
+  }
 }
 
 export function getAllCachedSeries(): Series[] {

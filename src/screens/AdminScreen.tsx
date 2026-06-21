@@ -6,7 +6,7 @@ import {
   Star, Type, Hash, ExternalLink, Sparkles, Pencil, RefreshCw
 } from 'lucide-react';
 import { db } from '../services/firebase';
-import { ref, onValue, push, remove } from 'firebase/database';
+import { ref, onValue, push, remove, set } from 'firebase/database';
 import { getFirestore, collection, getDocs, deleteDoc, doc, setDoc, query, orderBy } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
@@ -205,6 +205,12 @@ export default function AdminScreen() {
       
       await setDoc(doc(firestore, "custom_series", seriesId), seriesData);
       
+      try {
+        await set(ref(db, 'last_series_update'), Date.now());
+      } catch (ee) {
+        console.warn("Could not register global updates timestamp:", ee);
+      }
+      
       clearCache(); // Force refresh for all users
       
       if (editingSeriesId) {
@@ -261,6 +267,13 @@ export default function AdminScreen() {
     try {
       const firestore = getFirestore();
       await deleteDoc(doc(firestore, "custom_series", id));
+      
+      try {
+        await set(ref(db, 'last_series_update'), Date.now());
+      } catch (ee) {
+        console.warn("Could not register global updates timestamp:", ee);
+      }
+      
       clearCache(); // Force refresh
       setCustomSeriesList(customSeriesList.filter(s => s.id !== id));
     } catch (err) {

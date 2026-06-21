@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Tv, Calendar, RefreshCw, Play, X, Loader2, Sparkles, CheckCircle, Info, Flame, AlertCircle, MessageSquare } from 'lucide-react';
+import { Trophy, Tv, Calendar, RefreshCw, Play, X, Loader2, Sparkles, CheckCircle, Info, Flame, AlertCircle, MessageSquare, Pencil } from 'lucide-react';
 import Header from '../components/Header';
 import BottomNav from '../components/BottomNav';
 import MatchChat from '../components/MatchChat';
 import { motion, AnimatePresence } from 'motion/react';
 import { getApiUrl } from '../lib/apiConfig';
+import { db } from '../services/firebase';
+import { ref, get, set, onValue } from 'firebase/database';
 
 interface Match {
   id: string;
@@ -32,6 +34,67 @@ export default function MatchesScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'live' | 'cup'>('all');
   const [currentTime, setCurrentTime] = useState<string>('');
+
+  // Admin specific states for live match stream override
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdminEditing, setIsAdminEditing] = useState(false);
+  const [customUrlInput, setCustomUrlInput] = useState('');
+  const [isSavingCustomUrl, setIsSavingCustomUrl] = useState(false);
+  const [editingMatch, setEditingMatch] = useState<Match | null>(null);
+
+  const handleOpenOutsideEditor = async (match: Match) => {
+    setEditingMatch(match);
+    setCustomUrlInput('');
+    try {
+      const snap = await get(ref(db, `match_streams/${match.id}`));
+      if (snap.exists() && snap.val()) {
+        setCustomUrlInput(snap.val());
+      }
+    } catch (e) {
+      console.error("Could not fetch stream override:", e);
+    }
+  };
+
+  const handleSaveOutsideStream = async () => {
+    if (!editingMatch) return;
+    const val = customUrlInput.trim();
+    if (!val) {
+      alert('الرجاء إدخال رابط بث صحيح أولاً ✍️');
+      return;
+    }
+    setIsSavingCustomUrl(true);
+    try {
+      await set(ref(db, `match_streams/${editingMatch.id}`), val);
+      alert('تم حفظ وتعميم رابط البث المباشر للجميع بنجاح! 🚀');
+      setEditingMatch(null);
+    } catch (err) {
+      console.error(err);
+      alert('فشل حفظ الرابط في قاعدة البيانات.');
+    } finally {
+      setIsSavingCustomUrl(false);
+    }
+  };
+
+  const handleDeleteOutsideStream = async () => {
+    if (!editingMatch) return;
+    if (!window.confirm('هل أنت متأكد من حذف البث المخصص والرجوع للبث التلقائي؟')) return;
+    setIsSavingCustomUrl(true);
+    try {
+      await set(ref(db, `match_streams/${editingMatch.id}`), null);
+      alert('تم استرجاع البث التلقائي الافتراضي بنجاح! 🔄');
+      setEditingMatch(null);
+    } catch (err) {
+      console.error(err);
+      alert('فشل تعطيل الرابط المخصص.');
+    } finally {
+      setIsSavingCustomUrl(false);
+    }
+  };
+
+  // Authenticate admin on mount
+  useEffect(() => {
+    setIsAdmin(localStorage.getItem('short_admin_access') === 'true');
+  }, []);
 
   // Helper to determine if a match has ended
   const isMatchEnded = (m: Match) => {
@@ -91,6 +154,15 @@ export default function MatchesScreen() {
 
     setLoadingStream(match.id);
     try {
+      // 1. Direct query from Firebase Realtime Database first for admin override stream link
+      const customStreamRef = ref(db, `match_streams/${match.id}`);
+      const snap = await get(customStreamRef);
+      if (snap.exists() && snap.val() && snap.val().trim() !== "") {
+        setActiveStream({ match, iframeUrl: snap.val().trim(), streamError: false });
+        return;
+      }
+
+      // 2. Fall back to scraping the standard portal
       const res = await fetch(getApiUrl(`/api/v1/matches/stream?url=${encodeURIComponent(match.matchPageUrl)}`));
       const data = await res.json();
       if (data.status && data.iframeUrl) {
@@ -103,6 +175,68 @@ export default function MatchesScreen() {
       setActiveStream({ match, iframeUrl: "", streamError: true });
     } finally {
       setLoadingStream(null);
+    }
+  };
+
+  // Real-time listener for current active match stream in Firebase Realtime Database
+  useEffect(() => {
+    if (!activeStream?.match?.id) return;
+    const matchId = activeStream.match.id;
+    const customStreamRef = ref(db, `match_streams/${matchId}`);
+    
+    const unsubscribe = onValue(customStreamRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const customUrl = snapshot.val();
+        if (customUrl && customUrl.trim() !== "" && customUrl !== activeStream.iframeUrl) {
+          setActiveStream(prev => prev ? { ...prev, iframeUrl: customUrl, streamError: false } : null);
+        }
+      }
+    });
+    
+    return () => unsubscribe();
+  }, [activeStream?.match?.id]);
+
+  // Admin Custom Match Stream Savers
+  const handleSaveCustomStream = async () => {
+    if (!activeStream) return;
+    const matchId = activeStream.match.id;
+    if (!customUrlInput.trim()) {
+      alert('الرجاء إدخال رابط بث صحيح');
+      return;
+    }
+    
+    setIsSavingCustomUrl(true);
+    try {
+      await set(ref(db, `match_streams/${matchId}`), customUrlInput.trim());
+      setActiveStream(prev => prev ? { ...prev, iframeUrl: customUrlInput.trim(), streamError: false } : null);
+      setIsAdminEditing(false);
+      alert('تم حفظ وتعميم رابط البث المباشر المخصص بنجاح للجميع! 🚀');
+    } catch (err: any) {
+      console.error("Error setting custom match stream:", err);
+      alert('حدث خطأ أثناء حفظ الرابط السحابي');
+    } finally {
+      setIsSavingCustomUrl(false);
+    }
+  };
+
+  const handleDeleteCustomStream = async () => {
+    if (!activeStream) return;
+    const matchId = activeStream.match.id;
+    if (!window.confirm('هل أنت متأكد من استعادة البث التلقائي المصدر والمزامنة الافتراضية؟')) return;
+
+    setIsSavingCustomUrl(true);
+    try {
+      await set(ref(db, `match_streams/${matchId}`), null);
+      
+      // Force refresh of stream by calling scraper
+      setIsAdminEditing(false);
+      handleWatchStream(activeStream.match, true);
+      alert('تم إزالة الرابط المخصص واستعادة البث التلقائي لجميع الزوار! 🔄');
+    } catch (err: any) {
+      console.error("Error deleting custom match stream:", err);
+      alert('حدث خطأ أثناء إعادة ضبط البث');
+    } finally {
+      setIsSavingCustomUrl(false);
     }
   };
 
@@ -346,31 +480,126 @@ export default function MatchesScreen() {
                       )}
                     </div>
 
-                    <button
-                      onClick={() => m.live && handleWatchStream(m)}
-                      disabled={loadingStream !== null || !m.live}
-                      className={`py-2.5 px-6 rounded-2xl text-[11px] font-black flex items-center gap-2 transition duration-250 shrink-0 ${
-                        m.live 
-                          ? "bg-red-600 hover:bg-red-500 text-white cursor-pointer shadow-lg shadow-red-600/10 hover:shadow-red-600/25 active:scale-95" 
-                          : "bg-zinc-950 border border-zinc-900 text-zinc-505 cursor-not-allowed"
-                      }`}
-                    >
-                      {loadingStream === m.id ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                      ) : (
-                        <Play className={`w-3.5 h-3.5 ${m.live ? 'fill-current text-white' : 'text-zinc-750'}`} />
+                    <div className="flex items-center gap-2">
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleOpenOutsideEditor(m)}
+                          className="p-2.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 rounded-2xl transition cursor-pointer shrink-0"
+                          title="تعديل رابط البث المباشر للجميع"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
                       )}
-                      <span>
-                        {m.live 
-                          ? "شاهد المباراة والدردشة" 
-                          : isMatchEnded(m)
-                            ? "انتهت المباراة" 
-                            : "لم تبدأ بعد"}
-                      </span>
-                    </button>
+                      <button
+                        onClick={() => m.live && handleWatchStream(m)}
+                        disabled={loadingStream !== null || !m.live}
+                        className={`py-2.5 px-6 rounded-2xl text-[11px] font-black flex items-center gap-2 transition duration-250 shrink-0 ${
+                          m.live 
+                            ? "bg-red-600 hover:bg-red-500 text-white cursor-pointer shadow-lg shadow-red-600/10 hover:shadow-red-600/25 active:scale-95" 
+                            : "bg-zinc-950 border border-zinc-900 text-zinc-505 cursor-not-allowed"
+                        }`}
+                      >
+                        {loadingStream === m.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                        ) : (
+                          <Play className={`w-3.5 h-3.5 ${m.live ? 'fill-current text-white' : 'text-zinc-750'}`} />
+                        )}
+                        <span>
+                          {m.live 
+                            ? "شاهد المباراة والدردشة" 
+                            : isMatchEnded(m)
+                              ? "انتهت المباراة" 
+                              : "لم تبدأ بعد"}
+                        </span>
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* OUTSIDE MATCH STREAM EDITOR MODAL */}
+        <AnimatePresence>
+          {editingMatch && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[1100] bg-[#000000]/90 backdrop-blur-xl flex items-center justify-center p-4 font-sans"
+            >
+              <div 
+                className="absolute inset-0" 
+                onClick={() => setEditingMatch(null)}
+              />
+              
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="relative bg-zinc-950 border border-zinc-900 rounded-[2rem] p-6 md:p-8 max-w-lg w-full text-right space-y-5 shadow-2xl z-10"
+              >
+                <div className="flex items-center justify-between flex-row-reverse">
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <span className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                      <Pencil className="w-4 h-4" />
+                    </span>
+                    <span>تعديل بث مباراة: {editingMatch.team1} ضد {editingMatch.team2}</span>
+                  </h3>
+                  <button
+                    onClick={() => setEditingMatch(null)}
+                    className="p-2 hover:bg-zinc-900 rounded-full text-zinc-400 hover:text-white transition cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-1.5 text-right font-sans">
+                  <label className="block text-[10px] font-bold text-zinc-400">رابط البث المباشر (رابط iframe أو رابط السيرفر المباشر):</label>
+                  <textarea
+                    dir="ltr"
+                    rows={4}
+                    value={customUrlInput}
+                    onChange={(e) => setCustomUrlInput(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full bg-[#0d0d0f] border border-zinc-900 focus:border-amber-500 rounded-xl px-4 py-3 text-xs text-white focus:outline-none placeholder-zinc-700 font-mono whitespace-pre-wrap resize-none transition-all text-left"
+                  />
+                  <p className="text-[9px] text-zinc-500 leading-relaxed pt-1">
+                    هذا الرابط سيغطى على البث الافتراضي وسيتفعل لجميع زوار موقعك فوراً بشكل احترافي.
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2.5 pt-2 font-sans">
+                  <button
+                    onClick={handleSaveOutsideStream}
+                    disabled={isSavingCustomUrl}
+                    className="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black font-black text-xs py-3.5 rounded-xl transition active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-amber-500/10"
+                  >
+                    {isSavingCustomUrl ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-black" />
+                    ) : (
+                      <CheckCircle className="w-4 h-4" />
+                    )}
+                    <span>حفظ وتعميم البث 🚀</span>
+                  </button>
+
+                  <button
+                    onClick={handleDeleteOutsideStream}
+                    disabled={isSavingCustomUrl}
+                    className="bg-red-950/40 hover:bg-red-950/70 border border-red-500/20 text-red-400 font-bold text-[10px] px-4 py-3.5 rounded-xl transition cursor-pointer shrink-0"
+                  >
+                    حذف المخصص 🔄
+                  </button>
+
+                  <button
+                    onClick={() => setEditingMatch(null)}
+                    className="bg-zinc-900 hover:bg-zinc-850 text-zinc-400 font-bold text-[10px] px-4 py-3.5 rounded-xl transition cursor-pointer shrink-0"
+                  >
+                    إلغاء لغتي
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -412,20 +641,99 @@ export default function MatchesScreen() {
                     </div>
                   </div>
 
-                  <button 
-                    onClick={() => setActiveStream(null)}
-                    className="p-2 hover:bg-zinc-900 rounded-full transition text-zinc-400 hover:text-white cursor-pointer shrink-0"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {isAdmin && (
+                      <button
+                        onClick={() => {
+                          setCustomUrlInput(activeStream.iframeUrl || '');
+                          setIsAdminEditing(!isAdminEditing);
+                        }}
+                        className="py-1.5 px-3 border border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 rounded-xl text-[10px] font-black flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                        title="تعديل رابط البث المباشر"
+                      >
+                        <Pencil className="w-3 h-3" />
+                        <span>{isAdminEditing ? 'عرض البث' : 'تعديل البث'}</span>
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => {
+                        setActiveStream(null);
+                        setIsAdminEditing(false);
+                      }}
+                      className="p-2 hover:bg-zinc-900 rounded-full transition text-zinc-400 hover:text-white cursor-pointer shrink-0"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Main Shared Grid Area: Left is Player / Error view, Right is Chat */}
                 <div className="flex-1 overflow-y-auto no-scrollbar grid grid-cols-1 lg:grid-cols-3 h-full min-h-0 bg-black">
                   
-                  {/* Left Box (Cols span 2) - Video Embed or Failure Screen */}
+                  {/* Left Box (Cols span 2) - Video Embed or Failure Screen or Admin Editor */}
                   <div className="lg:col-span-2 relative aspect-video lg:aspect-auto w-full min-h-[220px] md:min-h-[420px] bg-black flex flex-col items-center justify-center border-b lg:border-b-0 lg:border-l border-zinc-900">
-                    {activeStream.streamError ? (
+                    {isAdminEditing ? (
+                      /* LUXURY ADMIN COMPACT STREAM OVERRIDE FRAME */
+                      <div className="w-full max-w-xl p-6 md:p-8 space-y-4 text-right font-sans">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+                            <Sparkles className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-white">تعديل رابط البث المباشر (لوحة الإدارة)</h4>
+                            <p className="text-[10px] text-zinc-500 mt-0.5 leading-relaxed">
+                              سيتم مزامنة الرابط الجديد سحابياً في Firebase فوراً، وسيتحول البث تلقائياً عند جميع الزوار بلحظتها!
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5 pt-2">
+                          <label className="block text-[10px] font-bold text-zinc-400">رابط البث المباشر الجديد (رابط iframe أو رابط السيرفر):</label>
+                          <textarea
+                            dir="ltr"
+                            rows={3}
+                            value={customUrlInput}
+                            onChange={(e) => setCustomUrlInput(e.target.value)}
+                            placeholder="https://..."
+                            className="w-full bg-zinc-950 border border-zinc-900 focus:border-amber-500 rounded-xl px-4 py-3 text-xs text-white focus:outline-none placeholder-zinc-700 transition font-mono whitespace-pre-wrap resize-none"
+                          />
+                        </div>
+
+                        <div className="bg-zinc-900/40 border border-zinc-850 p-3.5 rounded-xl text-[10px] leading-relaxed text-zinc-400">
+                          ℹ️ <span className="font-bold text-amber-500">ملاحظة:</span> يمكنك وضع رابط iframe مباشر (أو رابط البث المستخرج). لاستعادة تشغيل البث التلقائي الافتراضي من مصدر الموقع، اضغط على زر "استعادة البث التلقائي".
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                          <button
+                            onClick={handleSaveCustomStream}
+                            disabled={isSavingCustomUrl}
+                            className="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black font-black text-[11px] py-3 rounded-xl transition active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-amber-500/10"
+                          >
+                            {isSavingCustomUrl ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <CheckCircle className="w-4 h-4" />
+                            )}
+                            <span>حفظ وتعميم البث سحابياً</span>
+                          </button>
+
+                          <button
+                            onClick={handleDeleteCustomStream}
+                            disabled={isSavingCustomUrl}
+                            className="bg-red-950/40 hover:bg-red-950/70 border border-red-500/20 text-red-400 font-bold text-[10px] px-4 py-3 rounded-xl transition cursor-pointer"
+                          >
+                            استعادة البث التلقائي 🔄
+                          </button>
+
+                          <button
+                            onClick={() => setIsAdminEditing(false)}
+                            className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 font-bold text-[10px] px-4 py-3 rounded-xl transition cursor-pointer"
+                          >
+                            إلغاء التعديل
+                          </button>
+                        </div>
+                      </div>
+                    ) : activeStream.streamError ? (
                       /* LUXURY STREAM ABSENT CARD (REPLACES ALERT DIALOG) */
                       <div className="p-8 text-center space-y-4 max-w-md mx-auto">
                         <div className="w-14 h-14 rounded-full bg-red-950/15 border border-red-500/20 flex items-center justify-center text-red-500 mx-auto">
@@ -445,7 +753,10 @@ export default function MatchesScreen() {
                             تثبيت الاتصال بالبث 🔄
                           </button>
                           <button
-                            onClick={() => setActiveStream(null)}
+                            onClick={() => {
+                              setActiveStream(null);
+                              setIsAdminEditing(false);
+                            }}
                             className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 font-extrabold text-[10px] px-5 py-2.5 rounded-xl transition cursor-pointer"
                           >
                             رجوع
