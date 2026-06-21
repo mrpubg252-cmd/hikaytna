@@ -31,6 +31,9 @@ interface ChatMessage {
   userId: string;
   userName: string;
   userAvatar: string; // id of avatar in AVATARS
+  userAvatarPosV?: string;
+  userAvatarPosH?: string;
+  userTemplate?: string;
   text?: string;
   audioUrl?: string;
   imageUrl?: string;
@@ -594,6 +597,9 @@ export default function SeriesChat({
             userId: val.userId || 'unknown',
             userName: val.userName || 'مشاهد غامض',
             userAvatar: val.userAvatar || 'boy1',
+            userAvatarPosV: val.userAvatarPosV || '50',
+            userAvatarPosH: val.userAvatarPosH || '50',
+            userTemplate: val.userTemplate || '',
             text: val.text || '',
             imageUrl: val.imageUrl || '',
             videoUrl: val.videoUrl || '',
@@ -854,7 +860,9 @@ export default function SeriesChat({
       userId: localStorage.getItem('guest_chat_pid') || 'guest_temp',
       userName: senderName,
       userAvatar,
-      userAvatarPos: localStorage.getItem('user_avatar_pos') || '50',
+      userAvatarPosV: localStorage.getItem('user_avatar_pos_v') || '50',
+      userAvatarPosH: localStorage.getItem('user_avatar_pos_h') || '50',
+      userTemplate: localStorage.getItem('user_profile_template') || '',
       text: txt || (pendingScene ? `شوفوا هاذ اللقطة عند الدقيقة ${pendingScene.timeStr} 🔥` : ''),
       imageUrl: finalImg || '',
       videoUrl: finalVid || '',
@@ -1437,16 +1445,30 @@ export default function SeriesChat({
                 animate={{ opacity: 1, y: 0 }}
                 className={`flex items-start gap-2.5 ${isMe ? 'flex-row-reverse text-right' : 'flex-row text-right'}`}
               >
-                <div className="w-8 h-8 rounded-full bg-zinc-900 border border-white/5 shrink-0 overflow-hidden shadow">
+                <div className="w-8 h-8 rounded-full bg-zinc-900 border border-white/5 shrink-0 overflow-hidden shadow relative">
                   {msg.userAvatar.startsWith('http') ? (
                     <img 
                       src={msg.userAvatar} 
                       className="w-full h-full object-cover" 
-                      style={{ objectPosition: `center ${msg.userAvatarPos || '50'}%` }}
+                      style={{ objectPosition: `${msg.userAvatarPosH || '50'}% ${msg.userAvatarPosV || '50'}%` }}
                       alt="Avatar" 
                     />
                   ) : (
                     msgAvatarObj?.svg
+                  )}
+                  
+                  {/* Template Overlay */}
+                  {msg.userTemplate && msg.userTemplate !== 'none' && (
+                    <img 
+                      src={
+                        msg.userTemplate === 'saudia' ? 'https://i.ibb.co/V9mFrz8/saudia-badge.png' :
+                        msg.userTemplate === 'football' ? 'https://i.ibb.co/0Xp5Z9H/ball.png' :
+                        msg.userTemplate === 'crown' ? 'https://i.ibb.co/RPhPscx/crown.png' :
+                        ''
+                      } 
+                      className="absolute inset-0 w-full h-full object-contain p-0.5 pointer-events-none"
+                      alt="Template"
+                    />
                   )}
                 </div>
                 <div className={`flex flex-col max-w-[75%] ${isMe ? 'items-end' : 'items-start'}`}>
