@@ -85,9 +85,17 @@ const ShortCard = memo(({
     }, 600);
   };
 
+  const handleMovePress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
   const handleEndPress = (e: React.MouseEvent | React.TouchEvent) => {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
     }
     if (!isLongPressActive.current && Date.now() - touchStartTime.current < 450) {
       onTapGesture(e as any);
@@ -177,8 +185,10 @@ const ShortCard = memo(({
       <div 
         className="absolute inset-0 w-full h-full bg-black flex items-center justify-center overflow-hidden cursor-pointer select-none z-10"
         onMouseDown={handleStartPress}
+        onMouseMove={handleMovePress}
         onMouseUp={handleEndPress}
         onTouchStart={handleStartPress}
+        onTouchMove={handleMovePress}
         onTouchEnd={handleEndPress}
       >
         {/* Top Gradient Overlay */}

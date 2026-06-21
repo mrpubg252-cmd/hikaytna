@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Tv, Calendar, RefreshCw, Play, X, Loader2, Sparkles, CheckCircle, Info, Flame, AlertCircle, MessageSquare, Pencil, Trash } from 'lucide-react';
+import { Trophy, Tv, Calendar, RefreshCw, Play, X, Loader2, Sparkles, CheckCircle, Info, Flame, AlertCircle, MessageSquare, Pencil, Trash, Plus } from 'lucide-react';
 import Header from '../components/Header';
 import BottomNav from '../components/BottomNav';
 import MatchChat from '../components/MatchChat';
@@ -61,6 +61,36 @@ export default function MatchesScreen() {
     live: true,
     streamUrl: ''
   });
+
+  const [isUploadingLogo1, setIsUploadingLogo1] = useState(false);
+  const [isUploadingLogo2, setIsUploadingLogo2] = useState(false);
+
+  const handleFileUpload = async (file: File, teamNum: 1 | 2) => {
+    const setter = teamNum === 1 ? setIsUploadingLogo1 : setIsUploadingLogo2;
+    setter(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch('/api/v1/upload-media', {
+        method: 'POST',
+        body: formData
+      });
+      
+      const data = await response.json();
+      if (data.status === 'success' && data.fileUrl) {
+        setNewMatchForm(prev => ({
+          ...prev,
+          [teamNum === 1 ? 'logo1' : 'logo2']: data.fileUrl
+        }));
+      }
+    } catch (err) {
+      console.error("Upload failed:", err);
+      alert('فشل رفع شعار الفريق. حاول مرة أخرى.');
+    } finally {
+      setter(false);
+    }
+  };
 
   const handleSaveAddMatch = async () => {
     if (!newMatchForm.team1.trim() || !newMatchForm.team2.trim()) {
@@ -1155,26 +1185,75 @@ export default function MatchesScreen() {
                     </div>
                   </div>
 
-                  {/* Logo URLs (optional) */}
-                  <div className="grid grid-cols-2 gap-3.5">
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-bold text-zinc-400">شعار الفريق الأول (رابط اختياري):</label>
+                  {/* Logo Uploaders */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-bold text-zinc-400">شعار الفريق الأول 🔥</label>
+                      <div className="relative group overflow-hidden rounded-2xl border-2 border-dashed border-zinc-800 hover:border-red-600/40 transition-all aspect-square bg-zinc-900/20 flex flex-col items-center justify-center gap-2">
+                        {newMatchForm.logo1 ? (
+                          <img src={newMatchForm.logo1} className="w-full h-full object-contain p-4" alt="logo1" />
+                        ) : (
+                          <div className="text-zinc-500 flex flex-col items-center p-2 text-center">
+                            <Plus className="w-6 h-6 mb-1 opacity-20" />
+                            <span className="text-[9px]">اضغطر للرفع</span>
+                          </div>
+                        )}
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUpload(file, 1);
+                          }}
+                        />
+                        {isUploadingLogo1 && (
+                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                            <Loader2 className="w-5 h-5 animate-spin text-red-500" />
+                          </div>
+                        )}
+                      </div>
                       <input
                         type="text"
-                        placeholder="https://..."
+                        placeholder="أو رابط الشعار..."
                         value={newMatchForm.logo1}
                         onChange={(e) => setNewMatchForm(prev => ({ ...prev, logo1: e.target.value }))}
-                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550 font-mono text-left"
+                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-[10px] text-zinc-400 focus:outline-none focus:border-red-600"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-bold text-zinc-400">شعار الفريق الثاني (رابط اختياري):</label>
+
+                    <div className="space-y-2">
+                      <label className="block text-[10px] font-bold text-zinc-400">شعار الفريق الثاني 🔥</label>
+                      <div className="relative group overflow-hidden rounded-2xl border-2 border-dashed border-zinc-800 hover:border-red-600/40 transition-all aspect-square bg-zinc-900/20 flex flex-col items-center justify-center gap-2">
+                        {newMatchForm.logo2 ? (
+                          <img src={newMatchForm.logo2} className="w-full h-full object-contain p-4" alt="logo2" />
+                        ) : (
+                          <div className="text-zinc-500 flex flex-col items-center p-2 text-center">
+                            <Plus className="w-6 h-6 mb-1 opacity-20" />
+                            <span className="text-[9px]">اضغطر للرفع</span>
+                          </div>
+                        )}
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUpload(file, 2);
+                          }}
+                        />
+                        {isUploadingLogo2 && (
+                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                            <Loader2 className="w-5 h-5 animate-spin text-red-500" />
+                          </div>
+                        )}
+                      </div>
                       <input
                         type="text"
-                        placeholder="https://..."
+                        placeholder="أو رابط الشعار..."
                         value={newMatchForm.logo2}
                         onChange={(e) => setNewMatchForm(prev => ({ ...prev, logo2: e.target.value }))}
-                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-550 font-mono text-left"
+                        className="w-full bg-[#101014] border border-zinc-900 rounded-xl px-3 py-2 text-[10px] text-zinc-400 focus:outline-none focus:border-red-600"
                       />
                     </div>
                   </div>

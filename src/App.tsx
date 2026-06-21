@@ -19,6 +19,7 @@ import { getApiUrl } from './lib/apiConfig';
 import AppIntro from './components/AppIntro';
 import InstallWizard from './components/InstallWizard';
 import CookieConsent from './components/CookieConsent';
+import ProfileEnforcer from './components/ProfileEnforcer';
 
 function AppLayout() {
   const { deviceMode, isTV } = useDevice();
@@ -282,6 +283,7 @@ function AppLayout() {
 
       <InstallWizard isOpen={isInstallOpen} onClose={() => setIsInstallOpen(false)} />
       <CookieConsent />
+      <ProfileEnforcer />
     </>
   );
 }

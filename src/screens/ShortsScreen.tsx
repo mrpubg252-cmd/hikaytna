@@ -1056,21 +1056,29 @@ export default function ShortsScreen() {
       setIsPlaying(true);
       setPlayBlocked(false);
       
-      // Auto-play the new video immediately with unmuted sound if user has interacted
+      // World-class instant trigger: attempt to play the NEW video immediately
+      // This is crucial for the "Flow" feel
       setTimeout(() => {
         const nextVideo = videoRefs.current[rawIndex];
         if (nextVideo) {
-          nextVideo.muted = isMuted; // Reflect current mute state
+          // If user has interacted at least once, we can unmute
+          if (hasInteracted) {
+             nextVideo.muted = isMuted;
+          } else {
+             nextVideo.muted = true;
+          }
+          
           const playP = nextVideo.play();
           if (playP !== undefined) {
-            playP.catch(() => {
-              // fallback if blocked by browser
+            playP.catch((err) => {
+              console.warn("Video flow blocked by browser:", err);
+              // Fallback to muted play if browser is strict
               nextVideo.muted = true;
               nextVideo.play().catch(() => {});
             });
           }
         }
-      }, 50);
+      }, 0);
     }
   };
 
