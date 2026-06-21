@@ -161,8 +161,18 @@ export default function MatchesScreen() {
       const unsubscribe = onValue(rtdbRef, (snapshot) => {
         if (snapshot.exists()) {
           const val = snapshot.val();
-          if (val) {
-            setCustomStreams(prev => ({ ...prev, ...val }));
+          if (val && typeof val === 'object' && !Array.isArray(val)) {
+            const cleanVal: Record<string, string> = {};
+            Object.entries(val).forEach(([k, v]) => {
+              if (
+                typeof v === 'string' &&
+                v.trim().length > 10 &&
+                (v.trim().startsWith('http') || v.trim().includes('/'))
+              ) {
+                cleanVal[k] = v.trim();
+              }
+            });
+            setCustomStreams(prev => ({ ...prev, ...cleanVal }));
           }
         }
       }, (error) => {
@@ -477,7 +487,10 @@ export default function MatchesScreen() {
               className="grid grid-cols-1 md:grid-cols-2 gap-6"
             >
               {filteredMatches.map((m, index) => {
-                const isCustomized = !!customStreams[m.id];
+                const streamUrl = customStreams[m.id];
+                const isCustomized = typeof streamUrl === 'string' && 
+                                     streamUrl.trim().length > 10 && 
+                                     (streamUrl.trim().startsWith('http') || streamUrl.trim().includes('/'));
                 return (
                   <motion.div
                     key={m.id || index}
