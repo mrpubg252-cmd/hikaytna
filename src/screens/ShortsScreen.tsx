@@ -1179,18 +1179,27 @@ export default function ShortsScreen() {
           method: "POST",
           body: formData
         });
+        
+        if (!uploadRes.ok) {
+           const errorText = await uploadRes.text();
+           console.error("Upload server HTML error:", errorText);
+           showToast(`عذرًا، حدث خطأ في الخادم (حجم الملف كبير أو السيرفر مشغول).`, "error");
+           setIsPublishing(false);
+           return;
+        }
+
         const uploadData = await uploadRes.json();
         
         if (uploadData.success && uploadData.url) {
           finalVideoUrl = uploadData.url;
           targetTimeRange = 'Custom';
         } else {
-          showToast("عذراً، فشل رفع الفيديو لخوادمنا التخزينية.", "error");
+          showToast(uploadData.error || "عذراً، فشل رفع الفيديو لخوادمنا التخزينية.", "error");
           setIsPublishing(false);
           return;
         }
-      } catch (err) {
-        showToast("فقد الاتصال لرفع الفيديو، تأكد من الإنترنت", "error");
+      } catch (err: any) {
+        showToast("فقد الاتصال لرفع الفيديو، أو حجم الملف كبير جداً.", "error");
         console.error("Upload error: ", err);
         setIsPublishing(false);
         return;

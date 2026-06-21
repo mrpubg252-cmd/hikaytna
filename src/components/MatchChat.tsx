@@ -398,6 +398,15 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
         method: "POST",
         body: formData
       });
+      
+      if (!uploadRes.ok) {
+        console.error("Upload failed with status", uploadRes.status);
+        alert("عذرًا، حدث خطأ في الخادم (حجم الملف كبير أو السيرفر مشغول).");
+        setUploadingImage(false);
+        e.target.value = '';
+        return;
+      }
+
       const uploadData = await uploadRes.json();
       
       if (uploadData.success && uploadData.url) {
@@ -416,7 +425,7 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
       }
     } catch (err) {
       console.error("XHR file upload error:", err);
-      alert("خطأ أثناء التواصل مع خادم الرفع.");
+      alert("خطأ أثناء التواصل مع خادم الرفع (قد يكون الملف كبيراً جداً).");
     } finally {
       setUploadingImage(false);
       e.target.value = '';
@@ -457,6 +466,14 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
             method: "POST",
             body: formData
           });
+          
+          if (!uploadRes.ok) {
+            console.error("Audio Upload failed with status", uploadRes.status);
+            alert("عذرًا، حدث خطأ في الخادم (حجم الملف كبير أو السيرفر مشغول).");
+            setUploadingImage(false);
+            return;
+          }
+
           const uploadData = await uploadRes.json();
           if (uploadData.success && uploadData.url) {
             handleSendMessage("", "", "", uploadData.url);
@@ -465,7 +482,7 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
           }
         } catch (err) {
           console.error("Audio upload error:", err);
-          alert("خطأ أثناء التواصل مع خادم الرفع.");
+          alert("خطأ أثناء التواصل مع خادم الرفع (قد يكون الملف كبيراً جداً).");
         } finally {
           setUploadingImage(false);
         }

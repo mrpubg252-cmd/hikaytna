@@ -862,6 +862,15 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
         method: "POST",
         body: formData
       });
+      
+      if (!uploadRes.ok) {
+        console.error("Upload failed with status", uploadRes.status);
+        alert("عذرًا، حدث خطأ في الخادم (حجم الملف كبير أو السيرفر مشغول).");
+        setUploadingImage(false);
+        e.target.value = '';
+        return;
+      }
+
       const uploadData = await uploadRes.json();
       
       if (uploadData.success && uploadData.url) {
@@ -919,6 +928,14 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
             method: "POST",
             body: formData
           });
+          
+          if (!uploadRes.ok) {
+            console.error("Audio Upload failed with status", uploadRes.status);
+            alert("عذرًا، حدث خطأ في الخادم (حجم الملف كبير أو السيرفر مشغول).");
+            setUploadingImage(false);
+            return;
+          }
+
           const uploadData = await uploadRes.json();
           if (uploadData.success && uploadData.url) {
             handleSendMessage(undefined, "", "", "", uploadData.url);
