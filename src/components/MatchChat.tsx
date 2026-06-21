@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { getApiUrl } from '../lib/apiConfig';
 import { firestore } from '../services/firebase';
 import { doc, setDoc } from 'firebase/firestore';
+import { checkBanStatus, reportComment, getOrCreateUserId } from '../services/banService';
 
 interface ChatRepliedMsg {
   id: string;
@@ -187,9 +188,24 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  
+  // Ban states and Action Sheet Menu
+  const [isBanned, setIsBanned] = useState(false);
+  const [banReason, setBanReason] = useState('');
+  const [actionMenuMessage, setActionMenuMessage] = useState<ChatMessage | null>(null);
 
   useEffect(() => {
     setIsAdmin(localStorage.getItem('isAdmin') === 'true');
+    
+    // Check ban status on load
+    const verifyUserBan = async () => {
+      const status = await checkBanStatus();
+      if (status.isBanned) {
+        setIsBanned(true);
+        setBanReason(status.reason || 'إساءة استخدام أو إزعاج المستخدمين');
+      }
+    };
+    verifyUserBan();
   }, []);
 
   const handleEditMessage = async (msgId: string, newText: string) => {
@@ -321,6 +337,11 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
   }, [messages]);
 
   const handleSendMessage = (msgText: string, imgUrl?: string | null, vUrl?: string | null, aUrl?: string | null) => {
+    if (isBanned) {
+      alert(`عذراً، لا يمكنك التعليق! حسابك محظور في كل غرف ومسلسلات شات حكايتنا بسبب إساءة الاستخدام أو إزعاج الآخرين. 🚨\n\nالسبب: ${banReason}`);
+      return;
+    }
+
     const trimmed = msgText.trim();
     if (!trimmed && !imgUrl && !vUrl && !aUrl) return;
     if (!isDbReady || !db) return;
@@ -626,10 +647,11 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
                       </div>
                     ) : (
                       <div 
-                        className={`rounded-2xl px-3.5 py-2.5 text-xs text-right whitespace-pre-wrap break-words leading-relaxed shadow-md border ${
+                        onClick={() => setActionMenuMessage(msg)}
+                        className={`rounded-2xl px-3.5 py-2.5 text-xs text-right whitespace-pre-wrap break-words leading-relaxed shadow-md border cursor-pointer hover:scale-[0.99] transition active:scale-[0.97] ${
                           isMyMsg 
-                            ? 'bg-red-500/10 border-red-500/20 text-red-50' 
-                            : 'bg-zinc-900 border-zinc-800 text-zinc-350'
+                            ? 'bg-red-500/10 border-red-500/20 text-red-50 hover:bg-red-500/15' 
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-350 hover:bg-zinc-850'
                         }`}
                       >
                         {msg.text && <p className={(msg.imageUrl || msg.videoUrl || msg.audioUrl) ? "mb-2" : ""}>{msg.text}</p>}
@@ -946,6 +968,99 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Interactive Bottom Sheet for Comment Options */}
+      <AnimatePresence>
+        {actionMenuMessage && (
+          <div className="fixed inset-0 z-[400000] bg-black/60 backdrop-blur-sm flex items-end justify-center">
+            {/* Backdrop click closer */}
+            <div className="absolute inset-0 cursor-pointer" onClick={() => setActionMenuMessage(null)} />
+            
+            {/* Slide up panel */}
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 250 }}
+              className="relative w-full max-w-sm bg-zinc-950 border-t border-zinc-850 rounded-t-3xl p-5 text-right font-sans z-50 flex flex-col space-y-4 shadow-2xl select-none"
+            >
+              {/* Drag bar indicator */}
+              <div className="w-12 h-1 bg-zinc-800 rounded-full mx-auto mb-1 flex-shrink-0" />
+              
+              <div className="text-center pb-2 border-b border-zinc-900 leading-relaxed">
+                <p className="text-[10px] text-zinc-500 font-bold mb-0.5">خيارات التعليق</p>
+                <p className="text-xs text-zinc-300 font-bold truncate max-w-[280px] mx-auto">
+                  "{actionMenuMessage.text || "محتوى وسائط حية"}"
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                {/* 1. Reply Option */}
+                <button
+                  onClick={() => {
+                    setRepliedMessage(actionMenuMessage);
+                    setActionMenuMessage(null);
+                  }}
+                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-850 text-white font-bold text-xs transition active:scale-95 cursor-pointer"
+                >
+                  <Reply className="w-4 h-4 text-emerald-400" />
+                  <span>الرد على هذا التعليق</span>
+                </button>
+
+                {/* 2. Report Option */}
+                {actionMenuMessage.userName !== userName && (
+                  <button
+                    onClick={() => {
+                      handleReportMessage(actionMenuMessage);
+                      setActionMenuMessage(null);
+                    }}
+                    className="w-full flex items-center justify-between p-3 rounded-2xl bg-zinc-900/60 hover:bg-red-950/20 hover:border-red-900 border border-zinc-850 text-red-400 font-bold text-xs transition active:scale-95 cursor-pointer"
+                  >
+                    <ShieldAlert className="w-4 h-4 text-red-550" />
+                    <span>إبلاغ عن محتوى غير لائق 🚨</span>
+                  </button>
+                )}
+
+                {/* 3. Edit Option (if is mine) */}
+                {actionMenuMessage.userName === userName && actionMenuMessage.text && !actionMenuMessage.imageUrl && !actionMenuMessage.videoUrl && !actionMenuMessage.audioUrl && (
+                  <button
+                    onClick={() => {
+                      setEditingMessageId(actionMenuMessage.id);
+                      setEditingText(actionMenuMessage.text);
+                      setActionMenuMessage(null);
+                    }}
+                    className="w-full flex items-center justify-between p-3 rounded-2xl bg-zinc-900/60 hover:bg-amber-950/20 hover:border-amber-900 border border-zinc-850 text-amber-400 font-bold text-xs transition active:scale-95 cursor-pointer"
+                  >
+                    <Pencil className="w-4 h-4 text-amber-400" />
+                    <span>تعديل التعليق ✍️</span>
+                  </button>
+                )}
+
+                {/* 4. Delete Option (if mine or Admin) */}
+                {(actionMenuMessage.userName === userName || isAdmin) && (
+                  <button
+                    onClick={() => {
+                      handleDeleteMessage(actionMenuMessage.id);
+                      setActionMenuMessage(null);
+                    }}
+                    className="w-full flex items-center justify-between p-3 rounded-2xl bg-rose-955/20 border border-rose-500/20 text-rose-450 hover:bg-rose-950/40 font-bold text-xs transition active:scale-95 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-400" />
+                    <span>حذف التعليق نهائياً 🗑️</span>
+                  </button>
+                )}
+              </div>
+
+              <button
+                onClick={() => setActionMenuMessage(null)}
+                className="w-full py-3 bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white font-black rounded-2xl text-[11px] transition cursor-pointer text-center"
+              >
+                إغلاق القائمة
+              </button>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

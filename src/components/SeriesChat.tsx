@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, push, set, onValue, remove, get, Database, query, limitToLast } from 'firebase/database';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play, Pause, Trash2, Video } from 'lucide-react';
+import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play, Pause, Trash2, Video, Pencil } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { decryptValue } from '../lib/security';
 import { useAuth } from '../context/AuthContext';
@@ -11,6 +11,8 @@ import AuthContainer from './AuthContainer';
 import { fetchAllSeries } from '../services/dataService';
 import { getApiUrl } from '../lib/apiConfig';
 import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
+import { firestore } from '../services/firebase';
+import { checkBanStatus, reportComment, getOrCreateUserId } from '../services/banService';
 
 let db: Database | null = null;
 
@@ -335,6 +337,11 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
   // Editing state
   const [editingMsg, setEditingMsg] = useState<ChatMessage | null>(null);
   const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
+
+  // Ban states and Action Sheet Menu
+  const [isBanned, setIsBanned] = useState(false);
+  const [banReason, setBanReason] = useState('');
+  const [actionMenuMessage, setActionMenuMessage] = useState<ChatMessage | null>(null);
   
   const isTypingRef = useRef<boolean>(false);
   const setTypingStateInDb = (isTyping: boolean) => {
@@ -492,6 +499,18 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
       localStorage.setItem('chat_messages_count', '0');
     }
   }, [isRegistered]);
+
+  // Check ban status on load
+  useEffect(() => {
+    const verifyUserBan = async () => {
+      const status = await checkBanStatus();
+      if (status.isBanned) {
+        setIsBanned(true);
+        setBanReason(status.reason || 'إساءة استخدام أو إزعاج المستخدمين');
+      }
+    };
+    verifyUserBan();
+  }, []);
 
   // Sync Timer for messages aging and active DB purge
   useEffect(() => {
@@ -720,8 +739,28 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
     }
   };
 
+  const handleReportMessage = async (msg: ChatMessage) => {
+    const success = await reportComment({
+      commentId: msg.id,
+      commentText: msg.text || '[وسائط]',
+      authorName: msg.userName,
+      chatType: 'series',
+      channelName: seriesName || 'مسلسل',
+      reporterName: userName || 'مستخدم'
+    });
+    if (success) {
+      alert("شكراً لك! تم استلام بلاغك وسيقوم فريق حكايتنا بمراجعة التعليق قريباً 🛡️✅");
+    } else {
+      alert("عذراً، حدث خطأ أثناء إرسال البلاغ. يرجى المحاولة مرة أخرى.");
+    }
+  };
+
   const handleSendMessage = async (e?: React.FormEvent, customTxt?: string, customImg?: string, customVid?: string, customAud?: string) => {
     if (e) e.preventDefault();
+    if (isBanned) {
+      alert(`عذراً، لا يمكنك التعليق! حسابك محظور في كل غرف ومسلسلات شات حكايتنا بسبب إساءة الاستخدام أو إزعاج الآخرين. 🚨\n\nالسبب: ${banReason}`);
+      return;
+    }
     if (!db) return;
 
     const txt = customTxt !== undefined ? customTxt : inputText.trim();
@@ -1346,11 +1385,10 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
                   </div>
                   <div 
                     className={cn(
-                      "group relative px-3.5 py-2 rounded-2xl text-[12px] font-semibold leading-relaxed shadow-lg cursor-pointer transition-all",
-                      isMe ? "bg-primary text-black rounded-tr-none" : "bg-zinc-900 border border-white/5 text-zinc-100 rounded-tl-none",
-                      selectedMsgId === msg.id && "ring-2 ring-white/20 scale-[0.98]"
+                      "group relative px-3.5 py-2 rounded-2xl text-[12px] font-semibold leading-relaxed shadow-lg cursor-pointer hover:scale-[0.99] active:scale-[0.97] transition-all",
+                      isMe ? "bg-primary text-black rounded-tr-none hover:opacity-90" : "bg-zinc-900 border border-white/5 text-zinc-100 rounded-tl-none hover:bg-zinc-800"
                     )}
-                    onClick={() => setSelectedMsgId(selectedMsgId === msg.id ? null : msg.id)}
+                    onClick={() => setActionMenuMessage(msg)}
                   >
                     {/* Always visible Reply button */}
                     <button 
@@ -1434,25 +1472,6 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
                         </div>
                       </button>
                     )}
-
-                    {/* Quick Menu Below Message */}
-                    <div className="flex items-center gap-2 mt-1 px-1">
-                       <button onClick={() => { setReplyTo(msg); }} className="text-[10px] font-black text-zinc-500 hover:text-primary transition-colors">
-                          رد
-                       </button>
-                       {isMe && (
-                         <>
-                           <span className="text-zinc-700">•</span>
-                           <button onClick={() => { startEdit(msg); }} className="text-[10px] font-black text-zinc-500 hover:text-blue-400 transition-colors">
-                             تعديل
-                           </button>
-                           <span className="text-zinc-700">•</span>
-                           <button onClick={() => { deleteMessage(msg.id); }} className="text-[10px] font-black text-zinc-500 hover:text-rose-500 transition-colors">
-                             حذف
-                           </button>
-                         </>
-                       )}
-                    </div>
 
                   </div>
                 </div>
@@ -1693,6 +1712,98 @@ export default function SeriesChat({ seriesId, seriesTitle = 'هذا العمل'
               className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl border border-zinc-800"
             />
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Interactive Bottom Sheet for Comment Options */}
+      <AnimatePresence>
+        {actionMenuMessage && (
+          <div className="fixed inset-0 z-[400000] bg-black/60 backdrop-blur-sm flex items-end justify-center">
+            {/* Backdrop click closer */}
+            <div className="absolute inset-0 cursor-pointer" onClick={() => setActionMenuMessage(null)} />
+            
+            {/* Slide up panel */}
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 250 }}
+              className="relative w-full max-w-sm bg-zinc-950 border-t border-zinc-850 rounded-t-3xl p-5 text-right font-sans z-50 flex flex-col space-y-4 shadow-2xl select-none"
+            >
+              {/* Drag bar indicator */}
+              <div className="w-12 h-1 bg-zinc-800 rounded-full mx-auto mb-1 flex-shrink-0" />
+              
+              <div className="text-center pb-2 border-b border-zinc-900 leading-relaxed">
+                <p className="text-[10px] text-zinc-500 font-bold mb-0.5">خيارات التعليق</p>
+                <p className="text-xs text-zinc-300 font-bold truncate max-w-[280px] mx-auto">
+                  "{actionMenuMessage.text || "محتوى وسائط حية"}"
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                {/* 1. Reply Option */}
+                <button
+                  onClick={() => {
+                    setReplyTo(actionMenuMessage);
+                    setActionMenuMessage(null);
+                  }}
+                  className="w-full flex items-center justify-between p-3 rounded-2xl bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-850 text-white font-bold text-xs transition active:scale-95 cursor-pointer"
+                >
+                  <Reply className="w-4 h-4 text-emerald-400" />
+                  <span>الرد على هذا التعليق</span>
+                </button>
+
+                {/* 2. Report Option */}
+                {actionMenuMessage.userId !== localStorage.getItem('guest_chat_pid') && (
+                  <button
+                    onClick={() => {
+                      handleReportMessage(actionMenuMessage);
+                      setActionMenuMessage(null);
+                    }}
+                    className="w-full flex items-center justify-between p-3 rounded-2xl bg-zinc-900/60 hover:bg-red-950/20 hover:border-red-900 border border-zinc-850 text-red-400 font-bold text-xs transition active:scale-95 cursor-pointer"
+                  >
+                    <ShieldAlert className="w-4 h-4 text-red-550" />
+                    <span>إبلاغ عن محتوى غير لائق 🚨</span>
+                  </button>
+                )}
+
+                {/* 3. Edit Option (if is mine) */}
+                {actionMenuMessage.userId === localStorage.getItem('guest_chat_pid') && actionMenuMessage.text && !actionMenuMessage.imageUrl && !actionMenuMessage.videoUrl && !actionMenuMessage.audioUrl && typeof startEdit === 'function' && (
+                  <button
+                    onClick={() => {
+                      startEdit(actionMenuMessage);
+                      setActionMenuMessage(null);
+                    }}
+                    className="w-full flex items-center justify-between p-3 rounded-2xl bg-zinc-900/60 hover:bg-amber-950/20 hover:border-amber-900 border border-zinc-850 text-amber-400 font-bold text-xs transition active:scale-95 cursor-pointer"
+                  >
+                    <Pencil className="w-4 h-4 text-amber-400" />
+                    <span>تعديل التعليق ✍️</span>
+                  </button>
+                )}
+
+                {/* 4. Delete Option (if mine) */}
+                {actionMenuMessage.userId === localStorage.getItem('guest_chat_pid') && typeof deleteMessage === 'function' && (
+                  <button
+                    onClick={() => {
+                      deleteMessage(actionMenuMessage.id);
+                      setActionMenuMessage(null);
+                    }}
+                    className="w-full flex items-center justify-between p-3 rounded-2xl bg-rose-955/20 border border-rose-500/20 text-rose-450 hover:bg-rose-950/40 font-bold text-xs transition active:scale-95 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-400" />
+                    <span>حذف التعليق نهائياً 🗑️</span>
+                  </button>
+                )}
+              </div>
+
+              <button
+                onClick={() => setActionMenuMessage(null)}
+                className="w-full py-3 bg-zinc-900 hover:bg-zinc-850 text-zinc-400 hover:text-white font-black rounded-2xl text-[11px] transition cursor-pointer text-center"
+              >
+                إغلاق القائمة
+              </button>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

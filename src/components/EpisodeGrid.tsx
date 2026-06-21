@@ -116,7 +116,7 @@ export default function EpisodeGrid({
   }, [filteredEpisodes, searchQuery, jumpToRange, episodes.length]);
 
   const SOCIAL_LINKS = [
-    { name: "تيك توك", url: "https://www.tiktok.com/@hakaytona", color: "from-zinc-950 to-zinc-900 border-cyan-500/20 text-white hover:border-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.15)]", icon: "🌐" },
+    { name: "تيك توك", url: "https://www.tiktok.com/@hikaytna_my?_r=1&_t=ZN-97O75l6SjSw", color: "from-zinc-950 to-zinc-900 border-cyan-500/20 text-white hover:border-cyan-400 hover:shadow-[0_0_15px_rgba(6,182,212,0.15)]", icon: "🌐" },
     { name: "واتساب", url: "https://chat.whatsapp.com/invite_placeholder", color: "from-emerald-950/40 to-emerald-900/40 border-emerald-500/20 text-emerald-400 hover:border-emerald-400 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)]", icon: "💬" },
     { name: "إنستغرام", url: "https://instagram.com/hakaytona", color: "from-rose-950/40 to-pink-900/40 border-pink-500/20 text-pink-450 hover:border-pink-400 hover:shadow-[0_0_15px_rgba(236,72,153,0.15)]", icon: "📷" },
     { name: "تليجرام", url: "https://t.me/hakaytona", color: "from-sky-950/40 to-sky-900/40 border-sky-500/20 text-sky-400 hover:border-sky-400 hover:shadow-[0_0_15px_rgba(14,165,233,0.15)]", icon: "📢" }
