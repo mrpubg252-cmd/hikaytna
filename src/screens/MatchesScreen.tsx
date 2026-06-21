@@ -78,10 +78,10 @@ export default function MatchesScreen() {
       });
       
       const data = await response.json();
-      if (data.status === 'success' && data.fileUrl) {
+      if (data.success && data.url) {
         setNewMatchForm(prev => ({
           ...prev,
-          [teamNum === 1 ? 'logo1' : 'logo2']: data.fileUrl
+          [teamNum === 1 ? 'logo1' : 'logo2']: data.url
         }));
       }
     } catch (err) {

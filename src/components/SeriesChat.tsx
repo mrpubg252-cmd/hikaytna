@@ -854,6 +854,7 @@ export default function SeriesChat({
       userId: localStorage.getItem('guest_chat_pid') || 'guest_temp',
       userName: senderName,
       userAvatar,
+      userAvatarPos: localStorage.getItem('user_avatar_pos') || '50',
       text: txt || (pendingScene ? `شوفوا هاذ اللقطة عند الدقيقة ${pendingScene.timeStr} 🔥` : ''),
       imageUrl: finalImg || '',
       videoUrl: finalVid || '',
@@ -1438,7 +1439,12 @@ export default function SeriesChat({
               >
                 <div className="w-8 h-8 rounded-full bg-zinc-900 border border-white/5 shrink-0 overflow-hidden shadow">
                   {msg.userAvatar.startsWith('http') ? (
-                    <img src={msg.userAvatar} className="w-full h-full object-cover" alt="Avatar" />
+                    <img 
+                      src={msg.userAvatar} 
+                      className="w-full h-full object-cover" 
+                      style={{ objectPosition: `center ${msg.userAvatarPos || '50'}%` }}
+                      alt="Avatar" 
+                    />
                   ) : (
                     msgAvatarObj?.svg
                   )}
