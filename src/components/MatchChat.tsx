@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, push, onValue, limitToLast, query, serverTimestamp, Database, set } from 'firebase/database';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -717,8 +718,10 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
                               src={msg.videoUrl} 
                               controls 
                               playsInline
-                              preload="auto"
-                              className="w-full h-auto max-h-[180px] object-cover rounded-xl"
+                              webkit-playsinline="true"
+                              preload="metadata"
+                              crossOrigin="anonymous"
+                              className="w-full h-auto max-h-[180px] object-cover rounded-xl bg-black"
                               referrerPolicy="no-referrer"
                             />
                           </div>
@@ -917,33 +920,33 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
       </div>
 
       {/* Lightbox Image Preview Dialog overlay */}
-      <AnimatePresence>
-        {previewImage && (
+      {previewImage && createPortal(
+        <AnimatePresence>
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setPreviewImage(null)}
-            className="fixed inset-0 z-[500000] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
+            className="fixed inset-0 z-[999999] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out"
           >
             <button 
               onClick={() => setPreviewImage(null)} 
-              className="absolute top-4 right-4 bg-zinc-900/80 text-white p-3 rounded-full border border-zinc-800 hover:bg-zinc-800 transition duration-200"
+              className="absolute top-8 right-8 z-[1000000] p-3 rounded-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md border border-white/10 transition-all active:scale-90"
             >
               <X className="w-5 h-5" />
             </button>
             <motion.img 
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.95 }}
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
               src={previewImage} 
-              alt="Full Preview" 
               referrerPolicy="no-referrer"
-              className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl border border-zinc-800"
+              className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
             />
           </motion.div>
-        )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* Overlaid Profile Customization Screen */}
       <AnimatePresence>

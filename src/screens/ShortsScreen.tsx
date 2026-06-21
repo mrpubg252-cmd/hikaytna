@@ -18,6 +18,7 @@ import SeriesChat from '../components/SeriesChat';
 import ShortCard from '../components/ShortCard';
 import { getTMDBPoster, getTMDBPosterSync } from '../lib/tmdbHealing';
 import { navigateToWatchOrAds } from '../utils/watchNavigation';
+import { getApiUrl } from '../lib/apiConfig';
 
 interface ShortsOptionImageProps {
   title: string;
