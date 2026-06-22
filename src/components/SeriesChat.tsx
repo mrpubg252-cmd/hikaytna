@@ -386,12 +386,17 @@ export default function SeriesChat({
   const [showStickerPanel, setShowStickerPanel] = useState(false);
   
   // Professional Stickers
-  const STICKERS = [
-    { id: 'st1', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/vV07p7lS8JzUu8kY9S/giphy.gif' },
-    { id: 'st2', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/v3HwU9Z8R2u9k867p8/giphy.gif' },
-    { id: 'st3', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/vO8fJ2Zp6uR2P6w4zM/giphy.gif' },
-    { id: 'st4', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/vNfR9Xp1o2k5X2R5W9/giphy.gif' },
-  ];
+  const [savedStickers, setSavedStickers] = useState<{id: string, url: string}[]>(() => {
+    const saved = localStorage.getItem('user_saved_stickers');
+    return saved ? JSON.parse(saved) : [
+      { id: 'st1', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/vV07p7lS8JzUu8kY9S/giphy.gif' },
+      { id: 'st2', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/v3HwU9Z8R2u9k867p8/giphy.gif' },
+      { id: 'st3', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/vO8fJ2Zp6uR2P6w4zM/giphy.gif' },
+      { id: 'st4', url: 'https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHpiazJpbmRxZXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeXpkeSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/vNfR9Xp1o2k5X2R5W9/giphy.gif' },
+    ];
+  });
+  
+  const STICKERS = savedStickers;
 
   const [copiedSticker, setCopiedSticker] = useState<string | null>(() => localStorage.getItem('copied_chat_sticker'));
   const [copiedFeedback, setCopiedFeedback] = useState(false);
@@ -1181,12 +1186,22 @@ export default function SeriesChat({
       if (uploadData.success && uploadData.url) {
         if (isImg) {
           await handleSendMessage(undefined, sendCap, uploadData.url, "", "", isStickerMode);
+          if (isStickerMode) {
+            const newSticker = { id: `st_${Date.now()}`, url: uploadData.url };
+            const updated = [...savedStickers, newSticker];
+            setSavedStickers(updated);
+            localStorage.setItem('user_saved_stickers', JSON.stringify(updated));
+          }
         } else if (isVid) {
           // If sending video:
           // We can also send it as sticker as requested: "أقدر أضيف ملصقات صور وفيديو يعني فرق بين فيديوهات وملصقات"
           if (isStickerMode) {
             // Send as sticker video
             await handleSendMessage(undefined, sendCap, "", uploadData.url, "", true);
+            const newSticker = { id: `st_${Date.now()}`, url: uploadData.url };
+            const updated = [...savedStickers, newSticker];
+            setSavedStickers(updated);
+            localStorage.setItem('user_saved_stickers', JSON.stringify(updated));
           } else {
             // Normal video message
             await handleSendMessage(undefined, sendCap, "", uploadData.url, "");
@@ -2105,8 +2120,17 @@ export default function SeriesChat({
                     <Camera className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
                     <span className="text-[8px] font-black text-primary">اصنع ملصق</span>
                     <input type="file" className="hidden" accept="image/*" onChange={(e) => {
-                      handleFileUpload(e, true);
-                      setShowStickerPanel(false);
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        // We need the file url here, but handleFileUpload takes a boolean
+                        // and handles upload internally if it's meant to be a sticker.
+                        // Wait, handleFileUpload calls handleSendMessage from within a nested function
+                        // Let's call a custom logic here to both upload and save locally if needed.
+                        // Actually, looking at handleFileUpload(e, true), it sets the sticker boolean.                
+                        // To achieve saving, I might need to hook into the SUCCESSFUL upload callback.
+                        handleFileUpload(e, true);
+                        setShowStickerPanel(false);
+                      }
                     }} />
                   </label>
                 </div>
