@@ -1771,23 +1771,14 @@ export default function SeriesChat({
                     {msg.imageUrl && (
                       isMessageSticker(msg) ? (
                         <div 
-                          className="relative group/sticker mt-2 max-w-[130px] cursor-pointer hover:scale-105 active:scale-95 transition-all duration-300"
-                          onClick={(e) => { 
-                            e.stopPropagation(); 
-                            handleCopySticker(msg.imageUrl!);
-                          }}
-                          title="انقر لنسخ الملصق 📋"
+                          className="relative mt-2 w-20 h-20 rounded-xl overflow-hidden shadow-sm"
                         >
                           <img 
                             src={msg.imageUrl} 
                             alt="ملصق شات" 
                             referrerPolicy="no-referrer"
-                            className="w-full h-auto max-h-[110px] object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.4)]"
+                            className="w-full h-full object-cover"
                           />
-                          <div className="absolute -top-1.5 -right-1.5 bg-black/85 backdrop-blur-md text-primary border border-primary/20 scale-90 opacity-0 group-hover/sticker:opacity-100 transition-all duration-200 px-2 py-0.5 rounded-full text-[9px] font-black flex items-center gap-1 shadow-lg">
-                            <Copy className="w-2.5 h-2.5" />
-                            <span>نسخ 📋</span>
-                          </div>
                         </div>
                       ) : (
                         <div className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black/40 mt-2 max-w-[200px] cursor-pointer hover:opacity-90 transition active:scale-[0.98]">
@@ -1804,12 +1795,7 @@ export default function SeriesChat({
                     {msg.videoUrl && (
                       msg.isSticker ? (
                         <div 
-                          className="relative group/sticker mt-2 max-w-[130px] rounded-2xl overflow-hidden cursor-pointer hover:scale-105 active:scale-95 transition-all duration-300"
-                          onClick={(e) => { 
-                            e.stopPropagation(); 
-                            handleCopySticker(msg.videoUrl!);
-                          }}
-                          title="انقر لنسخ الملصق 📋"
+                          className="relative mt-2 w-20 h-20 rounded-xl overflow-hidden shadow-sm"
                         >
                           <video 
                             src={getProxiedUrl(msg.videoUrl)} 
@@ -1818,13 +1804,9 @@ export default function SeriesChat({
                             muted 
                             playsInline
                             webkitPlaysInline={true}
-                            className="w-full h-auto max-h-[110px] object-contain rounded-2xl"
+                            className="w-full h-full object-cover"
                             referrerPolicy="no-referrer"
                           />
-                          <div className="absolute -top-1.5 -right-1.5 bg-black/85 backdrop-blur-md text-primary border border-primary/20 scale-90 opacity-0 group-hover/sticker:opacity-100 transition-all duration-200 px-2 py-0.5 rounded-full text-[9px] font-black flex items-center gap-1 shadow-lg">
-                            <Copy className="w-2.5 h-2.5" />
-                            <span>نسخ 📋</span>
-                          </div>
                         </div>
                       ) : (
                         <div 
