@@ -4,6 +4,14 @@ import {
   Heart, MessageCircle, Share2, VolumeX, Volume2, Film, AlertCircle, Flame, Play, Pause, Music, Edit3, Trash2
 } from 'lucide-react';
 
+const getProxiedUrl = (url?: string) => {
+  if (!url) return '';
+  if (url.startsWith('blob:') || url.startsWith('/') || url.startsWith('data:')) {
+    return url;
+  }
+  return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
+};
+
 interface ShortCardProps {
   item: any;
   index: number;
@@ -206,7 +214,7 @@ const ShortCard = memo(({
       try {
         videoElement.pause();
         videoElement.muted = true;
-        videoElement.currentTime = 0;
+        // Removed forced videoElement.currentTime = 0 to allow perfect resuming cached video frames on scrolling
       } catch (err) {}
     }
   }, [isCurrent, isPlaying, videoElement, isMuted]);
@@ -275,7 +283,7 @@ const ShortCard = memo(({
                 setVideoElement(el);
               }
             }}
-            src={isAdjacent ? (videoUrlOverride || item.videoUrl) : undefined} 
+            src={isAdjacent ? getProxiedUrl(videoUrlOverride || item.videoUrl) : undefined} 
             className={`w-full h-full object-cover md:object-contain bg-black transition-opacity duration-300 ${isCurrent ? 'opacity-100' : 'opacity-0'}`}
             loop
             playsInline

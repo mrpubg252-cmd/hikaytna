@@ -250,6 +250,20 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
   };
 
   const handleReportMessage = async (msg: ChatMessage) => {
+    // 24 hours report cooldown constraint
+    const lastReport = localStorage.getItem('hek_last_report_time');
+    if (lastReport) {
+      const elapsed = Date.now() - parseInt(lastReport, 10);
+      const limit = 24 * 60 * 60 * 1000;
+      if (elapsed < limit) {
+        const remainingMs = limit - elapsed;
+        const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+        const minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+        alert(`عذراً، بموجب حماية منصتنا، لا يمكن إرسال أكثر من بلاغ واحد كل 24 ساعة للإدارة كأقصى استخدام آمن.\n\nالمتبقي لجاهزية الإبلاغ: ${hours} ساعة و ${minutes} دقيقة 🛡️`);
+        return;
+      }
+    }
+
     if (!window.confirm("هل تريد الإبلاغ عن هذا التعليق لاحتوائه على سب، شتم، أو محتوى غير لائق؟ 🚨")) return;
     try {
       const reportId = `report_${Date.now()}`;
@@ -265,10 +279,36 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
         matchId: matchId,
         status: 'pending'
       });
-      alert('نعتذر عن الإزعاج! تم تسجيل البلاغ بنجاح وإرساله فوراً إلى قاعدة البيانات للمراجعة والحظر! 🛡️');
+      
+      localStorage.setItem('hek_last_report_time', Date.now().toString());
+      
+      // Chime Sound
+      try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const now = audioCtx.currentTime;
+        const playTone = (freq: number, start: number, duration: number, volume: number) => {
+          const osc = audioCtx.createOscillator();
+          const gainNode = audioCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, start);
+          gainNode.gain.setValueAtTime(0, start);
+          gainNode.gain.linearRampToValueAtTime(volume, start + 0.04);
+          gainNode.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+          osc.connect(gainNode);
+          osc.connect(audioCtx.destination);
+          osc.start(start);
+          osc.stop(start + duration);
+        };
+        playTone(523.25, now, 0.4, 0.15);
+        playTone(659.25, now + 0.08, 0.45, 0.13);
+        playTone(783.99, now + 0.16, 0.5, 0.12);
+        playTone(1046.50, now + 0.24, 0.6, 0.1);
+      } catch (audioErr) {}
+
+      alert('تم ارسال بلاغك الى اداره سوف نراجع بلاغك بسرعه عاليه نحنا نهتم ب مستخدمينا بشكل احترافي 🛡️✅');
     } catch (e) {
       console.error("Failed to submit abuse report:", e);
-      alert('شكراً لك، تم إرسال البلاغ بنجاح!');
+      alert('تم ارسال بلاغك الى اداره سوف نراجع بلاغك بسرعه عاليه نحنا نهتم ب مستخدمينا بشكل احترافي 🛡️✅');
     }
   };
 

@@ -14,6 +14,10 @@ export function normalizeArabic(text: string): string {
   
   let normalized = text.trim().toLowerCase();
 
+  // Strip prefixes like 'مسلسل', 'فيلم', 'انمي' along with any dot, space, symbols, or even when glued directly
+  const prefixRegex = /^(مسلسل|مسلسلات|فيلم|افلام|أفلام|برنامج|انمي|أنمي|كرتون|حلقات|حلقة|عرض|موسم)([\s.\-_:]*)/;
+  normalized = normalized.replace(prefixRegex, '');
+
   // Remove diacritics (Harakat)
   normalized = normalized.replace(/[\u064B-\u065F]/g, "");
   
@@ -33,7 +37,7 @@ export function normalizeArabic(text: string): string {
   // Remove special characters but KEEP numbers and letters
   normalized = normalized.replace(/[^\u0621-\u064Aa-z0-9\s]/g, "");
   
-  // Condense extra spaces
+  // Condense extra spaces and strip entirely to make matches spaceless
   normalized = normalized.replace(/\s+/g, "");
   
   return normalized;

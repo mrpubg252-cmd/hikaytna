@@ -17,6 +17,14 @@ import { firestore } from '../services/firebase';
 import { checkBanStatus, reportComment, getOrCreateUserId } from '../services/banService';
 import ProfileTemplateOverlay from './ProfileTemplateOverlay';
 
+const getProxiedUrl = (url?: string) => {
+  if (!url) return '';
+  if (url.startsWith('https://f.top4top.') || url.startsWith('http://f.top4top.') || url.includes('top4top.')) {
+    return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
+  }
+  return url;
+};
+
 let db: Database | null = null;
 
 // Speech-to-Text types
@@ -125,7 +133,7 @@ function CustomAudioPlayer({ src }: { src: string }) {
 
   return (
     <div className="flex items-center gap-2 bg-black/40 border border-zinc-805 rounded-xl p-2 min-w-[180px] select-none text-white my-1" style={{ direction: 'ltr' }}>
-      <audio ref={audioRef} src={src} preload="metadata" className="hidden" />
+      <audio ref={audioRef} src={getProxiedUrl(src)} preload="metadata" className="hidden" />
       <button 
         type="button"
         onClick={togglePlay} 
@@ -435,9 +443,77 @@ export default function SeriesChat({
   // Pending scene share
   const [pendingScene, setPendingScene] = useState<PendingScene | null>(null);
 
+  // Interactive Pending Media (Image/Video Upload) Preview States
+  const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
+  const [pendingMediaPreviewUrl, setPendingMediaPreviewUrl] = useState<string | null>(null);
+  const [pendingMediaType, setPendingMediaType] = useState<'image' | 'video' | null>(null);
+  const [pendingMediaCaption, setPendingMediaCaption] = useState<string>('');
+  const [pendingMediaSendAsSticker, setPendingMediaSendAsSticker] = useState<boolean>(false);
+
   // Editing state
   const [editingMsg, setEditingMsg] = useState<ChatMessage | null>(null);
   const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
+
+  // Premium interactive reporting system variables
+  const [reportFormOpen, setReportFormOpen] = useState(false);
+  const [reportIssueType, setReportIssueType] = useState('محتوى غير لائق أو إزعاج في الدردشة');
+  const [reportIssueDetails, setReportIssueDetails] = useState('');
+  const [reportTargetComment, setReportTargetComment] = useState<ChatMessage | null>(null);
+  const [reportSuccessOpen, setReportSuccessOpen] = useState(false);
+  const [reportWaitHoursLeft, setReportWaitHoursLeft] = useState<string | null>(null);
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+
+  // Audio Context synth checkmark sound effect
+  const playReportSuccessSound = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const now = audioCtx.currentTime;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1000, now);
+      filter.Q.setValueAtTime(1, now);
+      filter.connect(audioCtx.destination);
+
+      const playTone = (freq: number, start: number, duration: number, volume: number) => {
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+        gainNode.gain.setValueAtTime(0, start);
+        gainNode.gain.linearRampToValueAtTime(volume, start + 0.04);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+        osc.connect(gainNode);
+        gainNode.connect(filter);
+        osc.start(start);
+        osc.stop(start + duration);
+      };
+
+      // Play soft beautiful chime tones
+      playTone(523.25, now, 0.4, 0.15);         // C5
+      playTone(659.25, now + 0.08, 0.45, 0.13);  // E5
+      playTone(783.99, now + 0.16, 0.5, 0.12);   // G5
+      playTone(1046.50, now + 0.24, 0.6, 0.1);   // C6
+    } catch (err) {
+      console.warn("Could not play sound: Web Audio API blocker", err);
+    }
+  };
+
+  const checkReportLimit = (): boolean => {
+    const lastReport = localStorage.getItem('hek_last_report_time');
+    if (lastReport) {
+      const elapsed = Date.now() - parseInt(lastReport, 10);
+      const limit = 24 * 60 * 60 * 1000; // 24 Hours limit
+      if (elapsed < limit) {
+        const remainingMs = limit - elapsed;
+        const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+        const minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+        setReportWaitHoursLeft(`${hours} ساعة و ${minutes} دقيقة 🛡️`);
+        return false;
+      }
+    }
+    return true;
+  };
 
   // Ban states and Action Sheet Menu
   const [isBanned, setIsBanned] = useState(false);
@@ -846,18 +922,65 @@ export default function SeriesChat({
   };
 
   const handleReportMessage = async (msg: ChatMessage) => {
-    const success = await reportComment({
-      commentId: msg.id,
-      commentText: msg.text || '[وسائط]',
-      authorName: msg.userName,
-      chatType: 'series',
-      channelName: seriesTitle || 'مسلسل',
-      reporterName: userName || 'مستخدم'
-    });
-    if (success) {
-      alert("شكراً لك! تم استلام بلاغك وسيقوم فريق حكايتنا بمراجعة التعليق قريباً 🛡️✅");
-    } else {
-      alert("عذراً، حدث خطأ أثناء إرسال البلاغ. يرجى المحاولة مرة أخرى.");
+    if (!checkReportLimit()) {
+      setReportSuccessOpen(true);
+      return;
+    }
+    setReportTargetComment(msg);
+    setReportIssueType('محتوى تعليق غير لائق أو مسيء');
+    setReportIssueDetails('');
+    setReportFormOpen(true);
+  };
+
+  const handleOpenGeneralReport = () => {
+    if (!checkReportLimit()) {
+      setReportSuccessOpen(true);
+      return;
+    }
+    setReportTargetComment(null);
+    setReportIssueType('بطء شديد وتقطيع في مشغل الفيديو');
+    setReportIssueDetails('');
+    setReportFormOpen(true);
+  };
+
+  const submitInteractiveReport = async () => {
+    if (!checkReportLimit()) {
+      setReportFormOpen(false);
+      setReportSuccessOpen(true);
+      return;
+    }
+
+    setIsSubmittingReport(true);
+    try {
+      const detailsText = reportIssueDetails.trim();
+      const success = await reportComment({
+        commentId: reportTargetComment ? reportTargetComment.id : `general_issue_${Date.now()}`,
+        commentText: reportTargetComment 
+          ? `[تقرير تعليق] (${reportIssueType}) ${reportTargetComment.text || '[وسائط]'} | التفاصيل: ${detailsText}`
+          : `[بلاغ مشكلة عامة] نوع المشكلة: ${reportIssueType} | التفاصيل: ${detailsText}`,
+        authorName: reportTargetComment ? reportTargetComment.userName : 'نظام المشغل الميديا',
+        chatType: 'series',
+        channelName: seriesTitle || 'مسلسل',
+        reporterName: userName || 'مستخدم'
+      });
+
+      if (success) {
+        localStorage.setItem('hek_last_report_time', Date.now().toString());
+        setReportWaitHoursLeft(null); // clean up warning status since this was a newly approved submission
+        
+        playReportSuccessSound();
+        setReportFormOpen(false);
+        setReportSuccessOpen(true);
+        setReportIssueDetails('');
+        setReportTargetComment(null);
+      } else {
+        alert("عذراً، حدث خطأ أثناء إرسال البلاغ. يرجى المحاولة مرة أخرى.");
+      }
+    } catch (err) {
+      console.error("Interactive reporting failed:", err);
+      alert("عذراً، فشل خادم البلاغات.");
+    } finally {
+      setIsSubmittingReport(false);
     }
   };
 
@@ -969,51 +1092,114 @@ export default function SeriesChat({
 
     if (isShortsComments && isVideo) {
       alert("عذراً، رفع الفيديوهات غير مسموح في التعليقات. يمكنك رفع صور أو بصمات صوتية فقط! ✨");
-      setUploadingImage(false);
       e.target.value = '';
       return;
     }
 
+    if (isAudio) {
+      // Audio note: upload & send instantly
+      setUploadingImage(true);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-media") : "/api/v1/upload-media";
+        const uploadRes = await fetch(uploadEndpoint, {
+          method: "POST",
+          body: formData
+        });
+        
+        if (!uploadRes.ok) {
+          alert("عذرًا، حدث خطأ في الخادم.");
+          setUploadingImage(false);
+          e.target.value = '';
+          return;
+        }
+
+        const uploadData = await uploadRes.json();
+        if (uploadData.success && uploadData.url) {
+          handleSendMessage(undefined, "", "", "", uploadData.url);
+        } else {
+          alert("عذراً، فشل رفع المقطع الصوتي.");
+        }
+      } catch (err) {
+        console.error("Audio direct upload failing:", err);
+        alert("عذراً، فشل رفع الملف.");
+      } finally {
+        setUploadingImage(false);
+        e.target.value = '';
+      }
+      return;
+    }
+
+    // Capture Image or Video for premium interactive preview with customizable captions and Sticker mode choice!
+    setPendingUploadFile(file);
+    setPendingMediaType(isImage ? 'image' : isVideo ? 'video' : null);
+    setPendingMediaPreviewUrl(URL.createObjectURL(file));
+    setPendingMediaCaption('');
+    setPendingMediaSendAsSticker(isStickerUpload);
+
+    e.target.value = ''; // clears target so same file can be chose immediately again
+  };
+
+  const handleSendPendingMedia = async () => {
+    if (!pendingUploadFile) return;
+
     setUploadingImage(true);
+    const fileToUpload = pendingUploadFile;
+    const sendCap = pendingMediaCaption.trim();
+    const isStickerMode = pendingMediaSendAsSticker;
+    const isImg = pendingMediaType === 'image';
+    const isVid = pendingMediaType === 'video';
+
+    // Reset States instantly to close modal gracefully for responsive feedback
+    setPendingUploadFile(null);
+    if (pendingMediaPreviewUrl) {
+      URL.revokeObjectURL(pendingMediaPreviewUrl);
+    }
+    setPendingMediaPreviewUrl(null);
+    setPendingMediaType(null);
+    setPendingMediaCaption('');
+    setPendingMediaSendAsSticker(false);
+
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", fileToUpload);
 
       const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-media") : "/api/v1/upload-media";
       const uploadRes = await fetch(uploadEndpoint, {
         method: "POST",
         body: formData
       });
-      
+
       if (!uploadRes.ok) {
-        console.error("Upload failed with status", uploadRes.status);
-        alert("عذرًا، حدث خطأ في الخادم (حجم الملف كبير أو السيرفر مشغول).");
-        setUploadingImage(false);
-        e.target.value = '';
+        alert("عذراً، فشل رفع الملف. المخدم مشغول أو الملف كبير جداً.");
         return;
       }
 
       const uploadData = await uploadRes.json();
-      
       if (uploadData.success && uploadData.url) {
-        if (isImage) {
-          handleSendMessage(undefined, "", uploadData.url, "", "", isStickerUpload);
-        } else if (isVideo) {
-          handleSendMessage(undefined, "", "", uploadData.url, "");
-        } else if (isAudio) {
-          handleSendMessage(undefined, "", "", "", uploadData.url);
-        } else {
-          handleSendMessage(undefined, "", uploadData.url, "", "", isStickerUpload);
+        if (isImg) {
+          await handleSendMessage(undefined, sendCap, uploadData.url, "", "", isStickerMode);
+        } else if (isVid) {
+          // If sending video:
+          // We can also send it as sticker as requested: "أقدر أضيف ملصقات صور وفيديو يعني فرق بين فيديوهات وملصقات"
+          if (isStickerMode) {
+            // Send as sticker video
+            await handleSendMessage(undefined, sendCap, "", uploadData.url, "", true);
+          } else {
+            // Normal video message
+            await handleSendMessage(undefined, sendCap, "", uploadData.url, "");
+          }
         }
       } else {
-        alert(isImage ? "عذراً، فشل رفع الصورة." : "عذراً، فشل رفع المقطع.");
+        alert("عذراً، فشل الرفع.");
       }
     } catch (err) {
-      console.error("File upload failing:", err);
-      alert(isImage ? "عذراً، فشل رفع الصورة." : "عذراً، فشل رفع الملف.");
+      console.error("Failing pending upload:", err);
+      alert("عذراً، حدث خطأ أثناء إرسال التعليق.");
     } finally {
       setUploadingImage(false);
-      e.target.value = '';
     }
   };
 
@@ -1370,7 +1556,8 @@ export default function SeriesChat({
         <div className="flex items-center gap-1.5 text-zinc-500">
           <button 
             className="p-1.5 hover:bg-white/10 rounded-full transition-all text-zinc-500 hover:text-red-400 group"
-            onClick={() => { /* Trigger report action - link to NoticeAndSupportBubble if possible | For now just alert */ alert('سيتم فتح نظام البلاغات قريباً'); }}
+            onClick={handleOpenGeneralReport}
+            title="الإبلاغ عن مشكلة في التشغيل أو تعليقات الدردشة"
           >
             <ShieldAlert className="w-4 h-4" />
           </button>
@@ -1575,11 +1762,9 @@ export default function SeriesChat({
                       </button>
                     
                     {msg.replyTo && (
-                      <div className={cn(
-                        "mb-2 p-2 rounded-xl border-r-4 text-[11px] bg-black/40 border-primary text-white font-medium flex flex-col gap-0.5",
-                      )}>
-                        <span className="font-black text-primary text-[10px] uppercase">رداً على {msg.replyTo.userName}</span>
-                        <span className="text-zinc-200 truncate">{msg.replyTo.text}</span>
+                      <div className="mb-2 p-2 rounded-xl border-r-4 text-[10px] bg-black/50 border-primary text-white font-medium flex flex-col gap-0.5 max-w-[200px] xs:max-w-[260px] md:max-w-xs overflow-hidden select-none text-right" dir="rtl">
+                        <span className="font-black text-primary text-[8px] uppercase truncate block">رداً على {msg.replyTo.userName}</span>
+                        <span className="text-zinc-300 truncate block text-[9.5px]">{msg.replyTo.text}</span>
                       </div>
                     )}
                     <div className="text-[13px]">{msg.userName && msg.userName.includes('حكيم') ? cleanAndRenderAiText(msg.text || '') : msg.text}</div>
@@ -1617,36 +1802,59 @@ export default function SeriesChat({
                       )
                     )}
                     {msg.videoUrl && (
-                      <div 
-                        className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black mt-2 max-w-[240px] group cursor-pointer"
-                        onClick={(e) => { e.stopPropagation(); setPreviewVideo(msg.videoUrl!); }}
-                      >
-                        <video 
-                          src={msg.videoUrl} 
-                          playsInline
-                          preload="metadata"
-                          className="w-full h-auto max-h-[180px] object-cover rounded-xl bg-black pointer-events-none"
-                          referrerPolicy="no-referrer"
-                          {...{
-                            "webkit-playsinline": "true",
-                            "x5-playsinline": "true"
+                      msg.isSticker ? (
+                        <div 
+                          className="relative group/sticker mt-2 max-w-[130px] rounded-2xl overflow-hidden cursor-pointer hover:scale-105 active:scale-95 transition-all duration-300"
+                          onClick={(e) => { 
+                            e.stopPropagation(); 
+                            handleCopySticker(msg.videoUrl!);
                           }}
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/30 transition-all">
-                          <div className="w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/10 group-hover:scale-110 transition-transform">
-                            <Play className="w-5 h-5 text-white fill-white ml-0.5" />
+                          title="انقر لنسخ الملصق 📋"
+                        >
+                          <video 
+                            src={getProxiedUrl(msg.videoUrl)} 
+                            autoPlay 
+                            loop 
+                            muted 
+                            playsInline
+                            webkitPlaysInline={true}
+                            className="w-full h-auto max-h-[110px] object-contain rounded-2xl"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute -top-1.5 -right-1.5 bg-black/85 backdrop-blur-md text-primary border border-primary/20 scale-90 opacity-0 group-hover/sticker:opacity-100 transition-all duration-200 px-2 py-0.5 rounded-full text-[9px] font-black flex items-center gap-1 shadow-lg">
+                            <Copy className="w-2.5 h-2.5" />
+                            <span>نسخ 📋</span>
                           </div>
                         </div>
-                        <a 
-                          href={`/api/v1/download-proxy?url=${encodeURIComponent(msg.videoUrl)}&filename=${encodeURIComponent(`حكايتنا_${Date.now()}.mp4`)}`}
-                          download
-                          className="absolute top-2 left-2 p-2 bg-black/60 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                          onClick={(e) => e.stopPropagation()}
-                          title="تحميل الفيديو"
+                      ) : (
+                        <div 
+                          className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black mt-2 max-w-[240px] group cursor-pointer"
+                          onClick={(e) => { e.stopPropagation(); setPreviewVideo(msg.videoUrl!); }}
                         >
-                          <Share2 className="w-4 h-4" />
-                        </a>
-                      </div>
+                          <video 
+                            src={getProxiedUrl(msg.videoUrl)} 
+                            playsInline
+                            webkitPlaysInline={true}
+                            preload="metadata"
+                            className="w-full h-auto max-h-[180px] object-cover rounded-xl bg-black pointer-events-none"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/30 transition-all">
+                            <div className="w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/10 group-hover:scale-110 transition-transform">
+                              <Play className="w-5 h-5 text-white fill-white ml-0.5" />
+                            </div>
+                          </div>
+                          <a 
+                            href={`/api/v1/download-proxy?url=${encodeURIComponent(msg.videoUrl)}&filename=${encodeURIComponent(`حكايتنا_${Date.now()}.mp4`)}`}
+                            download
+                            className="absolute top-2 left-2 p-2 bg-black/60 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                            onClick={(e) => e.stopPropagation()}
+                            title="تحميل الفيديو"
+                          >
+                            <Share2 className="w-4 h-4" />
+                          </a>
+                        </div>
+                      )
                     )}
                     {msg.audioUrl && (
                       <div className="mt-2" onClick={(e) => e.stopPropagation()}>
@@ -1725,10 +1933,10 @@ export default function SeriesChat({
                 exit={{ opacity: 0, height: 0 }}
                 className="px-4 py-2 bg-white/5 flex items-center justify-between border-b border-white/5"
               >
-                <div className="flex items-center gap-2 overflow-hidden">
+                <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0 text-right font-sans" dir="rtl">
                   <Reply className="w-3 h-3 text-primary shrink-0" />
-                  <div className="text-[10px] text-zinc-400 truncate pr-2">
-                    <span className="font-black text-white/50">رد على {replyTo.userName}:</span> {replyTo.text}
+                  <div className="text-[10px] text-zinc-400 truncate pr-1 flex-1 min-w-0">
+                    <span className="font-black text-white/50">رد على {replyTo.userName}:</span> <span className="text-zinc-300">{replyTo.text}</span>
                   </div>
                 </div>
                 <button onClick={() => setReplyTo(null)} className="text-zinc-500 hover:text-white"><X className="w-4 h-4" /></button>
@@ -2048,16 +2256,134 @@ export default function SeriesChat({
               onClick={(e) => e.stopPropagation()}
             >
               <video 
-                src={previewVideo} 
+                src={getProxiedUrl(previewVideo)} 
                 controls 
                 autoPlay 
+                playsInline
+                webkitPlaysInline={true}
                 className="w-full h-auto max-h-[85vh]"
                 referrerPolicy="no-referrer"
-                {...{
-                    "webkit-playsinline": "true",
-                    "x5-playsinline": "true"
-                }}
               />
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Interactive Media Upload Preview Modal */}
+      {pendingMediaPreviewUrl && createPortal(
+        <AnimatePresence>
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[999999] bg-black/90 backdrop-blur-lg flex items-center justify-center p-4 font-sans select-none"
+          >
+            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/60 to-transparent pointer-events-none" />
+            
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="w-full max-w-md bg-zinc-950/95 border border-white/10 rounded-3xl overflow-hidden shadow-2xl flex flex-col relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-5 py-4 border-b border-white/5 bg-zinc-900/30 flex items-center justify-between text-right">
+                <button 
+                  onClick={() => {
+                    if (pendingMediaPreviewUrl) URL.revokeObjectURL(pendingMediaPreviewUrl);
+                    setPendingMediaPreviewUrl(null);
+                    setPendingUploadFile(null);
+                  }}
+                  className="p-2 rounded-full hover:bg-white/5 text-zinc-400 hover:text-white transition-all active:scale-95"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                <span className="text-sm font-black text-white tracking-wide">
+                  {pendingMediaType === 'image' ? (pendingMediaSendAsSticker ? 'تحضير ملصق جديد 🎨' : 'معاينة الصورة قبل الإرسال 📸') : 'معاينة الفيديو قبل الإرسال 🎬'}
+                </span>
+              </div>
+
+              <div className="p-5 flex flex-col items-center justify-center bg-black/50 aspect-video relative overflow-hidden group">
+                {pendingMediaType === 'image' ? (
+                  <img 
+                    src={pendingMediaPreviewUrl} 
+                    alt="Preview" 
+                    className={cn(
+                      "max-h-[220px] w-auto max-w-full object-contain rounded-2xl drop-shadow-[0_8px_24px_rgba(0,0,0,0.6)]",
+                      pendingMediaSendAsSticker && "max-h-[140px] drop-shadow-[0_4px_12px_rgba(168,85,247,0.4)]"
+                    )}
+                  />
+                ) : (
+                  <video 
+                    src={pendingMediaPreviewUrl} 
+                    controls 
+                    playsInline
+                    webkitPlaysInline={true}
+                    className="max-h-[220px] w-auto max-w-full object-contain rounded-2xl"
+                  />
+                )}
+                
+                {pendingMediaSendAsSticker && (
+                  <div className="absolute bottom-3 left-3 bg-purple-500/10 border border-purple-500/30 backdrop-blur-md text-purple-400 text-[9px] font-black px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow">
+                    <Sparkles className="w-3 h-3 text-purple-400 animate-pulse" />
+                    <span>سيتم إرسالها كـ ملصق شات ممتع ✨</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-5 border-t border-white/5 bg-zinc-900/10 flex flex-col gap-4 text-right" dir="rtl">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400">إضافة تعليق مرافق (اختياري)</label>
+                  <input 
+                    type="text" 
+                    value={pendingMediaCaption}
+                    onChange={(e) => setPendingMediaCaption(e.target.value)}
+                    placeholder="اكتب تعليقك هنا..." 
+                    className="w-full bg-white/5 border border-white/5 rounded-2xl py-2.5 px-4 text-xs outline-none text-white focus:ring-1 focus:ring-primary/40 placeholder-zinc-650 font-semibold text-right"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3.5 rounded-2.5xl bg-white/[0.02] border border-white/5">
+                  <div className="flex flex-col gap-0.5 text-right">
+                    <span className="text-[11px] font-black text-zinc-200">الإرسال كـ ملصق شات مريح</span>
+                    <span className="text-[9px] text-zinc-500 leading-normal">سيتم عرضه بمظهر ملصق شفاف بدون إطار خارجي</span>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setPendingMediaSendAsSticker(!pendingMediaSendAsSticker)}
+                    className={cn(
+                      "w-11 h-6 rounded-full p-1 transition-colors duration-300 relative",
+                      pendingMediaSendAsSticker ? "bg-primary" : "bg-zinc-800"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-4 h-4 rounded-full bg-black transition-transform duration-300",
+                      pendingMediaSendAsSticker ? "translate-x-5" : "translate-x-0"
+                    )} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-5 border-t border-white/5 bg-zinc-900/30 flex items-center gap-3" dir="rtl">
+                <button 
+                  onClick={handleSendPendingMedia}
+                  className="flex-1 bg-primary text-black font-black text-xs py-3 rounded-2xl shadow-xl hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Send className="w-3.5 h-3.5 -rotate-45" />
+                  <span>تأكيد الإرسال الآن 🚀</span>
+                </button>
+                <button 
+                  onClick={() => {
+                    if (pendingMediaPreviewUrl) URL.revokeObjectURL(pendingMediaPreviewUrl);
+                    setPendingMediaPreviewUrl(null);
+                    setPendingUploadFile(null);
+                  }}
+                  className="px-5 bg-white/5 hover:bg-white/10 text-zinc-300 font-bold text-xs py-3 rounded-2xl transition-colors active:scale-[0.98]"
+                >
+                  إلغاء
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         </AnimatePresence>,
@@ -2171,6 +2497,196 @@ export default function SeriesChat({
           </div>
         )}
       </AnimatePresence>
+
+      {/* 1. Report Form Modal */}
+      {reportFormOpen && createPortal(
+        <AnimatePresence>
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[600000] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 font-sans select-none animate-fade-in"
+            dir="rtl"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="w-full max-w-md bg-zinc-950 border border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col relative text-right"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-6 py-5 border-b border-white/5 bg-zinc-900/30 flex items-center justify-between">
+                <span className="text-sm font-black text-white tracking-wide">
+                  {reportTargetComment ? 'إبلاغ عن تعليق مخالف للآداب 🚨' : 'أبْلغ عن مشكلة في ميديا التشغيل 🚨'}
+                </span>
+                <button 
+                  onClick={() => setReportFormOpen(false)}
+                  className="p-2 rounded-full hover:bg-white/5 text-zinc-400 hover:text-white transition-all active:scale-95"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black text-zinc-400">نوع المشكلة أو المخالفة:</label>
+                  {reportTargetComment ? (
+                    <select
+                      value={reportIssueType}
+                      onChange={(e) => setReportIssueType(e.target.value)}
+                      className="w-full bg-zinc-900 border border-white/5 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-primary text-right"
+                    >
+                      <option value="محتوى تعليق غير لائق أو مسيء">تعليق يحتوي على سب والشتم أو إهانة للآخرين</option>
+                      <option value="حساب اسپام أو تكرار مزعج">تكرار التعليق بشكل عشوائي (Spam)</option>
+                      <option value="روابط خارجية أو نشر صفحات">نشر روابط خارجية أو إعلانات لصفحات أخرى</option>
+                      <option value="انتحال شخصية عضو آخر">انتحال اسم أو شخصية الإشراف أو الأعضاء</option>
+                    </select>
+                  ) : (
+                    <select
+                      value={reportIssueType}
+                      onChange={(e) => setReportIssueType(e.target.value)}
+                      className="w-full bg-zinc-900 border border-white/5 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-primary text-right"
+                    >
+                      <option value="بطء شديد وتقطيع في مشغل الفيديو">تشنج المشغل أو تقطيع مستمر في البث</option>
+                      <option value="حلقة معينة لا تفتح أو فارغة">الحلقة المعنية لا تظهر أو بها عطل بالكامل</option>
+                      <option value="مشكلة في الترجمة أو خطوط العرض">الترجمة لغة عربية غير ظاهرة أو غير متكيفة</option>
+                      <option value="مشكلة في الصوت أو السيرفر">الصوت متوقف أو السيرفر معطل تماماً</option>
+                      <option value="مشكلة تقنية أخرى">مشكلة برمجية أو تقنية أخرى أريد الإفصاح عنها</option>
+                    </select>
+                  )}
+                </div>
+
+                {reportTargetComment && (
+                  <div className="p-3 bg-red-500/5 border border-red-500/10 rounded-xl space-y-1 text-right">
+                    <span className="text-[10px] font-black text-red-400">التعليق المُراد الإبلاغ عنه:</span>
+                    <p className="text-xs text-zinc-350 truncate">
+                      "{reportTargetComment.userName}: {reportTargetComment.text || '[محتوى وسائط]'}"
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black text-zinc-400">تفاصيل البلاغ الإضافية (مستحسن):</label>
+                  <textarea
+                    rows={3}
+                    value={reportIssueDetails}
+                    onChange={(e) => setReportIssueDetails(e.target.value)}
+                    placeholder="توضيح المشكلة بسرعة يساعد الإدارة الفنية على المعالجة والحظر الفوري..."
+                    className="w-full bg-zinc-900 border border-white/5 rounded-2xl px-4 py-3 text-xs text-white focus:outline-none focus:border-primary placeholder-zinc-600 text-right resize-none"
+                  />
+                </div>
+
+                <div className="pt-2 flex items-center gap-3">
+                  <button
+                    onClick={submitInteractiveReport}
+                    disabled={isSubmittingReport}
+                    className="flex-1 bg-primary border-0 text-white font-black text-xs py-3.5 rounded-xl shadow-xl hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {isSubmittingReport ? (
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <ShieldAlert className="w-4 h-4" />
+                        <span>إرسال البلاغ فوراً</span>
+                      </>
+                    )}
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setReportFormOpen(false)}
+                    className="px-5 bg-white/5 border-0 hover:bg-white/10 text-zinc-300 font-bold text-xs py-3.5 rounded-xl transition-colors active:scale-[0.98] cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* 2. Success/Limit Feedback Modal */}
+      {reportSuccessOpen && createPortal(
+        <AnimatePresence>
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[600001] bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 font-sans select-none animate-fade-in"
+            dir="rtl"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-sm bg-zinc-950 border border-white/10 rounded-[2.5rem] p-8 text-center space-y-5 shadow-[0_0_80px_rgba(0,0,0,0.8)] relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {reportWaitHoursLeft ? (
+                <>
+                  <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                    <ShieldAlert className="w-8 h-8 text-amber-500" />
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="text-base font-black text-white">عذراً، تم تسجيل بلاغ مسبق! 🚨</h4>
+                    <p className="text-xs text-zinc-400 leading-relaxed font-bold">
+                      بموجب حماية منصتنا، لا يُسمح بإرسال أكثر من بلاغ واحد كل 24 ساعة للإدارة كأقصى استخدام آمن.
+                    </p>
+                    <div className="bg-amber-500/5 border border-amber-500/10 p-2.5 rounded-xl text-amber-400 font-mono text-[10px] font-black inline-block mt-2">
+                      الوقت المتبقي لإمكانية الإرسال: {reportWaitHoursLeft}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+                    <svg className="w-20 h-20 text-emerald-500" viewBox="0 0 52 52">
+                      <motion.circle 
+                        cx="26" 
+                        cy="26" 
+                        r="24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth="4"
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ duration: 0.6, ease: "easeOut" }}
+                      />
+                      <motion.path 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth="4" 
+                        strokeLinecap="round" 
+                        d="M15 27.5l7 7 15-15"
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ delay: 0.5, duration: 0.5, ease: "easeOut" }}
+                      />
+                    </svg>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <h4 className="text-base font-black text-white tracking-wide">تم استلام بلاغك بنجاح! 🛡️❤️</h4>
+                    <p className="text-[12px] text-zinc-300 leading-relaxed font-semibold px-2">
+                      تم ارسال بلاغك الى إدارة سوف نراجع بلاغك بسرعة عالية نحن نهتم بمستخدمينا بشكل احترافي.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setReportSuccessOpen(false)}
+                className="w-full bg-zinc-900 border-0 hover:bg-zinc-850 text-white font-black text-xs py-3.5 rounded-xl transition cursor-pointer"
+              >
+                حسناً، فهمت
+              </button>
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

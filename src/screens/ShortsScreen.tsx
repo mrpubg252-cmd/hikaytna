@@ -968,10 +968,10 @@ export default function ShortsScreen() {
           video.pause();
         }
       } else {
-        // Halt and rewind non-focused video elements to release GPU threads on old devices
+        // Halt and hold non-focused video elements cleanly
         try {
           video.pause();
-          video.currentTime = 0;
+          // Removed forced video.currentTime = 0 to allow perfect caching / resuming
         } catch {}
       }
     });
@@ -1069,6 +1069,48 @@ export default function ShortsScreen() {
     };
   }, []);
 
+  // Synchronous User Gesture Priming to bypass mobile Safari and Chrome autofun/unmute bans
+  const primeAdjacentVideos = () => {
+    try {
+      const nextIndex = activeIndex + 1;
+      const prevIndex = activeIndex - 1;
+      const indicesToPrime = [activeIndex, nextIndex, prevIndex];
+      
+      indicesToPrime.forEach(idx => {
+        const video = videoRefs.current[idx];
+        if (video) {
+          // Sync sound state with the global mute state
+          video.muted = isMuted;
+          video.playbackRate = 1;
+          
+          // Attempt a synchronous, safe play/pause sequence under the active touch gesture
+          const p = video.play();
+          if (p !== undefined) {
+            p.then(() => {
+              // If it's not the currently active index, pause it immediately so it stays ready in cache
+              if (idx !== activeIndex) {
+                video.pause();
+              }
+            }).catch((err) => {
+              console.warn("Prerendering muted fallback for gesture restricted element:", err);
+              // Fallback to muted background priming
+              video.muted = true;
+              video.play()
+                .then(() => {
+                  if (idx !== activeIndex) {
+                    video.pause();
+                  }
+                })
+                .catch(() => {});
+            });
+          }
+        }
+      });
+    } catch (err) {
+      console.warn("Synchronous priming failed:", err);
+    }
+  };
+
   // Handle native drag & scroll snapping
   const handleContainerScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
@@ -1086,7 +1128,7 @@ export default function ShortsScreen() {
           try {
             video.pause();
             video.muted = true;
-            video.currentTime = 0;
+            // Removed forced video.currentTime = 0 to allow perfect caching / resuming
           } catch (e) {}
         }
       });
@@ -1828,6 +1870,8 @@ export default function ShortsScreen() {
           <div 
             ref={containerRef}
             onScroll={handleContainerScroll}
+            onTouchStart={primeAdjacentVideos}
+            onMouseDown={primeAdjacentVideos}
             className="w-full h-full overflow-y-scroll snap-y snap-mandatory no-scrollbar flex flex-col overflow-x-hidden"
           >
           {filteredShorts.length > 0 ? (

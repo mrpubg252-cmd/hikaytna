@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, Send, X, AlertCircle, MessageSquareWarning, ArrowLeft, CheckCircle2, ShieldAlert, Sparkles } from 'lucide-react';
+import { motion } from 'motion/react';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, onValue, push, set } from 'firebase/database';
 import { decryptValue } from '../lib/security';
@@ -32,6 +33,43 @@ export default function NoticeAndSupportBubble() {
   const [issueType, setIssueType] = useState('بطء في تشغيل الحلقات');
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [supportWaitWarning, setSupportWaitWarning] = useState<string | null>(null);
+
+  // Audio Context chime for premium user feedback
+  const playSupportSuccessSound = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const now = audioCtx.currentTime;
+      
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1000, now);
+      filter.Q.setValueAtTime(1, now);
+      filter.connect(audioCtx.destination);
+
+      const playTone = (freq: number, start: number, duration: number, volume: number) => {
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+        gainNode.gain.setValueAtTime(0, start);
+        gainNode.gain.linearRampToValueAtTime(volume, start + 0.04);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+        osc.connect(gainNode);
+        gainNode.connect(filter);
+        osc.start(start);
+        osc.stop(start + duration);
+      };
+
+      // Play sweet chime chord
+      playTone(523.25, now, 0.4, 0.15);         // C5
+      playTone(659.25, now + 0.08, 0.45, 0.13);  // E5
+      playTone(783.99, now + 0.16, 0.5, 0.12);   // G5
+      playTone(1046.50, now + 0.24, 0.6, 0.1);   // C6
+    } catch (err) {
+      console.warn("Could not play sound: Web Audio API blocker", err);
+    }
+  };
 
   // Referral URL enter banner alert
   const [referrerName, setReferrerName] = useState<string | null>(null);
@@ -253,6 +291,20 @@ export default function NoticeAndSupportBubble() {
     e.preventDefault();
     if (!message.trim()) return;
 
+    // 24 hours report cooldown constraint
+    const lastReport = localStorage.getItem('hek_last_report_time');
+    if (lastReport) {
+      const elapsed = Date.now() - parseInt(lastReport, 10);
+      const limit = 24 * 60 * 60 * 1000;
+      if (elapsed < limit) {
+        const remainingMs = limit - elapsed;
+        const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+        const minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+        setSupportWaitWarning(`${hours} ساعة و ${minutes} دقيقة 🛡️`);
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       // Push support ticket object to Firebase Realtime Database
@@ -264,9 +316,16 @@ export default function NoticeAndSupportBubble() {
         timestamp: Date.now(),
         status: 'pending'
       });
+      
+      // Save report timestamp
+      localStorage.setItem('hek_last_report_time', Date.now().toString());
+      setSupportWaitWarning(null);
+
+      // Snd feedback & animations
+      playSupportSuccessSound();
       setSuccess(true);
       setMessage('');
-      setTimeout(() => setSuccess(false), 5000);
+      setTimeout(() => setSuccess(false), 9000); // Keep success on-screen a bit longer to admire
     } catch (err) {
       console.error("Firebase support ticket push failed:", err);
       alert('حدث خطأ أثناء إرسال تذكرتك، برجاء التحقق من جودة الاتصال بالإنترنت.');
@@ -475,12 +534,56 @@ export default function NoticeAndSupportBubble() {
                 <div className="space-y-4 text-right">
                   <div className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider mb-2">طلب مساعدة أو الإبلاغ عن مشكلة ميديا</div>
                   
-                  {success ? (
-                    <div className="bg-emerald-500/15 border border-emerald-500/20 rounded-2xl p-6 text-center space-y-3">
-                      <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto animate-bounce" />
-                      <h4 className="text-sm font-black text-white">تم إرسال تذكرتك بنجاح للإدارة!</h4>
+                  {supportWaitWarning ? (
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-6 text-center space-y-3">
+                      <ShieldAlert className="w-10 h-10 text-amber-500 mx-auto animate-pulse" />
+                      <h4 className="text-sm font-black text-white">عذراً، تم تسجيل بلاغ مسبق مؤخراً!</h4>
                       <p className="text-xs text-zinc-400 leading-relaxed">
-                        شكراً لك! لقد سجل فريق الدعم الفني بلاغك وسيصلك حل فوري لتشغيل الحلقة أو السيرفر المعني قريباً جداً.
+                        بموجب حماية منصتنا، لا يمكنك إرسال أكثر من بلاغ واحد كل 24 ساعة للإدارة كأقصى استخدام آمن.
+                      </p>
+                      <div className="bg-amber-500/5 border border-amber-500/10 p-2.5 rounded-xl text-amber-400 font-mono text-[10px] font-black inline-block mt-2">
+                        الوقت المتبقي لإمكانية الإرسال: {supportWaitWarning}
+                      </div>
+                      <button 
+                        type="button" 
+                        onClick={() => setSupportWaitWarning(null)} 
+                        className="w-full mt-3 bg-white/5 border-0 hover:bg-white/10 text-zinc-300 font-black text-xs py-2.5 rounded-xl transition cursor-pointer"
+                      >
+                        حسناً، فهمت
+                      </button>
+                    </div>
+                  ) : success ? (
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-6 text-center space-y-4">
+                      {/* Premium Animated SVG Checkmark drawing */}
+                      <div className="relative mx-auto w-16 h-16 flex items-center justify-center">
+                        <svg className="w-16 h-16 text-emerald-500" viewBox="0 0 52 52">
+                          <motion.circle 
+                            cx="26" 
+                            cy="26" 
+                            r="24" 
+                            fill="none" 
+                            stroke="currentColor" 
+                            strokeWidth="4"
+                            initial={{ pathLength: 0 }}
+                            animate={{ pathLength: 1 }}
+                            transition={{ duration: 0.6, ease: "easeOut" }}
+                          />
+                          <motion.path 
+                            fill="none" 
+                            stroke="currentColor" 
+                            strokeWidth="4" 
+                            strokeLinecap="round" 
+                            d="M15 27.5l7 7 15-15"
+                            initial={{ pathLength: 0 }}
+                            animate={{ pathLength: 1 }}
+                            transition={{ delay: 0.5, duration: 0.5, ease: "easeOut" }}
+                          />
+                        </svg>
+                      </div>
+
+                      <h4 className="text-sm font-black text-white">تم إرسال تذكرتك بنجاح! 🛡️❤️</h4>
+                      <p className="text-xs text-zinc-300 leading-relaxed font-semibold">
+                        تم ارسال بلاغك الى إدارة سوف نراجع بلاغك بسرعه عاليه نحنا نهتم ب مستخدمينا بشكل احترافي.
                       </p>
                     </div>
                   ) : (

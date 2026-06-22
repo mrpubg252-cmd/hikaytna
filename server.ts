@@ -2080,6 +2080,69 @@ async function startServer() {
     }
   });
 
+  // Range Request Proxy to stream chat videos / audio files flawlessly on iOS Safari
+  app.get("/api/v1/stream-range-proxy", async (req, res) => {
+    const targetUrl = req.query.url;
+    if (!targetUrl || typeof targetUrl !== "string") {
+      return res.status(400).send("Missing target URL parameter");
+    }
+
+    try {
+      const decodedUrl = decodeURIComponent(targetUrl);
+      
+      const clientHeaders: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      };
+      
+      // If client requested specific Byte Range, forward it to the asset host
+      if (req.headers.range) {
+        clientHeaders['Range'] = req.headers.range;
+      }
+
+      try {
+        const parsedUrl = new URL(decodedUrl);
+        clientHeaders['Referer'] = parsedUrl.origin + '/';
+      } catch (ex) {}
+
+      const axiosResponse = await axios({
+        method: "get",
+        url: decodedUrl,
+        headers: clientHeaders,
+        responseType: "stream",
+        timeout: 90000,
+      });
+
+      // Stream matching headers back to iOS
+      const headersToForward = [
+        'content-type',
+        'content-length',
+        'content-range',
+        'accept-ranges',
+        'cache-control',
+      ];
+
+      headersToForward.forEach(header => {
+        const val = axiosResponse.headers[header];
+        if (val !== undefined) {
+          res.setHeader(header, val);
+        }
+      });
+
+      res.status(axiosResponse.status);
+      axiosResponse.data.pipe(res);
+
+      axiosResponse.data.on('error', (err: any) => {
+        console.error("[Stream Range Proxy] Streaming error:", err.message);
+        if (!res.headersSent) res.status(500).send("Error streaming media");
+      });
+    } catch (err: any) {
+      console.error("[Stream Range Proxy] Connection error:", err.message);
+      if (!res.headersSent) {
+        res.status(500).send("Stream range proxy error: " + err.message);
+      }
+    }
+  });
+
   // 5. Smart AI Assistant Chat with protection
   app.post("/api/v1/ai/chat", async (req, res) => {
     // Simple basic rate limiting per IP (very loose)
