@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ShieldAlert, Send, Trash2, CheckCircle2, AlertTriangle, 
   Info, X, Clock, Plus, Film, Tv, Image as ImageIcon, 
-  Star, Type, Hash, ExternalLink, Sparkles, Pencil, RefreshCw
+  Star, Type, Hash, ExternalLink, Sparkles, Pencil, RefreshCw,
+  Settings, Smartphone, Link
 } from 'lucide-react';
 import { db } from '../services/firebase';
 import { ref, onValue, push, remove, set } from 'firebase/database';
@@ -35,7 +36,7 @@ export default function AdminScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [notices, setNotices] = useState<Notice[]>([]);
-  const [activeTab, setActiveTab] = useState<'notices' | 'series'>('series');
+  const [activeTab, setActiveTab] = useState<'notices' | 'series' | 'settings'>('series');
   
   // Notice states
   const [text, setText] = useState('');
@@ -56,6 +57,12 @@ export default function AdminScreen() {
   });
   const [isSavingSeries, setIsSavingSeries] = useState(false);
   const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null);
+
+  // App settings state
+  const [appDownloadUrl, setAppDownloadUrl] = useState('');
+  const [appIosDownloadUrl, setAppIosDownloadUrl] = useState('');
+  const [blockShortsOnBrowser, setBlockShortsOnBrowser] = useState(true);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   const navigate = useNavigate();
 
@@ -117,6 +124,39 @@ export default function AdminScreen() {
 
     fetchSeries();
   }, [isAuthenticated, activeTab]);
+
+  // Load app settings
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const settingsRef = ref(db, 'app_settings');
+    const unsubscribe = onValue(settingsRef, (snapshot) => {
+      const val = snapshot.val();
+      if (val) {
+        setAppDownloadUrl(val.download_url || '');
+        setAppIosDownloadUrl(val.ios_download_url || '');
+        setBlockShortsOnBrowser(val.block_shorts_on_browser !== false);
+      }
+    });
+    return () => unsubscribe();
+  }, [isAuthenticated]);
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingSettings(true);
+    try {
+      await set(ref(db, 'app_settings'), {
+        download_url: appDownloadUrl.trim(),
+        ios_download_url: appIosDownloadUrl.trim(),
+        block_shorts_on_browser: blockShortsOnBrowser
+      });
+      alert('تم حفظ إعدادات التطبيق بنجاح! 🚀');
+    } catch (err) {
+      console.error("Failed to save settings:", err);
+      alert('حدث خطأ أثناء حفظ الإعدادات');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -353,26 +393,36 @@ export default function AdminScreen() {
         </header>
 
         {/* Tabs */}
-        <div className="flex bg-zinc-900/50 p-1 rounded-2xl border border-white/5">
+        <div className="flex bg-zinc-900/50 p-1 rounded-2xl border border-white/5 gap-1">
           <button
             onClick={() => setActiveTab('series')}
             className={cn(
-              "flex-1 py-3 px-4 rounded-xl text-sm font-black transition-all flex items-center justify-center gap-2",
+              "flex-1 py-3 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5",
               activeTab === 'series' ? "bg-primary text-white shadow-lg" : "text-zinc-500 hover:text-white"
             )}
           >
-            <Tv className="w-4 h-4" />
-            إضافة مسلسلات وأفلام
+            <Tv className="w-4 h-4 shrink-0" />
+            <span>الأعمال</span>
           </button>
           <button
             onClick={() => setActiveTab('notices')}
             className={cn(
-              "flex-1 py-3 px-4 rounded-xl text-sm font-black transition-all flex items-center justify-center gap-2",
+              "flex-1 py-3 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5",
               activeTab === 'notices' ? "bg-primary text-white shadow-lg" : "text-zinc-500 hover:text-white"
             )}
           >
-            <Send className="w-4 h-4" />
-            إرسال إشعارات
+            <Send className="w-4 h-4 shrink-0" />
+            <span>الإشعارات</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={cn(
+              "flex-1 py-3 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5",
+              activeTab === 'settings' ? "bg-primary text-white shadow-lg" : "text-zinc-500 hover:text-white"
+            )}
+          >
+            <Settings className="w-4 h-4 shrink-0" />
+            <span>الإعدادات</span>
           </button>
         </div>
 
@@ -727,6 +777,132 @@ export default function AdminScreen() {
               </div>
             </section>
           </>
+        )}
+
+        {activeTab === 'settings' && (
+          <section className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl flex flex-col gap-6">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center">
+                <Smartphone className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-white">إعدادات تطبيق الجوال والمنصة</h2>
+                <p className="text-zinc-500 text-xs mt-0.5">تخصيص روابط التحميل والبرمجة لمنع فتح ميزة الشورتس خارج تطبيقك</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveSettings} className="space-y-6">
+              
+              <div className="space-y-2">
+                <label className="text-xs font-black text-zinc-400 flex items-center gap-2">
+                  <Smartphone className="w-3.5 h-3.5" />
+                  رابط تحميل تطبيق الأندرويد (Google Play / APK Link)
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://play.google.com/store/apps/details?id=..."
+                  value={appDownloadUrl}
+                  onChange={(e) => setAppDownloadUrl(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm"
+                  dir="ltr"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-black text-zinc-400 flex items-center gap-2">
+                  <Smartphone className="w-3.5 h-3.5" />
+                  رابط تحميل تطبيق الـ iOS (Apple App Store Link) - اختياري
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://apps.apple.com/app/..."
+                  value={appIosDownloadUrl}
+                  onChange={(e) => setAppIosDownloadUrl(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm"
+                  dir="ltr"
+                />
+              </div>
+
+              <div className="p-4 bg-zinc-950/80 rounded-2xl border border-zinc-800/80 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5 pr-2">
+                    <h4 className="text-xs sm:text-sm font-black text-white">تفعيل حظر الشورتس على المتصفحات العامة</h4>
+                    <p className="text-[10px] text-zinc-500">عند التفعيل، سيُطلب من زوار الموقع عبر المتصفح العادي تحميل تطبيقك لمشاهدة الشورتس</p>
+                  </div>
+                  <label className="relative flex items-center cursor-pointer group shrink-0">
+                    <input 
+                      type="checkbox" 
+                      className="sr-only" 
+                      checked={blockShortsOnBrowser} 
+                      onChange={() => setBlockShortsOnBrowser(!blockShortsOnBrowser)} 
+                    />
+                    <div className={cn("w-10 h-5 rounded-full transition-colors", blockShortsOnBrowser ? "bg-primary" : "bg-zinc-800")} />
+                    <div className={cn("absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform", blockShortsOnBrowser ? "translate-x-5" : "translate-x-0")} />
+                  </label>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSavingSettings}
+                className="w-full bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-black rounded-2xl py-4 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
+              >
+                {isSavingSettings ? (
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-5 h-5" />
+                    <span>حفظ إعدادات المنصة</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div className="mt-4 p-5 bg-primary/5 rounded-2xl border border-primary/10">
+              <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <span>كيف تفتح ميزة الشورتس داخل تطبيقك (Webview / Flutter)؟</span>
+              </h3>
+              <p className="text-zinc-500 text-xs leading-relaxed mb-4">
+                لإلغاء حظر الشورتس عند فتح الموقع داخل تطبيق الجوال الخاص بك، يمكنك ضبط كود الـ Webview في تطبيقك ليحتوي على كلمة <code className="text-primary bg-primary/10 px-1 py-0.5 rounded font-mono">HekayahApp</code> داخل الـ User-Agent، أو استخدام أحد الطرق التالية لتجاوز الحظر تلقائياً:
+              </p>
+              
+              <div className="space-y-4" dir="ltr">
+                <div className="text-left">
+                  <p className="text-white text-xs font-bold mb-1 text-left">Android (Java/Kotlin WebView):</p>
+                  <pre className="bg-black p-3 rounded-xl border border-zinc-800 text-[10px] sm:text-xs text-primary font-mono overflow-x-auto text-left">
+{`String customUA = webView.getSettings().getUserAgentString() + " HekayahApp";
+webView.getSettings().setUserAgentString(customUA);`}
+                  </pre>
+                </div>
+
+                <div className="text-left">
+                  <p className="text-white text-xs font-bold mb-1 text-left">Flutter (webview_flutter):</p>
+                  <pre className="bg-black p-3 rounded-xl border border-zinc-800 text-[10px] sm:text-xs text-primary font-mono overflow-x-auto text-left">
+{`WebView(
+  initialUrl: 'https://your-site-url.com/shorts',
+  userAgent: 'HekayahApp',
+)`}
+                  </pre>
+                </div>
+
+                <div className="text-left">
+                  <p className="text-white text-xs font-bold mb-1 text-left">Swift UI (WKWebView iOS):</p>
+                  <pre className="bg-black p-3 rounded-xl border border-zinc-800 text-[10px] sm:text-xs text-primary font-mono overflow-x-auto text-left">
+{`webView.customUserAgent = "HekayahApp"`}
+                  </pre>
+                </div>
+
+                <div className="text-left">
+                  <p className="text-white text-xs font-bold mb-1 text-left">Query Parameter URL bypass:</p>
+                  <p className="text-zinc-500 text-[11px] mb-1 text-left">Or append bypass parameter directly to URL:</p>
+                  <pre className="bg-black p-3 rounded-xl border border-zinc-800 text-[10px] sm:text-xs text-primary font-mono overflow-x-auto text-left">
+{`https://your-site.com/shorts?app=true`}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          </section>
         )}
       </div>
     </div>

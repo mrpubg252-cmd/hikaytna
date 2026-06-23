@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Heart, MessageCircle, Share2, Plus, VolumeX, Volume2, X, Send, Award, Film, AlertCircle, Play, Flame, Sparkles, Smile, Video,
-  ChevronUp, ChevronDown, Eye, Trash2, Clock, ArrowRight, Edit3, Search, Upload, FileVideo
+  ChevronUp, ChevronDown, Eye, Trash2, Clock, ArrowRight, Edit3, Search, Upload, FileVideo, Smartphone
 } from 'lucide-react';
 import { db, firestore, fetchAllFromFirebase } from '../services/firebase';
 import { fetchAllSeries } from '../services/dataService';
@@ -480,6 +480,57 @@ export default function ShortsScreen() {
   const [editShortTimeRange, setEditShortTimeRange] = useState('');
   const [showClearAllConfirm, setShowClearAllConfirm] = useState(false);
   const [showBetaMessage, setShowBetaMessage] = useState(true);
+
+  // App WebView access validation states
+  const [appSettings, setAppSettings] = useState<{download_url: string, ios_download_url: string, block_shorts_on_browser: boolean} | null>(null);
+  const [isInsideNativeApp, setIsInsideNativeApp] = useState(false);
+
+  useEffect(() => {
+    // 1. Detect if inside native app webview or bypass token
+    const checkApp = () => {
+      const ua = navigator.userAgent || '';
+      const urlParams = new URLSearchParams(window.location.search);
+      const isAppParam = urlParams.get('app') === 'true' || urlParams.get('webview') === 'true';
+      const isAppStorage = localStorage.getItem('is_app') === 'true';
+      const isAppUA = ua.includes('HekayahApp');
+      const isAppWin = (window as any).isNativeApp === true;
+      
+      const isApp = isAppParam || isAppStorage || isAppUA || isAppWin;
+      if (isAppParam && !isAppStorage) {
+        localStorage.setItem('is_app', 'true');
+      }
+      setIsInsideNativeApp(isApp);
+    };
+    
+    checkApp();
+    
+    // 2. Load settings from Firebase Realtime Database
+    const settingsRef = rtdbRef(db, 'app_settings');
+    const unsubscribe = onValue(settingsRef, (snapshot) => {
+      const val = snapshot.val();
+      if (val) {
+        setAppSettings({
+          download_url: val.download_url || '',
+          ios_download_url: val.ios_download_url || '',
+          block_shorts_on_browser: val.block_shorts_on_browser !== false
+        });
+      } else {
+        setAppSettings({
+          download_url: '',
+          ios_download_url: '',
+          block_shorts_on_browser: true
+        });
+      }
+    }, () => {
+      setAppSettings({
+        download_url: '',
+        ios_download_url: '',
+        block_shorts_on_browser: true
+      });
+    });
+    
+    return () => unsubscribe();
+  }, []);
 
   // Modern Premium Category Filter slider state & Custom Toast States
   const [selectedCategory, setSelectedCategory] = useState('الكل');
@@ -1681,6 +1732,87 @@ export default function ShortsScreen() {
   };
 
   const currentShort = filteredShorts[activeIndex];
+
+  const shouldBlockUser = appSettings?.block_shorts_on_browser && !isInsideNativeApp && !isAdmin;
+
+  if (shouldBlockUser) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 relative select-none font-sans overflow-hidden" dir="rtl">
+        {/* Abstract Glowing Accent Backdrops */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[350px] sm:w-[500px] h-[350px] sm:h-[500px] bg-primary/20 rounded-full blur-[120px] pointer-events-none z-0" />
+        <div className="absolute bottom-[-100px] left-[-100px] w-[300px] h-[300px] bg-red-600/10 rounded-full blur-[100px] pointer-events-none z-0" />
+
+        <div className="w-full max-w-md bg-zinc-900/60 border border-white/5 rounded-[32px] p-6 sm:p-8 backdrop-blur-xl relative z-10 text-center shadow-2xl flex flex-col items-center gap-6">
+          <div className="w-20 h-20 bg-primary/10 rounded-3xl border border-primary/20 flex items-center justify-center animate-bounce shadow-xl shadow-primary/10">
+            <Smartphone className="w-10 h-10 text-primary" />
+          </div>
+
+          <div className="space-y-3">
+            <h1 className="text-xl sm:text-2xl font-black text-white leading-tight">يرجى استخدام تطبيقنا الرسمي 📱</h1>
+            <p className="text-zinc-400 text-xs sm:text-sm leading-relaxed font-bold">
+              لمشاهدة مقاطع الشورتس المميزة وتصفح اللقطات الحماسية المقتصة بسلاسة فائقة، وبدون إعلانات وبأعلى جودة، يرجى تحميل تطبيق حكاية الرسمي المخصص للجوال!
+            </p>
+          </div>
+
+          <div className="w-full flex flex-col gap-3">
+            {appSettings?.download_url ? (
+              <a
+                href={appSettings.download_url}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full bg-primary hover:bg-primary/95 text-white font-black rounded-2xl py-4 transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-[0.98]"
+              >
+                <Smartphone className="w-5 h-5 animate-pulse" />
+                <span>تحميل للأندرويد (رابط متجر Google Play / APK)</span>
+              </a>
+            ) : null}
+            
+            {appSettings?.ios_download_url ? (
+              <a
+                href={appSettings.ios_download_url}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full bg-zinc-805 hover:bg-zinc-700 text-white font-black rounded-2xl py-4 transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+              >
+                <Smartphone className="w-5 h-5 text-gray-300" />
+                <span>تحميل من متجر Apple App Store (iOS)</span>
+              </a>
+            ) : null}
+
+            {!appSettings?.download_url && !appSettings?.ios_download_url && (
+              <div className="p-4 bg-zinc-950/50 rounded-2xl border border-zinc-800 text-zinc-500 text-xs font-bold">
+                تحت الصيانة: رابط تحميل التطبيق ستتم إضافته قريباً من قبل إدارة المنصة. يرجى الانتظار!
+              </div>
+            )}
+          </div>
+
+          <div className="w-full border-t border-white/5 pt-4 flex flex-col sm:flex-row gap-2 justify-center text-xs">
+            <button
+              onClick={() => navigate('/')}
+              className="px-4 py-2.5 rounded-xl bg-zinc-850 hover:bg-zinc-800 text-zinc-300 font-bold transition-all text-[11px] sm:text-xs"
+            >
+              العودة للرئيسية 🏠
+            </button>
+            <button
+              onClick={() => {
+                const pass = prompt('الرجاء إدخال رمز الوصول للمدراء 🔐:');
+                if (pass === 'admin123' || pass === 'bewCew,iDYgC@K6') {
+                  setIsAdmin(true);
+                  localStorage.setItem('short_admin_access', 'true');
+                  showToast("أهلاً بك يا مدير الموقع! 🛡️", "success");
+                } else if (pass !== null) {
+                  alert('الرمز خاطئ');
+                }
+              }}
+              className="px-4 py-2.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary font-black transition-all text-[11px] sm:text-xs"
+            >
+              لوحة الإدارة 🔐
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col relative select-none font-sans overflow-hidden">

@@ -6,10 +6,7 @@ import {
 
 const getProxiedUrl = (url?: string) => {
   if (!url) return '';
-  if (url.startsWith('blob:') || url.startsWith('/') || url.startsWith('data:')) {
-    return url;
-  }
-  return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
+  return url;
 };
 
 interface ShortCardProps {
