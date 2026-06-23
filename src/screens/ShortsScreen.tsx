@@ -295,17 +295,48 @@ const INITIAL_SHORTS: ShortItem[] = [
 export default function ShortsScreen() {
   const navigate = useNavigate();
   const [activeIndex, setActiveIndex] = useState(0);
+  
+  // Default to true (sound off) on clean mount to bypass browser autoplay blocks beautifully, forcing the premium "Click to Unmute" card!
   const [isMuted, setIsMuted] = useState(() => {
     const val = localStorage.getItem('hek_shorts_muted');
-    return val === null ? false : val === 'true'; // Default to false (sound on) so video has interactive audio immediately!
+    return val === null ? true : val === 'true';
   });
+  
   const [hasInteracted, setHasInteracted] = useState(false);
   const [showVolumeBadge, setShowVolumeBadge] = useState(false);
   const [floatingHearts, setFloatingHearts] = useState<{ id: number; x: number; y: number }[]>([]);
+
+  // Advanced Web Audio Bypass to permanently unblock dynamic playback with audio
+  const unlockWebAudioContext = () => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        const tempCtx = new AudioContextClass();
+        if (tempCtx.state === 'suspended') {
+          tempCtx.resume().catch(() => {});
+        }
+        // Play an extremely short, silent audio node to bless the tab's user-activation permission
+        const osc = tempCtx.createOscillator();
+        const gainNode = tempCtx.createGain();
+        gainNode.gain.setValueAtTime(0.0001, tempCtx.currentTime); // silent
+        osc.connect(gainNode);
+        gainNode.connect(tempCtx.destination);
+        osc.start(0);
+        osc.stop(0.05);
+        console.log("🔊 Web Audio context unlocked successfully to bypass autoplay restrictions!");
+      }
+    } catch (err) {
+      console.warn("Failed to activate AudioContext bypass:", err);
+    }
+  };
   
   const toggleMute = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    
+    // Core browser audio bypass
+    unlockWebAudioContext();
     handleGlobalInteraction();
+    
     const newMuted = !isMuted;
     setIsMuted(newMuted);
     localStorage.setItem('hek_shorts_muted', newMuted.toString());
@@ -314,6 +345,7 @@ export default function ShortsScreen() {
   };
 
   const handleGlobalInteraction = () => {
+    unlockWebAudioContext();
     if (!hasInteracted) {
       setHasInteracted(true);
       setIsMuted(false);
@@ -335,6 +367,7 @@ export default function ShortsScreen() {
     }
 
     const handleUnblock = () => {
+      unlockWebAudioContext();
       if (!hasInteracted) {
         setHasInteracted(true);
         setIsMuted(false);
@@ -920,62 +953,15 @@ export default function ShortsScreen() {
     setPlayBlocked(false);
   };
 
-  // Playback managers based on activeIndex
+  // Set loading state on active index changement
   useEffect(() => {
-    // Collect all video keys
-    Object.entries(videoRefs.current).forEach(([idxStr, rawVideo]) => {
-      const idx = parseInt(idxStr);
-      const video = rawVideo as HTMLVideoElement | null;
-      if (!video) return;
-
-      if (idx === activeIndex) {
-        if (isPlaying) {
-          setIsLoading(true);
-          setHasError(false);
-          video.muted = isMuted;
-
-          const playPromise = video.play();
-          if (playPromise !== undefined) {
-            playPromise
-              .then(() => {
-                setIsLoading(false);
-                setPlayBlocked(false);
-              })
-              .catch((err) => {
-                console.warn("Play promise exception caught:", err);
-                setIsLoading(false);
-                
-                // If it is a genuine NotAllowedError (browser autoplay policy), attempt playing muted fallback
-                if (err && err.name === 'NotAllowedError') {
-                  video.muted = true;
-                  video.play()
-                    .then(() => {
-                      setIsMuted(true);
-                      localStorage.setItem('hek_shorts_muted', 'true');
-                      setPlayBlocked(false);
-                    })
-                    .catch(() => {
-                      setPlayBlocked(true);
-                      setIsPlaying(false);
-                    });
-                } else {
-                  // Scroll interruptions or minor network gaps should NOT force a global mute state
-                  setPlayBlocked(false);
-                }
-              });
-          }
-        } else {
-          video.pause();
-        }
-      } else {
-        // Halt and hold non-focused video elements cleanly
-        try {
-          video.pause();
-          // Removed forced video.currentTime = 0 to allow perfect caching / resuming
-        } catch {}
-      }
-    });
-  }, [activeIndex, isPlaying, isMuted, filteredShorts]);
+    setIsLoading(true);
+    setHasError(false);
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [activeIndex]);
 
   // 6. Intelligent real-time views accumulator (TikTok style) with aggressive throttling
   const lastIncrementedRef = useRef<string | null>(null);
@@ -1071,6 +1057,9 @@ export default function ShortsScreen() {
 
   // Synchronous User Gesture Priming to bypass mobile Safari and Chrome autofun/unmute bans
   const primeAdjacentVideos = () => {
+    // Dynamically unlock audio context under the swipe/click touch gesture!
+    unlockWebAudioContext();
+    
     try {
       const nextIndex = activeIndex + 1;
       const prevIndex = activeIndex - 1;

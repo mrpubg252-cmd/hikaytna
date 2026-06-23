@@ -191,64 +191,56 @@ const ShortCard = memo(({
     }
   }, [isCurrent]);
 
-  // Sync playback state with isCurrent and isPlaying
+  // Single, unified, robust playback manager that prevents overlapping play/pause race conditions
   useEffect(() => {
     if (!videoElement) return;
 
     if (isCurrent) {
-      // Robustly seek video to the beginning (or start of clip range) on screen focus/scroll entry as requested
+      // Seek video to the beginning if it has just become the active current video
       try {
         const startSec = item.timeRange && !item.isAd ? parseTimeToSeconds(item.timeRange) : 0;
-        videoElement.currentTime = startSec;
+        // Only reset time to start of clip when video is at 0 or uninitialized
+        if (videoElement.currentTime === 0 || Math.abs(videoElement.currentTime - startSec) > 2) {
+          videoElement.currentTime = startSec;
+        }
       } catch (err) {
         console.warn("Failed to seek video to start on scroll focus:", err);
       }
 
-      // Sync active play settings
       videoElement.muted = isMuted;
       videoElement.playbackRate = playbackSpeed;
 
       if (isPlaying) {
         const playPromise = videoElement.play();
         if (playPromise !== undefined) {
-          playPromise.catch(error => {
-            console.warn("Autoplay was prevented:", error);
-            // Auto safe fallback to muted auto-play if blocked to preserve user experience
-            if (isCurrent) {
-              videoElement.muted = true;
-              videoElement.play().catch(() => {});
-            }
-          });
+          playPromise
+            .then(() => {
+              setIsVideoReady(true);
+            })
+            .catch(error => {
+              console.warn("Autoplay with audio was restricted:", error);
+              // Safe fallback to muted autoplay if browser blocks audio autoplay on first swipe
+              if (isCurrent) {
+                videoElement.muted = true;
+                videoElement.play()
+                  .then(() => {
+                    setIsVideoReady(true);
+                  })
+                  .catch(() => {});
+              }
+            });
         }
       } else {
         videoElement.pause();
       }
     } else {
-      // Completely halt and mute non-active videos to avoid audio overlaps
+      // Instantly pause and mute background videos
       try {
         videoElement.pause();
         videoElement.muted = true;
       } catch (err) {}
     }
-  }, [isCurrent, videoElement]);
-
-  // Handle live updates to play/pause, volume and playback speed on the active video
-  useEffect(() => {
-    if (!videoElement || !isCurrent) return;
-
-    videoElement.muted = isMuted;
-    videoElement.playbackRate = playbackSpeed;
-
-    if (isPlaying) {
-      videoElement.play().catch(() => {
-        // Safe fallback to muted playback
-        videoElement.muted = true;
-        videoElement.play().catch(() => {});
-      });
-    } else {
-      videoElement.pause();
-    }
-  }, [isPlaying, isMuted, playbackSpeed, videoElement, isCurrent]);
+  }, [isCurrent, isPlaying, isMuted, playbackSpeed, videoElement]);
 
   // Trigger splash on playing state change to match full-screen UX
   useEffect(() => {
