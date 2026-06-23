@@ -17,6 +17,7 @@ interface ShortCardProps {
   index: number;
   activeIndex: number;
   isMuted: boolean;
+  hasInteracted: boolean;
   isPlaying: boolean;
   isLoading: boolean;
   hasError: boolean;
@@ -45,6 +46,7 @@ const ShortCard = memo(({
   index,
   activeIndex,
   isMuted,
+  hasInteracted,
   isPlaying,
   isLoading,
   hasError,
@@ -69,6 +71,7 @@ const ShortCard = memo(({
 }: ShortCardProps) => {
   const isCurrent = index === activeIndex;
   const isAdjacent = Math.abs(index - activeIndex) <= 1;
+  const actualMuted = !hasInteracted || isMuted;
 
   // Track video progress internally to paint accurate scrubber timeline
   const [progress, setProgress] = useState(0);
@@ -207,7 +210,7 @@ const ShortCard = memo(({
         console.warn("Failed to seek video to start on scroll focus:", err);
       }
 
-      videoElement.muted = isMuted;
+      videoElement.muted = actualMuted;
       videoElement.playbackRate = playbackSpeed;
 
       if (isPlaying) {
@@ -240,7 +243,7 @@ const ShortCard = memo(({
         videoElement.muted = true;
       } catch (err) {}
     }
-  }, [isCurrent, isPlaying, isMuted, playbackSpeed, videoElement]);
+  }, [isCurrent, isPlaying, actualMuted, playbackSpeed, videoElement]);
 
   // Trigger splash on playing state change to match full-screen UX
   useEffect(() => {
@@ -312,7 +315,7 @@ const ShortCard = memo(({
             playsInline
             autoPlay
             preload={isCurrent ? "auto" : (index === activeIndex + 1 ? "metadata" : "none")}
-            muted={isMuted}
+            muted={actualMuted}
             disablePictureInPicture={true}
             disableRemotePlayback={true}
             controlsList="nodownload nofullscreen noremoteplayback"
@@ -442,7 +445,7 @@ const ShortCard = memo(({
         </AnimatePresence>
 
         {/* First Short Unmute / Audio Unblock Pulse Overlay */}
-        {index === 0 && isCurrent && isMuted && (
+        {index === 0 && isCurrent && !hasInteracted && (
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -479,7 +482,7 @@ const ShortCard = memo(({
               exit={{ opacity: 0, scale: 0.5 }}
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[100] bg-zinc-950/80 p-5 rounded-full pointer-events-none border border-white/10 shadow-lg"
             >
-              {isMuted ? <VolumeX className="w-8 h-8 text-primary" /> : <Volume2 className="w-8 h-8 text-green-500" />}
+              {actualMuted ? <VolumeX className="w-8 h-8 text-primary" /> : <Volume2 className="w-8 h-8 text-green-500" />}
             </motion.div>
           )}
         </AnimatePresence>
