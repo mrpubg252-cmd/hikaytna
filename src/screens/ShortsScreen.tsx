@@ -1119,7 +1119,18 @@ export default function ShortsScreen() {
     if (elementHeight <= 0) return;
     const rawIndex = Math.round(scrollPos / elementHeight);
     
+    // Tactile scroll dragging unblocks browser audio context. Unmute dynamically to pass down audio state to the upcoming videos
+    if (!hasInteracted) {
+      setHasInteracted(true);
+      setIsMuted(false);
+      localStorage.setItem('hek_shorts_muted', 'false');
+    }
+
     if (rawIndex !== activeIndex && rawIndex >= 0 && rawIndex < filteredShorts.length) {
+      // Force unmuting on swipe to ensure the selected video starts with full-fidelity sound
+      setIsMuted(false);
+      localStorage.setItem('hek_shorts_muted', 'false');
+
       // IMMEDIATELY pause and mute all other videos to prevent any transient audio overlaps
       Object.entries(videoRefs.current).forEach(([idxStr, rawVideo]) => {
         const idx = parseInt(idxStr);

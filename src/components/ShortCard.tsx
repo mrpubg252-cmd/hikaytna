@@ -449,6 +449,35 @@ const ShortCard = memo(({
           )}
         </AnimatePresence>
 
+        {/* First Short Unmute / Audio Unblock Pulse Overlay */}
+        {index === 0 && isCurrent && isMuted && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="absolute z-[140] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-4 bg-zinc-950/90 backdrop-blur-xl border border-white/10 p-7 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.8)] max-w-[290px] text-center pointer-events-auto select-none"
+          >
+            <div className="relative flex items-center justify-center">
+              <div className="w-16 h-16 bg-primary/25 border border-primary/40 rounded-full flex items-center justify-center animate-ping absolute" />
+              <div className="w-16 h-16 bg-primary/30 border border-primary/40 rounded-full flex items-center justify-center relative">
+                <VolumeX className="w-8 h-8 text-white animate-pulse" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-white text-[15px] font-black">اضغط لتفعيل الصوت 🔊</p>
+              <p className="text-zinc-400 text-[11px] font-medium leading-relaxed">بسبب قيود المتصفحات، انقر الآن لتمكين الصوت الكامل وعيش متعة المشاهدة!</p>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onTapGesture(e);
+              }}
+              className="mt-1 w-full py-3.5 bg-primary hover:bg-primary/90 text-white font-black text-[13px] rounded-xl active:scale-[0.97] transition shadow-lg shadow-primary/30 cursor-pointer"
+            >
+              تشغيل الصوت الآن 🍿
+            </button>
+          </motion.div>
+        )}
+
         {/* Speaker Volume Indicator */}
         <AnimatePresence>
           {showVolumeBadge && (
