@@ -18,7 +18,10 @@ export default function SettingsMenu() {
     const isStandaloneMode = 
       window.matchMedia('(display-mode: standalone)').matches || 
       (window.navigator as any).standalone ||
-      document.referrer.includes('android-app://');
+      document.referrer.includes('android-app://') ||
+      localStorage.getItem('is_app') === 'true' ||
+      navigator.userAgent.includes('HekayahApp') ||
+      new URLSearchParams(window.location.search).get('app') === 'true';
     setIsStandalone(!!isStandaloneMode);
   }, []);
 

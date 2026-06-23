@@ -14,10 +14,22 @@ export default function Header() {
 
   useEffect(() => {
     const checkStatus = () => {
+      const ua = navigator.userAgent || '';
+      const isAppParam = new URLSearchParams(window.location.search).get('app') === 'true' || new URLSearchParams(window.location.search).get('webview') === 'true';
+      const isAppStorage = localStorage.getItem('is_app') === 'true';
+      const isAppUA = ua.includes('HekayahApp');
+      const isAppWin = (window as any).isNativeApp === true;
+      
+      const isApp = isAppParam || isAppStorage || isAppUA || isAppWin;
+      if (isAppParam && !isAppStorage) {
+        localStorage.setItem('is_app', 'true');
+      }
+
       const isStandaloneMode = 
         window.matchMedia('(display-mode: standalone)').matches || 
         (window.navigator as any).standalone ||
-        document.referrer.includes('android-app://');
+        document.referrer.includes('android-app://') ||
+        isApp;
       setIsStandalone(!!isStandaloneMode);
     };
     checkStatus();
