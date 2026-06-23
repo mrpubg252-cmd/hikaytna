@@ -5,7 +5,7 @@ import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, push, set, onValue, remove, get, Database, query, limitToLast } from 'firebase/database';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play, Pause, Trash2, Video, Pencil, Copy } from 'lucide-react';
+import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play, Pause, Trash2, Video, Pencil, Copy, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { decryptValue } from '../lib/security';
 import { useAuth } from '../context/AuthContext';
@@ -430,6 +430,19 @@ export default function SeriesChat({
         setCopiedFeedback(false);
       }, 2500);
     }
+  };
+
+  const handleSaveExternalSticker = (url: string) => {
+    const exists = savedStickers.some(s => s.url === url);
+    if (exists) {
+      alert("هذا الملصق محفوظ لديك بالفعل! ✨");
+      return;
+    }
+    const newSticker = { id: `st_${Date.now()}`, url };
+    const updated = [...savedStickers, newSticker];
+    setSavedStickers(updated);
+    localStorage.setItem('user_saved_stickers', JSON.stringify(updated));
+    alert("🎉 تم حفظ الملصق في مجموعتك الاحترافية بنجاح! وسيكون متاحاً لك لإرساله متى تشاء.");
   };
   
   // Native voice recording states
@@ -1786,7 +1799,7 @@ export default function SeriesChat({
                     {msg.imageUrl && (
                       isMessageSticker(msg) ? (
                         <div 
-                          className="relative mt-2 w-20 h-20 rounded-xl overflow-hidden shadow-sm"
+                          className="relative mt-2 w-20 h-20 rounded-xl overflow-hidden shadow-sm group cursor-pointer"
                         >
                           <img 
                             src={msg.imageUrl} 
@@ -1794,6 +1807,16 @@ export default function SeriesChat({
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover"
                           />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSaveExternalSticker(msg.imageUrl!);
+                            }}
+                            className="absolute top-1 right-1 p-1 bg-black/75 hover:bg-black/90 backdrop-blur-md rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-primary shadow-md"
+                            title="حفظ الملصق ⭐️"
+                          >
+                            <Plus className="w-3 h-3 text-emerald-400" />
+                          </button>
                         </div>
                       ) : (
                         <div className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black/40 mt-2 max-w-[200px] cursor-pointer hover:opacity-90 transition active:scale-[0.98]">
@@ -1810,7 +1833,7 @@ export default function SeriesChat({
                     {msg.videoUrl && (
                       msg.isSticker ? (
                         <div 
-                          className="relative mt-2 w-20 h-20 rounded-xl overflow-hidden shadow-sm"
+                          className="relative mt-2 w-20 h-20 rounded-xl overflow-hidden shadow-sm group cursor-pointer"
                         >
                           <video 
                             src={getProxiedUrl(msg.videoUrl)} 
@@ -1822,6 +1845,16 @@ export default function SeriesChat({
                             className="w-full h-full object-cover"
                             referrerPolicy="no-referrer"
                           />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSaveExternalSticker(msg.videoUrl!);
+                            }}
+                            className="absolute top-1 right-1 p-1 bg-black/75 hover:bg-black/90 backdrop-blur-md rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-primary shadow-md"
+                            title="حفظ الملصق ⭐️"
+                          >
+                            <Plus className="w-3 h-3 text-emerald-400" />
+                          </button>
                         </div>
                       ) : (
                         <div 

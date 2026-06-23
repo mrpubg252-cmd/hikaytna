@@ -1128,7 +1128,6 @@ export default function ShortsScreen() {
           try {
             video.pause();
             video.muted = true;
-            // Removed forced video.currentTime = 0 to allow perfect caching / resuming
           } catch (e) {}
         }
       });
@@ -1136,24 +1135,6 @@ export default function ShortsScreen() {
       setActiveIndex(rawIndex);
       setIsPlaying(true);
       setPlayBlocked(false);
-      
-      // World-class instant trigger: attempt to play the NEW video immediately with high-fidelity audio
-      setTimeout(() => {
-        const nextVideo = videoRefs.current[rawIndex];
-        if (nextVideo) {
-          nextVideo.muted = isMuted;
-          
-          const playP = nextVideo.play();
-          if (playP !== undefined) {
-            playP.catch((err) => {
-              console.warn("Video flow blocked by browser, trying muted fallback:", err);
-              // Fallback to muted play if browser is strict
-              nextVideo.muted = true;
-              nextVideo.play().catch(() => {});
-            });
-          }
-        }
-      }, 0);
     }
   };
 

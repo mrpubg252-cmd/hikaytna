@@ -195,29 +195,60 @@ const ShortCard = memo(({
   useEffect(() => {
     if (!videoElement) return;
 
-    if (isCurrent && isPlaying) {
-      // Ensure muted matches current state
+    if (isCurrent) {
+      // Robustly seek video to the beginning (or start of clip range) on screen focus/scroll entry as requested
+      try {
+        const startSec = item.timeRange && !item.isAd ? parseTimeToSeconds(item.timeRange) : 0;
+        videoElement.currentTime = startSec;
+      } catch (err) {
+        console.warn("Failed to seek video to start on scroll focus:", err);
+      }
+
+      // Sync active play settings
       videoElement.muted = isMuted;
-      
-      const playPromise = videoElement.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(error => {
-          console.warn("Autoplay was prevented:", error);
-          // Auto safe fallback to muted auto-play if blocked by strict desktop/mobile browsers, to keep user flow happy
-          if (isCurrent) {
-            videoElement.muted = true;
-            videoElement.play().catch(() => {});
-          }
-        });
+      videoElement.playbackRate = playbackSpeed;
+
+      if (isPlaying) {
+        const playPromise = videoElement.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            console.warn("Autoplay was prevented:", error);
+            // Auto safe fallback to muted auto-play if blocked to preserve user experience
+            if (isCurrent) {
+              videoElement.muted = true;
+              videoElement.play().catch(() => {});
+            }
+          });
+        }
+      } else {
+        videoElement.pause();
       }
     } else {
+      // Completely halt and mute non-active videos to avoid audio overlaps
       try {
         videoElement.pause();
         videoElement.muted = true;
-        // Removed forced videoElement.currentTime = 0 to allow perfect resuming cached video frames on scrolling
       } catch (err) {}
     }
-  }, [isCurrent, isPlaying, videoElement, isMuted]);
+  }, [isCurrent, videoElement]);
+
+  // Handle live updates to play/pause, volume and playback speed on the active video
+  useEffect(() => {
+    if (!videoElement || !isCurrent) return;
+
+    videoElement.muted = isMuted;
+    videoElement.playbackRate = playbackSpeed;
+
+    if (isPlaying) {
+      videoElement.play().catch(() => {
+        // Safe fallback to muted playback
+        videoElement.muted = true;
+        videoElement.play().catch(() => {});
+      });
+    } else {
+      videoElement.pause();
+    }
+  }, [isPlaying, isMuted, playbackSpeed, videoElement, isCurrent]);
 
   // Trigger splash on playing state change to match full-screen UX
   useEffect(() => {
