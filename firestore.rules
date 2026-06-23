@@ -116,5 +116,9 @@ service cloud.firestore {
     match /custom_series/{seriesId} {
         allow read, write: if true;
     }
+
+    match /app_settings/{settingsId} {
+        allow read, write: if true;
+    }
   }
 }

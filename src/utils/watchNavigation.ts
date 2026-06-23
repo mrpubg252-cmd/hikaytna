@@ -7,6 +7,15 @@ export function isUserPremium(): boolean {
   if (typeof window === 'undefined') return false;
   
   try {
+    // Custom WebView Native App identification
+    const isApp = localStorage.getItem('is_app') === 'true' || 
+                  (typeof navigator !== 'undefined' && navigator.userAgent.includes('HekayahApp')) ||
+                  (typeof window !== 'undefined' && (
+                    window.location.search.includes('app=true') || 
+                    window.location.search.includes('webview=true')
+                  ));
+    if (isApp) return true; // Hybrid app is 100% premium and ad-free!
+
     const isForever = localStorage.getItem('ads_removed_forever') === 'true';
     if (isForever) return true;
 

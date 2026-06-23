@@ -8,7 +8,7 @@ import {
 import { db, firestore, fetchAllFromFirebase } from '../services/firebase';
 import { fetchAllSeries } from '../services/dataService';
 import { ref as rtdbRef, onValue, push, set, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
-import { collection, onSnapshot, addDoc, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { initializeApp, getApps } from 'firebase/app';
 import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
@@ -368,6 +368,23 @@ export default function ShortsScreen() {
       localStorage.setItem('hek_user_id', newUserId);
     }
 
+    const isApp = localStorage.getItem('is_app') === 'true' || 
+                  (typeof navigator !== 'undefined' && navigator.userAgent.includes('HekayahApp')) ||
+                  (typeof window !== 'undefined' && (
+                    window.location.search.includes('app=true') || 
+                    window.location.search.includes('webview=true')
+                  ));
+
+    if (isApp) {
+      // INSTANTLY UNMUTE AND AUTOPLAY INSIDE THE NATIVE HYBRID APP (Bypasses first-scroll gesture restriction)
+      unlockWebAudioContext();
+      if (!hasInteracted) {
+        setHasInteracted(true);
+        setIsMuted(false);
+        localStorage.setItem('hek_shorts_muted', 'false');
+      }
+    }
+
     const handleUnblock = () => {
       unlockWebAudioContext();
       if (!hasInteracted) {
@@ -504,32 +521,65 @@ export default function ShortsScreen() {
     
     checkApp();
     
-    // 2. Load settings from Firebase Realtime Database
-    const settingsRef = rtdbRef(db, 'app_settings');
-    const unsubscribe = onValue(settingsRef, (snapshot) => {
-      const val = snapshot.val();
-      if (val) {
-        setAppSettings({
-          download_url: val.download_url || '',
-          ios_download_url: val.ios_download_url || '',
-          block_shorts_on_browser: val.block_shorts_on_browser !== false
-        });
-      } else {
-        setAppSettings({
-          download_url: '',
-          ios_download_url: '',
-          block_shorts_on_browser: true
-        });
+    let isMounted = true;
+    let rtdbUnsubscribe: (() => void) | null = null;
+
+    // 2. Load settings (Firestore primary, RTDB redundant fallback)
+    const loadSettingsFlow = async () => {
+      try {
+        const docSnap = await getDoc(doc(firestore, 'shorts', 'app_settings'));
+        if (docSnap.exists() && isMounted) {
+          const val = docSnap.data();
+          setAppSettings({
+            download_url: val.download_url || '',
+            ios_download_url: val.ios_download_url || '',
+            block_shorts_on_browser: val.block_shorts_on_browser !== false
+          });
+          return; // Loaded successfully!
+        }
+      } catch (err) {
+        console.warn("Firestore settings load failed, trying RTDB subscription:", err);
       }
-    }, () => {
-      setAppSettings({
-        download_url: '',
-        ios_download_url: '',
-        block_shorts_on_browser: true
-      });
-    });
+
+      // Fallback: Bind Real-time database subscription
+      if (!isMounted) return;
+      try {
+        const settingsRef = rtdbRef(db, 'app_settings');
+        rtdbUnsubscribe = onValue(settingsRef, (snapshot) => {
+          const val = snapshot.val();
+          if (val && isMounted) {
+            setAppSettings({
+              download_url: val.download_url || '',
+              ios_download_url: val.ios_download_url || '',
+              block_shorts_on_browser: val.block_shorts_on_browser !== false
+            });
+          } else if (isMounted) {
+            setAppSettings({
+              download_url: '',
+              ios_download_url: '',
+              block_shorts_on_browser: true
+            });
+          }
+        }, () => {
+          if (isMounted) {
+            setAppSettings({
+              download_url: '',
+              ios_download_url: '',
+              block_shorts_on_browser: true
+            });
+          }
+        });
+      } catch (e) {
+        console.error("RTDB settings fallback failed:", e);
+      }
+    };
+
+    loadSettingsFlow();
     
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      if (rtdbUnsubscribe) rtdbUnsubscribe();
+    };
   }, []);
 
   // Modern Premium Category Filter slider state & Custom Toast States
@@ -1786,27 +1836,12 @@ export default function ShortsScreen() {
             )}
           </div>
 
-          <div className="w-full border-t border-white/5 pt-4 flex flex-col sm:flex-row gap-2 justify-center text-xs">
+          <div className="w-full border-t border-white/5 pt-4 flex justify-center">
             <button
               onClick={() => navigate('/')}
-              className="px-4 py-2.5 rounded-xl bg-zinc-850 hover:bg-zinc-800 text-zinc-300 font-bold transition-all text-[11px] sm:text-xs"
+              className="w-full sm:w-auto px-10 py-3 rounded-xl bg-zinc-850 hover:bg-zinc-800 text-zinc-300 font-bold transition-all text-xs"
             >
               العودة للرئيسية 🏠
-            </button>
-            <button
-              onClick={() => {
-                const pass = prompt('الرجاء إدخال رمز الوصول للمدراء 🔐:');
-                if (pass === 'admin123' || pass === 'bewCew,iDYgC@K6') {
-                  setIsAdmin(true);
-                  localStorage.setItem('short_admin_access', 'true');
-                  showToast("أهلاً بك يا مدير الموقع! 🛡️", "success");
-                } else if (pass !== null) {
-                  alert('الرمز خاطئ');
-                }
-              }}
-              className="px-4 py-2.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary font-black transition-all text-[11px] sm:text-xs"
-            >
-              لوحة الإدارة 🔐
             </button>
           </div>
         </div>
@@ -2461,14 +2496,22 @@ export default function ShortsScreen() {
               </div>
 
               {/* Platform grids */}
-              <div className="grid grid-cols-4 gap-4 mb-6">
-                {[
+              {(() => {
+                const isAppShare = isInsideNativeApp || localStorage.getItem('is_app') === 'true';
+                const shortUrl = isAppShare 
+                  ? (appSettings?.download_url || "https://play.google.com") 
+                  : `${window.location.origin}/shorts?id=${shareShortData.id}`;
+                
+                const platforms = [
                   {
                     name: 'واتساب',
                     icon: '🟢',
                     color: 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/15',
                     action: () => {
-                      const text = encodeURIComponent(`شاهد هذه اللقطة الحاسمة من مسلسل "${shareShortData.seriesName}": ${window.location.origin}/shorts?id=${shareShortData.id}`);
+                      const textDesc = isAppShare 
+                        ? `حمل تطبيق حكايتنا لمشاهدة لقطة من مسلسل "${shareShortData.seriesName}" بجودة خرافية وبدون إعلانات 🍿✨:`
+                        : `شاهد هذه اللقطة الحاسمة من مسلسل "${shareShortData.seriesName}":`;
+                      const text = encodeURIComponent(`${textDesc} ${shortUrl}`);
                       window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
                       setIsShareOpen(false);
                     }
@@ -2478,8 +2521,11 @@ export default function ShortsScreen() {
                     icon: '🔵',
                     color: 'bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/15',
                     action: () => {
-                      const url = encodeURIComponent(`${window.location.origin}/shorts?id=${shareShortData.id}`);
-                      const text = encodeURIComponent(`شاهد لقطة "${shareShortData.title}" من مسلسل "${shareShortData.seriesName}" على حكايتنا 🍿🍿`);
+                      const url = encodeURIComponent(shortUrl);
+                      const textDesc = isAppShare 
+                        ? `حمل تطبيق حكايتنا لمشاهدة لقطة من مسلسل "${shareShortData.seriesName}" بجودة خرافية وبدون إعلانات 🍿✨`
+                        : `شاهد لقطة "${shareShortData.title}" من مسلسل "${shareShortData.seriesName}" على حكايتنا 🍿🍿`;
+                      const text = encodeURIComponent(textDesc);
                       window.open(`https://t.me/share/url?url=${url}&text=${text}`, '_blank');
                       setIsShareOpen(false);
                     }
@@ -2489,7 +2535,7 @@ export default function ShortsScreen() {
                     icon: '📘',
                     color: 'bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-600/15',
                     action: () => {
-                      const url = encodeURIComponent(`${window.location.origin}/shorts?id=${shareShortData.id}`);
+                      const url = encodeURIComponent(shortUrl);
                       window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, '_blank');
                       setIsShareOpen(false);
                     }
@@ -2499,36 +2545,48 @@ export default function ShortsScreen() {
                     icon: '🟡',
                     color: 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 border border-yellow-500/15',
                     action: () => {
-                      navigator.clipboard.writeText(`${window.location.origin}/shorts?id=${shareShortData.id}`);
-                      showToast("⚡ تم نسخ الرابط! يمكنك الآن نشره مباشرة في سناب شات ✨", "success");
+                      navigator.clipboard.writeText(shortUrl);
+                      showToast(isAppShare ? "⚡ تم نسخ رابط تحميل التطبيق! يمكنك مشاركته الآن في سناب شات 🍿" : "⚡ تم نسخ الرابط! يمكنك الآن نشره مباشرة في سناب شات ✨", "success");
                       setIsShareOpen(false);
                     }
                   }
-                ].map((plat) => (
-                  <button
-                    key={plat.name}
-                    onClick={plat.action}
-                    className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all cursor-pointer active:scale-95 ${plat.color}`}
-                  >
-                    <span className="text-xl mb-1.5">{plat.icon}</span>
-                    <span className="text-[10px] font-extrabold text-zinc-300">{plat.name}</span>
-                  </button>
-                ))}
-              </div>
+                ];
+
+                return (
+                  <div className="grid grid-cols-4 gap-4 mb-6">
+                    {platforms.map((plat) => (
+                      <button
+                        key={plat.name}
+                        onClick={plat.action}
+                        className={`flex flex-col items-center justify-center p-3 rounded-2xl border transition-all cursor-pointer active:scale-95 ${plat.color}`}
+                      >
+                        <span className="text-xl mb-1.5">{plat.icon}</span>
+                        <span className="text-[10px] font-extrabold text-zinc-300">{plat.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {/* Copy actions */}
               <div className="space-y-3">
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/shorts?id=${shareShortData.id}`);
-                    showToast("📋 تم نسخ الرابط المباشر للقطة بنجاح!", "success");
+                    const isAppShare = isInsideNativeApp || localStorage.getItem('is_app') === 'true';
+                    const shortUrl = isAppShare 
+                      ? (appSettings?.download_url || "https://play.google.com") 
+                      : `${window.location.origin}/shorts?id=${shareShortData.id}`;
+                    navigator.clipboard.writeText(shortUrl);
+                    showToast(isAppShare ? "📋 تم نسخ رابط تحميل التطبيق للمشاركة! 🍿" : "📋 تم نسخ الرابط المباشر للقطة بنجاح!", "success");
                     setIsShareOpen(false);
                   }}
                   className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-right cursor-pointer border border-white/5 active:scale-95 transition-colors"
                 >
                   <span className="text-[10px] text-zinc-500">Copy Link</span>
-                  <span className="text-xs font-extrabold text-white">نسخ الرابط المباشر للمقاطع</span>
+                  <span className="text-xs font-extrabold text-white">
+                    {(isInsideNativeApp || localStorage.getItem('is_app') === 'true') ? "نسخ رابط تحميل التطبيق للمشاركة" : "نسخ الرابط المباشر للمقاطع"}
+                  </span>
                 </button>
 
                 <button

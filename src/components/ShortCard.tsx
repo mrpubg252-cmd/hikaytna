@@ -77,6 +77,7 @@ const ShortCard = memo(({
   const [isVideoReady, setIsVideoReady] = useState(false);
   const [showTikTokModal, setShowTikTokModal] = useState(false);
   const [showSpeedSubmenu, setShowSpeedSubmenu] = useState(false);
+  const [showDownloadConfirm, setShowDownloadConfirm] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const isFirstRender = useRef(true);
 
@@ -717,6 +718,7 @@ const ShortCard = memo(({
             onClick={() => {
               setShowTikTokModal(false);
               setShowSpeedSubmenu(false);
+              setShowDownloadConfirm(false);
             }}
           >
             <motion.div
@@ -730,7 +732,36 @@ const ShortCard = memo(({
               {/* Drawer Handle drag indicator */}
               <div className="w-12 h-1 bg-zinc-700 rounded-full mx-auto mb-2" />
               
-              {!showSpeedSubmenu ? (
+              {showDownloadConfirm ? (
+                <div className="flex flex-col gap-3">
+                  <span className="text-zinc-400 text-[11px] font-black tracking-widest uppercase mb-1">
+                    تنزيل هذه اللقطة 🎬
+                  </span>
+                  <p className="text-xs text-zinc-300 leading-relaxed font-bold px-4 mb-2">
+                    هل ترغب في تنزيل مقطع الشورتس "{item.title}" على جهازك وحفظه مباشرة؟
+                  </p>
+                  
+                  {/* Download button */}
+                  <button
+                    onClick={() => {
+                      handleDownloadWithWatermark();
+                      setShowDownloadConfirm(false);
+                      setShowTikTokModal(false);
+                    }}
+                    className="w-full py-4 bg-primary text-black hover:bg-primary/95 active:scale-[0.98] rounded-2xl text-sm font-black transition cursor-pointer text-center shadow-lg shadow-primary/20"
+                  >
+                    تنزيل المقطع 📥
+                  </button>
+
+                  {/* Return button */}
+                  <button
+                    onClick={() => setShowDownloadConfirm(false)}
+                    className="w-full py-4 bg-white/5 hover:bg-white/10 active:scale-[0.98] rounded-2xl text-sm font-black transition cursor-pointer text-center text-white border border-white/[0.03]"
+                  >
+                    رجوع 🔙
+                  </button>
+                </div>
+              ) : !showSpeedSubmenu ? (
                 <div className="flex flex-col gap-3">
                   <span className="text-zinc-400 text-[11px] font-black tracking-widest uppercase mb-1">
                     خيارات اللقطة السريعة
@@ -739,8 +770,7 @@ const ShortCard = memo(({
                   {/* Download option (text only) */}
                   <button
                     onClick={() => {
-                      handleDownloadWithWatermark();
-                      setShowTikTokModal(false);
+                      setShowDownloadConfirm(true);
                     }}
                     className="w-full py-4 bg-white/5 hover:bg-white/10 active:scale-[0.98] rounded-2xl text-sm font-extrabold transition cursor-pointer text-center text-white border border-white/[0.03]"
                   >
