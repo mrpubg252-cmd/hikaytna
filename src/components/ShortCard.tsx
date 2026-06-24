@@ -6,6 +6,15 @@ import {
 
 const getProxiedUrl = (url?: string) => {
   if (!url) return '';
+  if (
+    url.startsWith('https://f.top4top.') || 
+    url.startsWith('http://f.top4top.') || 
+    url.includes('top4top.') ||
+    url.includes('catbox.moe') ||
+    url.startsWith('http://')
+  ) {
+    return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
+  }
   return url;
 };
 

@@ -19,7 +19,13 @@ import ProfileTemplateOverlay from './ProfileTemplateOverlay';
 
 const getProxiedUrl = (url?: string) => {
   if (!url) return '';
-  if (url.startsWith('https://f.top4top.') || url.startsWith('http://f.top4top.') || url.includes('top4top.')) {
+  if (
+    url.startsWith('https://f.top4top.') || 
+    url.startsWith('http://f.top4top.') || 
+    url.includes('top4top.') ||
+    url.includes('catbox.moe') ||
+    url.startsWith('http://')
+  ) {
     return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
   }
   return url;
@@ -1735,7 +1741,7 @@ export default function SeriesChat({
                 <div className="w-8 h-8 rounded-full bg-zinc-900 border border-white/5 shrink-0 overflow-hidden shadow relative">
                   {msg.userAvatar.startsWith('http') ? (
                     <img 
-                      src={msg.userAvatar} 
+                      src={getProxiedUrl(msg.userAvatar)} 
                       className="w-full h-full object-cover rounded-full" 
                       style={{ 
                         objectPosition: `${msg.userAvatarPosH || '50'}% ${msg.userAvatarPosV || '50'}%`,
@@ -1802,7 +1808,7 @@ export default function SeriesChat({
                           className="relative mt-2 w-20 h-20 rounded-xl overflow-hidden shadow-sm group cursor-pointer"
                         >
                           <img 
-                            src={msg.imageUrl} 
+                            src={getProxiedUrl(msg.imageUrl)} 
                             alt="ملصق شات" 
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover"
@@ -1821,10 +1827,10 @@ export default function SeriesChat({
                       ) : (
                         <div className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black/40 mt-2 max-w-[200px] cursor-pointer hover:opacity-90 transition active:scale-[0.98]">
                           <img 
-                            src={msg.imageUrl} 
+                            src={getProxiedUrl(msg.imageUrl)} 
                             alt="تعليق مصور" 
                             referrerPolicy="no-referrer"
-                            onClick={(e) => { e.stopPropagation(); setPreviewImage(msg.imageUrl || null); }}
+                            onClick={(e) => { e.stopPropagation(); setPreviewImage(getProxiedUrl(msg.imageUrl) || null); }}
                             className="w-full h-auto max-h-[160px] object-cover rounded-xl"
                           />
                         </div>
@@ -1905,7 +1911,7 @@ export default function SeriesChat({
                           "relative w-full bg-zinc-950 flex items-center justify-center overflow-hidden",
                            (msg.text && msg.text.length > 50) ? "h-full" : "aspect-video"
                         )}>
-                          <img src={msg.sceneImage || '/placeholder-series.jpg'} referrerPolicy="no-referrer" alt="scene" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover/card:scale-105 transition-transform duration-700" />
+                          <img src={getProxiedUrl(msg.sceneImage) || '/placeholder-series.jpg'} referrerPolicy="no-referrer" alt="scene" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover/card:scale-105 transition-transform duration-700" />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent z-10" />
                           <div className="absolute inset-0 flex items-center justify-center z-20">
                              <div className="w-10 h-10 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/10 group-hover/card:scale-110 transition-transform">
@@ -2071,7 +2077,7 @@ export default function SeriesChat({
           )}
           {attachedImageUrl && (
             <div className="relative inline-block mb-2 mr-auto ml-3 bg-zinc-900 border border-zinc-800 p-1 rounded-xl">
-              <img src={attachedImageUrl} alt="Preview" className="w-14 h-14 object-cover rounded-lg" />
+              <img src={getProxiedUrl(attachedImageUrl)} alt="Preview" className="w-14 h-14 object-cover rounded-lg" />
               <button 
                 type="button" 
                 onClick={() => setAttachedImageUrl(null)} 
@@ -2085,7 +2091,7 @@ export default function SeriesChat({
           {copiedSticker && (
             <div className="flex items-center gap-3.5 mr-auto ml-3 mb-2 p-2 bg-gradient-to-r from-zinc-900 via-zinc-950 to-zinc-900 border border-primary/30 rounded-2xl shadow-lg relative max-w-sm">
               <div className="w-10 h-10 bg-black/40 rounded-xl overflow-hidden relative shrink-0 border border-white/5 flex items-center justify-center p-1">
-                <img src={copiedSticker} alt="Copied Sticker" className="w-full h-full object-contain" />
+                <img src={getProxiedUrl(copiedSticker)} alt="Copied Sticker" className="w-full h-full object-contain" />
               </div>
               <div className="flex-1 text-right flex flex-col min-w-0 pr-1 select-none font-sans">
                 <p className="text-[10px] font-black text-primary flex items-center gap-1 justify-end">
@@ -2145,7 +2151,7 @@ export default function SeriesChat({
                       }}
                       className="aspect-square bg-black/40 rounded-2xl p-2 hover:bg-white/5 border border-white/5 transition-all group overflow-hidden"
                     >
-                      <img src={st.url} className="w-full h-full object-contain group-hover:scale-110 transition-transform" alt="Sticker" />
+                      <img src={getProxiedUrl(st.url)} className="w-full h-full object-contain group-hover:scale-110 transition-transform" alt="Sticker" />
                     </button>
                   ))}
                   {/* Option to create sticker from device */}
