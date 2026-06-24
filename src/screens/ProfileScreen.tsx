@@ -28,6 +28,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import Header from '../components/Header';
 import BottomNav from '../components/BottomNav';
 import ProfileTemplateOverlay from '../components/ProfileTemplateOverlay';
+import { syncProfileToFirebase } from '../utils/profileSync';
 
 export default function ProfileScreen() {
   const [currentName, setCurrentName] = useState(() => {
@@ -102,6 +103,7 @@ export default function ProfileScreen() {
       setVerticalPos(parseFloat(localStorage.getItem('user_avatar_pos_v') || '50'));
       setHorizontalPos(parseFloat(localStorage.getItem('user_avatar_pos_h') || '50'));
       setZoomVal(parseFloat(localStorage.getItem('user_avatar_zoom') || '100'));
+      syncProfileToFirebase();
     };
 
     window.addEventListener('profile-updated', handleProfileChange);
@@ -411,6 +413,19 @@ export default function ProfileScreen() {
                   <div className="px-3 py-1 rounded-full bg-zinc-950/60 border border-white/[0.03] flex items-center gap-2 flex-row-reverse">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]" />
                     <span className="text-[10px] text-zinc-400 font-extrabold">حساب زائر نشط وآمن</span>
+                  </div>
+
+                  <div 
+                    onClick={() => {
+                      const pid = localStorage.getItem('guest_chat_pid') || '';
+                      navigator.clipboard.writeText(pid);
+                      alert('📋 تم نسخ رقم الـ ID الخاص بك بنجاح! شاركه مع أصدقائك ليتواصلوا معك خاص.');
+                    }}
+                    className="px-3 py-1 rounded-full bg-zinc-950/60 border border-white/[0.03] hover:border-primary/20 flex items-center gap-2 flex-row-reverse cursor-pointer hover:bg-black transition-all active:scale-95 text-zinc-400 hover:text-white"
+                    title="اضغط لنسخ معرّف الحساب"
+                  >
+                    <Copy className="w-3 h-3 text-zinc-500" />
+                    <span className="text-[10px] font-extrabold font-mono tracking-wider">ID: {localStorage.getItem('guest_chat_pid')}</span>
                   </div>
 
                   {adFreeExpiry > Date.now() ? (

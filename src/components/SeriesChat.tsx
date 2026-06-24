@@ -404,6 +404,50 @@ export default function SeriesChat({
   
   const STICKERS = savedStickers;
 
+  const [userProfiles, setUserProfiles] = useState<Record<string, {
+    userName: string;
+    userAvatar: string;
+    userAvatarPosV?: string;
+    userAvatarPosH?: string;
+    userAvatarZoom?: string;
+    userTemplate?: string;
+  }>>({});
+
+  useEffect(() => {
+    if (!db || messages.length === 0) return;
+    
+    const uniqueUserIds: string[] = Array.from(new Set(messages.map(m => m.userId).filter((id): id is string => !!id)));
+    const unsubscribes: (() => void)[] = [];
+    
+    uniqueUserIds.forEach((uid: string) => {
+      if (userProfiles[uid]) return;
+      
+      const userRef = ref(db, `users/${uid}`);
+      const unsub = onValue(userRef, (snapshot) => {
+        const val = snapshot.val();
+        if (val) {
+          setUserProfiles(prev => {
+            const copy = { ...prev };
+            copy[uid] = {
+              userName: val.name || val.userName || 'مستخدم جديد',
+              userAvatar: val.avatar || val.userAvatar || 'boy1',
+              userAvatarPosV: val.avatarPosV || val.userAvatarPosV || '50',
+              userAvatarPosH: val.avatarPosH || val.userAvatarPosH || '50',
+              userAvatarZoom: val.avatarZoom || val.userAvatarZoom || '100',
+              userTemplate: val.template || val.userTemplate || ''
+            };
+            return copy;
+          });
+        }
+      });
+      unsubscribes.push(unsub);
+    });
+    
+    return () => {
+      unsubscribes.forEach(unsub => unsub());
+    };
+  }, [messages, isDbReady]);
+
   const [copiedSticker, setCopiedSticker] = useState<string | null>(() => localStorage.getItem('copied_chat_sticker'));
   const [copiedFeedback, setCopiedFeedback] = useState(false);
 
@@ -1274,7 +1318,7 @@ export default function SeriesChat({
         setUploadingImage(true);
         try {
           const formData = new FormData();
-          const extension = mediaRecorder.mimeType?.includes('mp4') ? 'mp4' : 'webm';
+          const extension = mediaRecorder.mimeType?.includes('mp4') ? 'm4a' : 'mp3';
           formData.append("file", audioBlob, `voice_${Date.now()}.${extension}`);
 
           const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-media") : "/api/v1/upload-media";
@@ -1729,7 +1773,15 @@ export default function SeriesChat({
           )}
 
           {messages.map((msg) => {
-            const msgAvatarObj = AVATARS.find(a => a.id === msg.userAvatar);
+            const profile = userProfiles[msg.userId];
+            const displayAvatar = profile?.userAvatar || msg.userAvatar;
+            const displayAvatarPosH = profile?.userAvatarPosH || msg.userAvatarPosH || '50';
+            const displayAvatarPosV = profile?.userAvatarPosV || msg.userAvatarPosV || '50';
+            const displayAvatarZoom = profile?.userAvatarZoom || msg.userAvatarZoom || '100';
+            const displayTemplate = profile?.userTemplate !== undefined ? profile.userTemplate : msg.userTemplate;
+            const displayName = profile?.userName || msg.userName;
+
+            const msgAvatarObj = AVATARS.find(a => a.id === displayAvatar);
             const isMe = msg.userId === localStorage.getItem('guest_chat_pid');
             return (
               <motion.div 
@@ -1739,13 +1791,13 @@ export default function SeriesChat({
                 className={`flex items-start gap-2.5 ${isMe ? 'flex-row-reverse text-right' : 'flex-row text-right'}`}
               >
                 <div className="w-8 h-8 rounded-full bg-zinc-900 border border-white/5 shrink-0 overflow-hidden shadow relative">
-                  {msg.userAvatar.startsWith('http') ? (
+                  {displayAvatar.startsWith('http') ? (
                     <img 
-                      src={getProxiedUrl(msg.userAvatar)} 
+                      src={getProxiedUrl(displayAvatar)} 
                       className="w-full h-full object-cover rounded-full" 
                       style={{ 
-                        objectPosition: `${msg.userAvatarPosH || '50'}% ${msg.userAvatarPosV || '50'}%`,
-                        transform: `scale(${(parseFloat(msg.userAvatarZoom || '100')) / 100})`
+                        objectPosition: `${displayAvatarPosH}% ${displayAvatarPosV}%`,
+                        transform: `scale(${(parseFloat(displayAvatarZoom)) / 100})`
                       }}
                       alt="Avatar" 
                     />
@@ -1754,15 +1806,15 @@ export default function SeriesChat({
                   )}
                   
                   {/* Template Overlay */}
-                  {msg.userTemplate && msg.userTemplate !== 'none' && (
-                    <ProfileTemplateOverlay template={msg.userTemplate} />
+                  {displayTemplate && displayTemplate !== 'none' && (
+                    <ProfileTemplateOverlay template={displayTemplate} />
                   )}
                 </div>
                 <div className={`flex flex-col max-w-[75%] ${isMe ? 'items-end' : 'items-start'}`}>
                   <div className="flex items-center gap-1.5 mb-1 text-[9px] font-black text-zinc-500">
-                    <span className={cn(msg.userName.includes('المدير') ? "text-primary flex items-center gap-1" : "text-zinc-500")}>
-                      {msg.userName}
-                      {msg.userName.includes('المدير') && (
+                    <span className={cn(displayName.includes('المدير') ? "text-primary flex items-center gap-1" : "text-zinc-500")}>
+                      {displayName}
+                      {displayName.includes('المدير') && (
                         <span className="px-1.5 py-0.5 rounded bg-primary/20 text-[7px] text-primary border border-primary/30 ml-1">VIP</span>
                       )}
                     </span>
@@ -2486,6 +2538,20 @@ export default function SeriesChat({
                   >
                     <Copy className="w-4 h-4 text-primary" />
                     <span>نسخ هذا الملصق 📋🔥</span>
+                  </button>
+                )}
+
+                {/* Send Private Message & View Profile option */}
+                {actionMenuMessage.userId !== localStorage.getItem('guest_chat_pid') && (
+                  <button
+                    onClick={() => {
+                      window.location.href = `/dms?chat_with_pid=${actionMenuMessage.userId}`;
+                      setActionMenuMessage(null);
+                    }}
+                    className="w-full flex items-center justify-between p-3 rounded-2xl bg-[#e50914]/10 hover:bg-[#e50914]/20 border border-[#e50914]/20 hover:border-[#e50914]/40 text-primary font-bold text-xs transition active:scale-95 cursor-pointer"
+                  >
+                    <MessageSquare className="w-4 h-4 text-primary" />
+                    <span>عرض الملف ومراسلته خاص 💬⚡</span>
                   </button>
                 )}
 

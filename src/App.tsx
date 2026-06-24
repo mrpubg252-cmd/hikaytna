@@ -12,7 +12,7 @@ import WatchScreen from './screens/WatchScreen';
 import FavoritesScreen from './screens/FavoritesScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import ChatScreen from './screens/ChatScreen';
-import ShortsScreen from './screens/ShortsScreen';
+import DirectMessagesScreen from './screens/DirectMessagesScreen';
 import AdminScreen from './screens/AdminScreen';
 import MatchesScreen from './screens/MatchesScreen';
 import { getApiUrl } from './lib/apiConfig';
@@ -244,7 +244,8 @@ function AppLayout() {
         <Route path="/favorites" element={<FavoritesScreen />} />
         <Route path="/profile" element={<ProfileScreen />} />
         <Route path="/chat" element={<ChatScreen />} />
-        <Route path="/shorts" element={<ShortsScreen />} />
+        <Route path="/shorts" element={<DirectMessagesScreen />} />
+        <Route path="/dms" element={<DirectMessagesScreen />} />
         <Route path="/matches" element={<MatchesScreen />} />
         <Route path="/admin" element={<AdminScreen />} />
       </Routes>

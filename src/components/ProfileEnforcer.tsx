@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, Camera, Check, ChevronLeft, Sparkles, Image, Settings, ZoomIn, ZoomOut, Move } from 'lucide-react';
 import ProfileTemplateOverlay from './ProfileTemplateOverlay';
+import { syncProfileToFirebase } from '../utils/profileSync';
 
 export default function ProfileEnforcer() {
   const [show, setShow] = useState(false);
@@ -111,6 +112,9 @@ export default function ProfileEnforcer() {
     if (customAvatar) {
       localStorage.setItem('user_avatar_url', customAvatar);
     }
+
+    // Sync to Realtime Database
+    syncProfileToFirebase();
 
     window.dispatchEvent(new Event('profile-updated'));
     setShow(false);
