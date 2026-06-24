@@ -5,6 +5,44 @@ import { motion, AnimatePresence } from 'motion/react';
 
 import SettingsMenu from './SettingsMenu';
 import AiChatDrawer from './AiChatDrawer';
+import ProfileTemplateOverlay from './ProfileTemplateOverlay';
+
+const getProxiedUrl = (url?: string) => {
+  if (!url) return '';
+  const lower = url.toLowerCase();
+  
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return url;
+  }
+
+  const isImage = 
+    lower.endsWith('.png') || 
+    lower.endsWith('.jpg') || 
+    lower.endsWith('.jpeg') || 
+    lower.endsWith('.gif') || 
+    lower.endsWith('.webp') || 
+    lower.endsWith('.svg') ||
+    lower.includes('/avatar') ||
+    lower.includes('avatar') ||
+    lower.includes('image');
+
+  const needsProxy = 
+    lower.includes('top4top') || 
+    lower.includes('catbox') || 
+    lower.includes('moe') ||
+    url.startsWith('http://') || 
+    url.startsWith('https://');
+
+  if (needsProxy) {
+    if (isImage) {
+      return `/api/v1/image-proxy?url=${encodeURIComponent(url)}`;
+    } else {
+      return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
+    }
+  }
+
+  return url;
+};
 
 export default function Header() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -135,17 +173,27 @@ export default function Header() {
 
   const [userName, setUserName] = useState(() => localStorage.getItem('guest_chat_name') || '');
   const [userAvatar, setUserAvatar] = useState(() => localStorage.getItem('user_avatar_url') || '');
+  const [userTemplate, setUserTemplate] = useState(() => localStorage.getItem('user_profile_template') || 'none');
+  const [verticalPos, setVerticalPos] = useState(() => parseFloat(localStorage.getItem('user_avatar_pos_v') || '50'));
+  const [horizontalPos, setHorizontalPos] = useState(() => parseFloat(localStorage.getItem('user_avatar_pos_h') || '50'));
+  const [zoomVal, setZoomVal] = useState(() => parseFloat(localStorage.getItem('user_avatar_zoom') || '100'));
 
   useEffect(() => {
     const handleUpdate = () => {
       setUserName(localStorage.getItem('guest_chat_name') || '');
       setUserAvatar(localStorage.getItem('user_avatar_url') || '');
+      setUserTemplate(localStorage.getItem('user_profile_template') || 'none');
+      setVerticalPos(parseFloat(localStorage.getItem('user_avatar_pos_v') || '50'));
+      setHorizontalPos(parseFloat(localStorage.getItem('user_avatar_pos_h') || '50'));
+      setZoomVal(parseFloat(localStorage.getItem('user_avatar_zoom') || '100'));
     };
     window.addEventListener('name-updated', handleUpdate);
     window.addEventListener('avatar-updated', handleUpdate);
+    window.addEventListener('profile-updated', handleUpdate);
     return () => {
       window.removeEventListener('name-updated', handleUpdate);
       window.removeEventListener('avatar-updated', handleUpdate);
+      window.removeEventListener('profile-updated', handleUpdate);
     };
   }, []);
 
@@ -223,13 +271,25 @@ export default function Header() {
               </button>
               <Link 
                 to="/profile" 
-                className="w-10 h-10 rounded-full overflow-hidden bg-zinc-900 border border-white/10 flex items-center justify-center hover:border-primary/50 transition-all group shrink-0"
+                className="w-10 h-10 rounded-full overflow-hidden bg-zinc-900 border border-white/10 flex items-center justify-center hover:border-primary/50 transition-all group shrink-0 relative"
                 title={userName || "حسابي"}
               >
                 {userAvatar ? (
-                  <img src={userAvatar} className="w-full h-full object-cover" alt="Profile" />
+                  <img 
+                    src={getProxiedUrl(userAvatar)} 
+                    className="w-full h-full object-cover rounded-full" 
+                    style={{ 
+                      objectPosition: `${horizontalPos}% ${verticalPos}%`,
+                      transform: `scale(${zoomVal / 100})`
+                    }}
+                    alt="Profile" 
+                    referrerPolicy="no-referrer"
+                  />
                 ) : (
                   <User className="w-5 h-5 text-zinc-400 group-hover:text-primary" />
+                )}
+                {userTemplate && userTemplate !== 'none' && (
+                  <ProfileTemplateOverlay template={userTemplate} className="absolute inset-0 w-full h-full z-30" />
                 )}
               </Link>
             <Link to="/chat" className="p-1.5 sm:p-2 text-zinc-400 hover:text-primary transition-colors hidden sm:block">

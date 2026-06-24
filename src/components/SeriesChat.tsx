@@ -5,7 +5,7 @@ import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, push, set, onValue, remove, get, Database, query, limitToLast } from 'firebase/database';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play, Pause, Trash2, Video, Pencil, Copy, Plus } from 'lucide-react';
+import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play, Pause, Trash2, Video, Pencil, Copy, Plus, UserPlus, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { decryptValue } from '../lib/security';
 import { useAuth } from '../context/AuthContext';
@@ -749,6 +749,125 @@ export default function SeriesChat({
     }
     initSecureDB();
   }, []);
+
+  // Custom Profile Modal on Avatar Click
+  const [clickedProfile, setClickedProfile] = useState<{
+    userId: string;
+    name: string;
+    avatar: string;
+    avatarPosH: string;
+    avatarPosV: string;
+    avatarZoom: string;
+    template: string;
+  } | null>(null);
+  const [clickedFriendshipStatus, setClickedFriendshipStatus] = useState<'none' | 'pending_sent' | 'pending_received' | 'friends'>('none');
+
+  const checkFriendshipStatusForClicked = async (targetId: string) => {
+    if (!db) return;
+    const myId = localStorage.getItem('guest_chat_pid');
+    if (!myId) return;
+
+    try {
+      const friendsRef = ref(db, `friends/${myId}/${targetId}`);
+      const friendSnap = await get(friendsRef);
+      if (friendSnap.exists()) {
+        setClickedFriendshipStatus('friends');
+        return;
+      }
+
+      const sentRef = ref(db, `friend_requests/${targetId}/${myId}`);
+      const sentSnap = await get(sentRef);
+      if (sentSnap.exists() && sentSnap.val().status === 'pending') {
+        setClickedFriendshipStatus('pending_sent');
+        return;
+      }
+
+      const receivedRef = ref(db, `friend_requests/${myId}/${targetId}`);
+      const receivedSnap = await get(receivedRef);
+      if (receivedSnap.exists() && receivedSnap.val().status === 'pending') {
+        setClickedFriendshipStatus('pending_received');
+        return;
+      }
+
+      setClickedFriendshipStatus('none');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSendFriendRequestForClicked = async (targetUserId: string) => {
+    if (!db) return;
+    const myId = localStorage.getItem('guest_chat_pid') || 'guest_temp';
+    const myName = localStorage.getItem('guest_chat_name') || 'مشاهد';
+    if (targetUserId === myId) {
+      alert('لا يمكنك إرسال طلب صداقة لنفسك! 😄');
+      return;
+    }
+
+    try {
+      const requestRef = ref(db, `friend_requests/${targetUserId}/${myId}`);
+      await set(requestRef, {
+        senderId: myId,
+        senderName: myName,
+        senderAvatar: localStorage.getItem('user_avatar_url') || localStorage.getItem('guest_chat_avatar') || 'boy1',
+        senderAvatarPosV: localStorage.getItem('user_avatar_pos_v') || '50',
+        senderAvatarPosH: localStorage.getItem('user_avatar_pos_h') || '50',
+        senderAvatarZoom: localStorage.getItem('user_avatar_zoom') || '100',
+        senderTemplate: localStorage.getItem('user_profile_template') || '',
+        timestamp: Date.now(),
+        status: 'pending'
+      });
+      setClickedFriendshipStatus('pending_sent');
+      alert('تم إرسال طلب الصداقة بنجاح! وفي انتظار قبول الطرف الآخر. ✨');
+    } catch (err) {
+      console.error(err);
+      alert('فشل إرسال الطلب، يرجى إعادة المحاولة.');
+    }
+  };
+
+  const handleAcceptRequestForClicked = async (senderId: string) => {
+    if (!db) return;
+    const myId = localStorage.getItem('guest_chat_pid') || 'guest_temp';
+    try {
+      await set(ref(db, `friends/${myId}/${senderId}`), true);
+      await set(ref(db, `friends/${senderId}/${myId}`), true);
+      await remove(ref(db, `friend_requests/${myId}/${senderId}`));
+
+      // Create initial conversation slot
+      await set(ref(db, `user_conversations/${myId}/${senderId}`), {
+        friendId: senderId,
+        lastMessage: 'تم قبول طلب الصداقة! 👋 ابدأ المراسلة الآن',
+        lastMessageSenderId: senderId,
+        timestamp: Date.now(),
+        unread: true
+      });
+      await set(ref(db, `user_conversations/${senderId}/${myId}`), {
+        friendId: myId,
+        lastMessage: 'تم قبول طلب الصداقة! 👋 ابدأ المراسلة الآن',
+        lastMessageSenderId: senderId,
+        timestamp: Date.now(),
+        unread: false
+      });
+
+      setClickedFriendshipStatus('friends');
+      alert('تم قبول طلب الصداقة بنجاح! لقد أصبحتم أصدقاء الآن. 🎉');
+    } catch (err) {
+      console.error(err);
+      alert('حدث خطأ في قبول الطلب.');
+    }
+  };
+
+  const handleDeclineRequestForClicked = async (senderId: string) => {
+    if (!db) return;
+    const myId = localStorage.getItem('guest_chat_pid') || 'guest_temp';
+    try {
+      await remove(ref(db, `friend_requests/${myId}/${senderId}`));
+      setClickedFriendshipStatus('none');
+      alert('تم رفض طلب الصداقة.');
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   // SignUp Form status
   const [signupName, setSignupName] = useState('');
@@ -1843,11 +1962,25 @@ export default function SeriesChat({
                 animate={{ opacity: 1, y: 0 }}
                 className={`flex items-start gap-2.5 ${isMe ? 'flex-row-reverse text-right' : 'flex-row text-right'}`}
               >
-                <div className="w-8 h-8 rounded-full bg-zinc-900 border border-white/5 shrink-0 overflow-hidden shadow relative">
+                <div 
+                  onClick={() => {
+                    setClickedProfile({
+                      userId: msg.userId,
+                      name: displayName,
+                      avatar: displayAvatar,
+                      avatarPosH: displayAvatarPosH,
+                      avatarPosV: displayAvatarPosV,
+                      avatarZoom: displayAvatarZoom,
+                      template: displayTemplate || ''
+                    });
+                    checkFriendshipStatusForClicked(msg.userId);
+                  }}
+                  className="w-8 h-8 rounded-full bg-zinc-900 border border-white/5 shrink-0 overflow-hidden shadow relative cursor-pointer hover:scale-105 active:scale-95 transition-all"
+                >
                   {displayAvatar.startsWith('http') ? (
                     <img 
                       src={getProxiedUrl(displayAvatar)} 
-                      className="w-full h-full object-cover rounded-full" 
+                      className="w-full h-full object-cover rounded-full pointer-events-none" 
                       style={{ 
                         objectPosition: `${displayAvatarPosH}% ${displayAvatarPosV}%`,
                         transform: `scale(${(parseFloat(displayAvatarZoom)) / 100})`
@@ -2847,6 +2980,134 @@ export default function SeriesChat({
               >
                 حسناً، فهمت
               </button>
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* 3. Clicked User Profile Overlay Modal */}
+      {clickedProfile && createPortal(
+        <AnimatePresence>
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[600002] bg-black/85 backdrop-blur-md flex items-center justify-center p-4 font-sans select-none animate-fade-in"
+            dir="rtl"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-sm bg-gradient-to-br from-[#0c0c14] to-[#040408] border border-white/10 p-6 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.8)] relative space-y-6 text-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              
+              <button
+                onClick={() => setClickedProfile(null)}
+                className="absolute top-5 left-5 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-all"
+              >
+                ✕
+              </button>
+
+              <h4 className="text-[10px] font-black tracking-widest text-primary uppercase">الملف الشخصي للمستخدم 🍿</h4>
+
+              {/* Premium Profile Avatar Preview */}
+              <div className="relative w-28 h-28 mx-auto rounded-full bg-zinc-950 border-2 border-primary/20 p-1.5 shadow-xl">
+                <div className="w-full h-full rounded-full overflow-hidden bg-zinc-900 relative">
+                  {clickedProfile.avatar.startsWith('http') ? (
+                    <img 
+                      src={getProxiedUrl(clickedProfile.avatar)} 
+                      className="w-full h-full object-cover rounded-full shadow-inner" 
+                      style={{ 
+                        objectPosition: `${clickedProfile.avatarPosH || '50'}% ${clickedProfile.avatarPosV || '50'}%`,
+                        transform: `scale(${(parseFloat(clickedProfile.avatarZoom || '100')) / 100})`
+                      }}
+                      alt="" 
+                    />
+                  ) : (
+                    AVATARS.find(a => a.id === clickedProfile.avatar)?.svg
+                  )}
+                </div>
+                {clickedProfile.template && clickedProfile.template !== 'none' && (
+                  <ProfileTemplateOverlay template={clickedProfile.template} />
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <h3 className="text-sm font-black text-white flex items-center justify-center gap-1">
+                  {clickedProfile.name}
+                  {clickedProfile.name.includes('المدير') && (
+                    <span className="px-1.5 py-0.5 rounded bg-primary/20 text-[7px] text-primary border border-primary/30 ml-1 font-mono font-black">VIP</span>
+                  )}
+                </h3>
+                <p className="text-[10px] font-mono text-zinc-500">رقم المعرّف الفريد (ID):</p>
+                <div className="bg-black/30 border border-white/5 px-3 py-1.5 rounded-xl text-[11px] text-amber-500 font-mono tracking-wider select-all cursor-pointer hover:bg-black/50 transition-all text-center inline-block"
+                     onClick={() => {
+                       navigator.clipboard.writeText(clickedProfile.userId);
+                       alert('📋 تم نسخ رقم المعرف بنجاح!');
+                     }}>
+                  {clickedProfile.userId}
+                </div>
+              </div>
+
+              {/* Friend Request States and Chat Navigation buttons */}
+              <div className="space-y-2.5">
+                {clickedProfile.userId !== localStorage.getItem('guest_chat_pid') ? (
+                  <>
+                    {clickedFriendshipStatus === 'friends' ? (
+                      <div className="flex items-center justify-center gap-1 bg-primary/10 border border-primary/20 py-2 rounded-xl text-primary text-xs font-black">
+                        <Check className="w-4 h-4 stroke-[3]" />
+                        أنت وهذا المستخدم أصدقاء ✓
+                      </div>
+                    ) : clickedFriendshipStatus === 'pending_sent' ? (
+                      <div className="bg-zinc-900 border border-white/5 py-2 rounded-xl text-zinc-400 text-xs font-black">
+                        تم إرسال طلب الصداقة (قيد الانتظار)
+                      </div>
+                    ) : clickedFriendshipStatus === 'pending_received' ? (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleAcceptRequestForClicked(clickedProfile.userId)}
+                          className="flex-1 py-2 bg-primary hover:bg-primary/95 text-black text-xs font-black rounded-xl transition-all active:scale-95"
+                        >
+                          قبول طلب الصداقة
+                        </button>
+                        <button
+                          onClick={() => handleDeclineRequestForClicked(clickedProfile.userId)}
+                          className="px-4 py-2 bg-white/5 hover:bg-red-500/10 text-zinc-400 hover:text-red-500 rounded-xl border border-white/5 transition-all"
+                        >
+                          رفض
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleSendFriendRequestForClicked(clickedProfile.userId)}
+                        className="w-full py-2.5 bg-gradient-to-r from-red-600 to-red-700 hover:opacity-95 text-white text-xs font-black rounded-xl shadow-lg transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        إرسال طلب صداقة مميز
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        window.location.href = `/dms?chat_with_pid=${clickedProfile.userId}`;
+                        setClickedProfile(null);
+                      }}
+                      className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-white/5 text-zinc-200 text-xs font-black rounded-xl transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                    >
+                      <MessageSquare className="w-4 h-4 text-primary" />
+                      بدء محادثة سرية خاصة
+                    </button>
+                  </>
+                ) : (
+                  <div className="bg-zinc-900/50 border border-white/5 py-2.5 rounded-xl text-zinc-400 text-xs font-black">
+                    هذا هو حسابك الشخصي ✨
+                  </div>
+                )}
+              </div>
+
             </motion.div>
           </motion.div>
         </AnimatePresence>,

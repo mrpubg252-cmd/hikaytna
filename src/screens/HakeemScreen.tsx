@@ -606,7 +606,7 @@ export default function HakeemScreen() {
                           {directWatchSeries.map((series) => (
                             <button
                               key={series.id}
-                              onClick={() => navigateToWatchOrAds(series, navigate)}
+                              onClick={() => navigateToWatchOrAds(navigate, series)}
                               className="px-3 py-2 bg-primary/10 hover:bg-primary/20 border border-primary/25 rounded-full text-[10px] sm:text-xs font-bold text-primary flex items-center gap-2 cursor-pointer transition-all animate-pulse"
                             >
                               <Play className="w-3 h-3 fill-current" />

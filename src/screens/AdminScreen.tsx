@@ -62,6 +62,7 @@ export default function AdminScreen() {
   const [appDownloadUrl, setAppDownloadUrl] = useState('');
   const [appIosDownloadUrl, setAppIosDownloadUrl] = useState('');
   const [blockShortsOnBrowser, setBlockShortsOnBrowser] = useState(true);
+  const [geminiKey, setGeminiKey] = useState('');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [guideTab, setGuideTab] = useState<'flutter' | 'android' | 'ios' | 'query'>('flutter');
 
@@ -172,6 +173,55 @@ export default function AdminScreen() {
     };
   }, [isAuthenticated]);
 
+  // Load AI Configuration (Gemini API Key)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    
+    let isMounted = true;
+
+    const loadAiConfig = async () => {
+      // 1. Try Firestore 'shorts/app_admin_ai_config'
+      try {
+        const docSnap = await getDoc(doc(firestore, 'shorts', 'app_admin_ai_config'));
+        if (docSnap.exists() && isMounted) {
+          const val = docSnap.data();
+          if (val && val.data) {
+            try {
+              const parsed = JSON.parse(val.data);
+              if (parsed && parsed.key) {
+                setGeminiKey(parsed.key);
+                return;
+              }
+            } catch (e) {}
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to load AI config from Firestore:", err);
+      }
+
+      // 2. Try RTDB 'ai_config'
+      try {
+        const aiConfigRef = ref(db, 'ai_config');
+        const unsubscribe = onValue(aiConfigRef, (snapshot) => {
+          const val = snapshot.val();
+          if (val && val.key && isMounted) {
+            setGeminiKey(val.key);
+          }
+        });
+        return () => {
+          unsubscribe();
+        };
+      } catch (e) {
+        console.error("Failed to load AI config from RTDB:", e);
+      }
+    };
+
+    loadAiConfig();
+    return () => {
+      isMounted = false;
+    };
+  }, [isAuthenticated]);
+
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingSettings(true);
@@ -183,6 +233,16 @@ export default function AdminScreen() {
         block_shorts_on_browser: blockShortsOnBrowser
       });
 
+      // Save Gemini API Key to Firestore
+      if (geminiKey.trim()) {
+        await setDoc(doc(firestore, 'shorts', 'app_admin_ai_config'), {
+          data: JSON.stringify({
+            type: 'gemini',
+            key: geminiKey.trim()
+          })
+        });
+      }
+
       // Synced Save to RTDB (might fail if rules block, but we ignore so user gets success alert)
       try {
         await set(ref(db, 'app_settings'), {
@@ -190,11 +250,18 @@ export default function AdminScreen() {
           ios_download_url: appIosDownloadUrl.trim(),
           block_shorts_on_browser: blockShortsOnBrowser
         });
+
+        if (geminiKey.trim()) {
+          await set(ref(db, 'ai_config'), {
+            type: 'gemini',
+            key: geminiKey.trim()
+          });
+        }
       } catch (rtdbErr) {
         console.warn("RTDB save failed (which is fine, Firestore settings were saved successfully!):", rtdbErr);
       }
 
-      alert('تم حفظ إعدادات التطبيق وسرعة التحويل للجميع بنجاح! 🚀');
+      alert('تم حفظ إعدادات المنصة ومفتاح الذكاء الاصطناعي (API Key) للجميع بنجاح! 🚀');
     } catch (err) {
       console.error("Failed to save settings:", err);
       alert('حدث خطأ أثناء حفظ الإعدادات');
@@ -852,6 +919,25 @@ export default function AdminScreen() {
                   value={appIosDownloadUrl}
                   onChange={(e) => setAppIosDownloadUrl(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 text-white rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm"
+                  dir="ltr"
+                />
+              </div>
+
+              <div className="space-y-2 p-5 bg-gradient-to-br from-primary/10 to-indigo-950/20 border border-primary/20 rounded-2xl relative overflow-hidden group">
+                <div className="absolute top-[-30px] left-[-30px] w-20 h-20 rounded-full bg-primary/10 blur-xl pointer-events-none" />
+                <label className="text-xs font-black text-zinc-300 flex items-center gap-2 mb-2">
+                  <Sparkles className="w-4 h-4 text-primary animate-pulse" />
+                  مفتاح ذكاء اصطناعي (Google Gemini API Key)
+                </label>
+                <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
+                  يستخدم هذا المفتاح لتشغيل المستشار الذكي حكيم والإجابة على الرسائل الصوتية وتحليل الصور واللقطات المرفقة مباشرة. يمكنك استبداله في أي وقت هنا دون الحاجة لإعادة رفع التطبيق!
+                </p>
+                <input
+                  type="text"
+                  placeholder="AIzaSy..."
+                  value={geminiKey}
+                  onChange={(e) => setGeminiKey(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-xs font-mono"
                   dir="ltr"
                 />
               </div>

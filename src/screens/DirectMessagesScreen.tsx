@@ -27,8 +27,21 @@ import {
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
-import { ref, push, set, onValue, remove, get } from 'firebase/database';
-import { db } from '../services/firebase';
+import { initializeApp, getApp, getApps } from 'firebase/app';
+import { ref, push, set, onValue, remove, get, getDatabase, Database } from 'firebase/database';
+import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
+
+let db: Database | null = null;
+try {
+  if (!getApps().find(a => a.name === 'chatApp')) {
+    const app = initializeApp(chatFirebaseConfig, 'chatApp');
+    db = getDatabase(app);
+  } else {
+    db = getDatabase(getApp('chatApp'));
+  }
+} catch (err) {
+  console.error("Failed to initialize chat database in DirectMessagesScreen:", err);
+}
 import { AVATARS } from '../components/SeriesChat';
 import ProfileTemplateOverlay from '../components/ProfileTemplateOverlay';
 import Header from '../components/Header';
@@ -469,6 +482,9 @@ export default function DirectMessagesScreen() {
         setChatMessages([]);
         return;
       }
+      const now = Date.now();
+      const cutoff = now - 24 * 60 * 60 * 1000;
+
       const list = Object.entries(data).map(([id, val]: [string, any]) => ({
         id,
         senderId: val.senderId,
@@ -478,8 +494,20 @@ export default function DirectMessagesScreen() {
         createdAt: val.createdAt || 0,
         isSticker: !!val.isSticker
       }));
-      list.sort((a, b) => a.createdAt - b.createdAt);
-      setChatMessages(list);
+
+      // Clean up expired messages (older than 24h) from Firebase Realtime DB
+      const expiredMsgs = list.filter(m => m.createdAt < cutoff);
+      if (expiredMsgs.length > 0) {
+        expiredMsgs.forEach(m => {
+          remove(ref(db!, `private_chats/${chatKey}/${m.id}`)).catch(err => {
+            console.warn("Error cleaning up expired private message:", err);
+          });
+        });
+      }
+
+      const activeList = list.filter(m => m.createdAt >= cutoff);
+      activeList.sort((a, b) => a.createdAt - b.createdAt);
+      setChatMessages(activeList);
 
       // scroll to bottom
       setTimeout(() => {

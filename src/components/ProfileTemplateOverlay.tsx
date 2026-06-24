@@ -113,6 +113,160 @@ export default function ProfileTemplateOverlay({ template, className = 'absolute
           <polygon points="90,50 87,46 84,50 87,54" fill="#fbbf24" />
         </svg>
       )}
+
+      {template === 'vip' && (
+        <svg viewBox="0 0 100 100" className="w-full h-full overflow-visible drop-shadow-[0_0_12px_rgba(139,92,246,0.6)]">
+          <defs>
+            <linearGradient id="vipGold" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#b45309" />
+              <stop offset="30%" stopColor="#f59e0b" />
+              <stop offset="70%" stopColor="#fef08a" />
+              <stop offset="100%" stopColor="#d97706" />
+            </linearGradient>
+            <linearGradient id="purpleGem" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#c084fc" />
+              <stop offset="100%" stopColor="#6b21a8" />
+            </linearGradient>
+          </defs>
+          {/* VIP Golden Shiny Frame */}
+          <circle cx="50" cy="50" r="47" fill="none" stroke="url(#vipGold)" strokeWidth="3" />
+          <circle cx="50" cy="50" r="44" fill="none" stroke="#ffffff" strokeWidth="0.75" strokeDasharray="3 3" opacity="0.6" />
+          
+          {/* Big Sparkling Purple Diamond at top */}
+          <g transform="translate(42, -5) scale(0.16)" className="drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
+            <polygon points="50,15 80,45 50,90 20,45" fill="url(#purpleGem)" stroke="url(#vipGold)" strokeWidth="4" />
+            <polygon points="50,15 50,90 80,45" fill="#d8b4fe" opacity="0.3" />
+            <polygon points="50,15 20,45 50,45" fill="#f3e8ff" opacity="0.4" />
+          </g>
+
+          {/* Little diamonds on sides */}
+          <g transform="translate(3, 45) scale(0.08)">
+            <polygon points="50,15 80,45 50,90 20,45" fill="url(#purpleGem)" stroke="url(#vipGold)" strokeWidth="4" />
+          </g>
+          <g transform="translate(89, 45) scale(0.08)">
+            <polygon points="50,15 80,45 50,90 20,45" fill="url(#purpleGem)" stroke="url(#vipGold)" strokeWidth="4" />
+          </g>
+
+          {/* Golden Stars in lower corners */}
+          <path d="M22 80 L23.5 83 L26.5 83 L24 85 L25 88 L22 86 L19 88 L20 85 L17.5 83 L20.5 83 Z" fill="url(#vipGold)" />
+          <path d="M78 80 L79.5 83 L82.5 83 L80 85 L81 88 L78 86 L75 88 L76 85 L73.5 83 L76.5 83 Z" fill="url(#vipGold)" />
+        </svg>
+      )}
+
+      {template === 'anime' && (
+        <svg viewBox="0 0 100 100" className="w-full h-full overflow-visible drop-shadow-[0_0_10px_rgba(244,114,182,0.6)]">
+          {/* Anime Cute Pink Cherry Blossom Frame */}
+          <circle cx="50" cy="50" r="47" fill="none" stroke="#f472b6" strokeWidth="2.5" />
+          <circle cx="50" cy="50" r="44" fill="none" stroke="#fce7f3" strokeWidth="1" strokeDasharray="5 2" />
+
+          {/* Top Sakura Flower */}
+          <g transform="translate(42, -5) scale(0.16)">
+            {/* 5 Petals */}
+            <path d="M50 50 C50 30, 30 30, 30 50 C30 70, 50 70, 50 50" fill="#f472b6" />
+            <path d="M50 50 C70 50, 70 30, 50 30 C30 30, 30 50, 50 50" fill="#f472b6" transform="rotate(72, 50, 50)" />
+            <path d="M50 50 C70 50, 70 30, 50 30 C30 30, 30 50, 50 50" fill="#f472b6" transform="rotate(144, 50, 50)" />
+            <path d="M50 50 C70 50, 70 30, 50 30 C30 30, 30 50, 50 50" fill="#f472b6" transform="rotate(216, 50, 50)" />
+            <path d="M50 50 C70 50, 70 30, 50 30 C30 30, 30 50, 50 50" fill="#f472b6" transform="rotate(288, 50, 50)" />
+            <circle cx="50" cy="50" r="8" fill="#fef08a" stroke="#ca8a04" strokeWidth="1" />
+          </g>
+
+          {/* Falling sakura petal bottom-right */}
+          <g transform="translate(76, 76) scale(0.12) rotate(45)">
+            <path d="M50 50 C40 30, 15 35, 25 55 C35 75, 60 70, 50 50" fill="#f472b6" opacity="0.9" />
+          </g>
+          {/* Falling sakura petal bottom-left */}
+          <g transform="translate(14, 74) scale(0.1) rotate(-30)">
+            <path d="M50 50 C40 30, 15 35, 25 55 C35 75, 60 70, 50 50" fill="#f472b6" opacity="0.8" />
+          </g>
+        </svg>
+      )}
+
+      {template === 'neon' && (
+        <svg viewBox="0 0 100 100" className="w-full h-full overflow-visible drop-shadow-[0_0_12px_rgba(6,182,212,0.8)]">
+          <defs>
+            <linearGradient id="neonCyanPurple" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#06b6d4" />
+              <stop offset="50%" stopColor="#3b82f6" />
+              <stop offset="100%" stopColor="#a855f7" />
+            </linearGradient>
+          </defs>
+          {/* Glowing Neon Ring */}
+          <circle cx="50" cy="50" r="47" fill="none" stroke="url(#neonCyanPurple)" strokeWidth="3" />
+          <circle cx="50" cy="50" r="45" fill="none" stroke="#ffffff" strokeWidth="1" opacity="0.9" />
+
+          {/* Left Lightning Bolt */}
+          <g transform="translate(2, 38) scale(0.12)" fill="#22d3ee" className="drop-shadow-[0_0_8px_#06b6d4]">
+            <polygon points="30,5 5,55 25,55 15,95 45,40 25,40" />
+          </g>
+
+          {/* Right Lightning Bolt */}
+          <g transform="translate(86, 38) scale(0.12)" fill="#e9d5ff" className="drop-shadow-[0_0_8px_#a855f7]">
+            <polygon points="30,5 5,55 25,55 15,95 45,40 25,40" />
+          </g>
+
+          {/* Top tech lines */}
+          <path d="M38 6 L45 10 L55 10 L62 6" fill="none" stroke="url(#neonCyanPurple)" strokeWidth="2.5" strokeLinecap="round" />
+        </svg>
+      )}
+
+      {template === 'retro' && (
+        <svg viewBox="0 0 100 100" className="w-full h-full overflow-visible drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]">
+          {/* Classic Filmstrip Frame */}
+          <circle cx="50" cy="50" r="47" fill="none" stroke="#1c1917" strokeWidth="4" />
+          <circle cx="50" cy="50" r="45" fill="none" stroke="#f59e0b" strokeWidth="1.5" />
+
+          {/* Film perforations around the ring */}
+          <circle cx="50" cy="50" r="47" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeDasharray="3 4" opacity="0.8" />
+
+          {/* Clapperboard at bottom-center */}
+          <g transform="translate(34, 74) scale(0.32)" className="drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]">
+            {/* Clapper body */}
+            <rect x="5" y="15" width="26" height="20" rx="3" fill="#1c1917" stroke="#ffffff" strokeWidth="1" />
+            {/* Clapper top bar */}
+            <path d="M3 15 L33 11 L31 7 L3 11 Z" fill="#1c1917" stroke="#ffffff" strokeWidth="1" />
+            {/* White stripes on clapper */}
+            <line x1="8" y1="14" x2="12" y2="10" stroke="#ffffff" strokeWidth="2" />
+            <line x1="18" y1="13" x2="22" y2="9" stroke="#ffffff" strokeWidth="2" />
+            <line x1="28" y1="12" x2="32" y2="8" stroke="#ffffff" strokeWidth="2" />
+            {/* Red heart on clapperboard */}
+            <path d="M18 22 C16 20, 13 21, 13 24 C13 27, 18 30, 18 30 C18 30, 23 27, 23 24 C23 21, 20 20, 18 22 Z" fill="#ef4444" />
+          </g>
+
+          {/* Vintage star at top center */}
+          <path d="M50 5 L51.5 9 L55.5 9 L52.2 11.5 L53.5 15.5 L50 13 L46.5 15.5 L47.8 11.5 L44.5 9 L48.5 9 Z" fill="#ef4444" />
+        </svg>
+      )}
+
+      {template === 'winter' && (
+        <svg viewBox="0 0 100 100" className="w-full h-full overflow-visible drop-shadow-[0_0_10px_rgba(186,230,253,0.7)]">
+          {/* Winter Crystal Frozen Frame */}
+          <circle cx="50" cy="50" r="47" fill="none" stroke="#7dd3fc" strokeWidth="2.5" />
+          <circle cx="50" cy="50" r="44" fill="none" stroke="#e0f2fe" strokeWidth="1" strokeDasharray="3 4" />
+
+          {/* Snowflake crystal top-center */}
+          <g transform="translate(42, -5) scale(0.16)" stroke="#e0f2fe" strokeWidth="4" strokeLinecap="round" fill="none">
+            <line x1="50" y1="20" x2="50" y2="80" />
+            <line x1="20" y1="50" x2="80" y2="50" />
+            <line x1="29" y1="29" x2="71" y2="71" />
+            <line x1="29" y1="71" x2="71" y2="29" />
+            {/* branches */}
+            <path d="M50 30 L40 25 M50 30 L60 25" />
+            <path d="M50 70 L40 75 M50 70 L60 75" />
+            <path d="M30 50 L25 40 M30 50 L25 50" />
+            <path d="M70 50 L75 40 M70 50 L75 60" />
+          </g>
+
+          {/* Tiny snowflakes on the sides */}
+          <g transform="translate(6, 44) scale(0.08)" stroke="#7dd3fc" strokeWidth="5" strokeLinecap="round" fill="none">
+            <line x1="50" y1="20" x2="50" y2="80" /><line x1="20" y1="50" x2="80" y2="50" />
+            <line x1="29" y1="29" x2="71" y2="71" /><line x1="29" y1="71" x2="71" y2="29" />
+          </g>
+          <g transform="translate(86, 44) scale(0.08)" stroke="#7dd3fc" strokeWidth="5" strokeLinecap="round" fill="none">
+            <line x1="50" y1="20" x2="50" y2="80" /><line x1="20" y1="50" x2="80" y2="50" />
+            <line x1="29" y1="29" x2="71" y2="71" /><line x1="29" y1="71" x2="71" y2="29" />
+          </g>
+        </svg>
+      )}
     </div>
   );
 }

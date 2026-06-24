@@ -87,6 +87,11 @@ export default function ProfileScreen() {
     { id: 'football', label: 'كورة ⚽' },
     { id: 'fire', label: 'حماس 🔥' },
     { id: 'crown', label: 'تاج 👑' },
+    { id: 'vip', label: 'عضوية VIP 💎' },
+    { id: 'anime', label: 'عالم الأنمي 🌸' },
+    { id: 'neon', label: 'توهج النيون ⚡' },
+    { id: 'retro', label: 'سينما كلاسيك 🎬' },
+    { id: 'winter', label: 'أجواء الشتاء ❄️' },
   ];
 
   const [selectedTemplate, setSelectedTemplate] = useState(() => {
