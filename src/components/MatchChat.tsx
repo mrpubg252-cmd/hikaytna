@@ -498,17 +498,35 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
       
+      const isIOSorSafari = /iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent) || 
+        (navigator.userAgent.includes("Safari") && !navigator.userAgent.includes("Chrome"));
+      
       // Determine best MIME type for the browser (Safari prefers audio/mp4)
       let mimeType = 'audio/webm';
-      if (typeof MediaRecorder.isTypeSupported === 'function') {
-        if (MediaRecorder.isTypeSupported('audio/mp4')) {
+      if (isIOSorSafari) {
+        mimeType = 'audio/mp4';
+      } else if (typeof MediaRecorder.isTypeSupported === 'function') {
+        if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
           mimeType = 'audio/mp4';
         } else if (MediaRecorder.isTypeSupported('audio/aac')) {
           mimeType = 'audio/aac';
         }
       }
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      let options: any = {};
+      if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(mimeType)) {
+        options = { mimeType };
+      } else if (isIOSorSafari) {
+        try {
+          options = { mimeType: 'audio/mp4' };
+        } catch (e) {
+          options = {};
+        }
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -518,15 +536,23 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
+        const isMp4 = mediaRecorder.mimeType?.includes('mp4') || mediaRecorder.mimeType?.includes('aac') || isIOSorSafari;
+        const blobType = isMp4 ? 'audio/mp4' : 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
+        
         // Release hardware mic resource
         stream.getTracks().forEach(track => track.stop());
+
+        if (audioBlob.size === 0) {
+          alert("تنبيه: التسجيل الصوتي فارغ، يرجى المحاولة مرة أخرى.");
+          return;
+        }
 
         setUploadingImage(true);
         try {
           const formData = new FormData();
-          // specify a filename so the backend detects the extension natively!
-          const extension = mediaRecorder.mimeType?.includes('mp4') ? 'mp4' : 'webm';
+          // Specify compatible extensions (.mp4 or .mp3) so top4top.io accepts them
+          const extension = isMp4 ? 'mp4' : 'mp3';
           formData.append("file", audioBlob, `voice_${Date.now()}.${extension}`);
 
           const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-media") : "/api/v1/upload-media";

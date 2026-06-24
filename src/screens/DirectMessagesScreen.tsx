@@ -38,15 +38,41 @@ import { getApiUrl } from '../lib/apiConfig';
 
 const getProxiedUrl = (url?: string) => {
   if (!url) return '';
-  if (
-    url.startsWith('https://f.top4top.') || 
-    url.startsWith('http://f.top4top.') || 
-    url.includes('top4top.') ||
-    url.includes('catbox.moe') ||
-    url.startsWith('http://')
-  ) {
-    return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
+  const lower = url.toLowerCase();
+  
+  // If it's a relative URL or already proxied, return as-is
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return url;
   }
+
+  // Check if it's a known image format or has "image" related words
+  const isImage = 
+    lower.endsWith('.png') || 
+    lower.endsWith('.jpg') || 
+    lower.endsWith('.jpeg') || 
+    lower.endsWith('.gif') || 
+    lower.endsWith('.webp') || 
+    lower.endsWith('.svg') ||
+    lower.includes('/avatar') ||
+    lower.includes('avatar') ||
+    lower.includes('image');
+
+  // Check if we need to proxy (top4top, catbox, or any other external media)
+  const needsProxy = 
+    lower.includes('top4top') || 
+    lower.includes('catbox') || 
+    lower.includes('moe') ||
+    url.startsWith('http://') || 
+    url.startsWith('https://');
+
+  if (needsProxy) {
+    if (isImage) {
+      return `/api/v1/image-proxy?url=${encodeURIComponent(url)}`;
+    } else {
+      return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
+    }
+  }
+
   return url;
 };
 
@@ -466,7 +492,7 @@ export default function DirectMessagesScreen() {
     };
   }, [db, activeChatFriendId, myId]);
 
-  // Search User by ID
+  // Search User by ID or Name
   const handleSearchUser = async () => {
     const input = searchUserIdInput.trim();
     if (!input) return;
@@ -475,24 +501,63 @@ export default function DirectMessagesScreen() {
     setSearchedUser(null);
 
     try {
-      const userRef = ref(db, `users/${input}`);
-      const snapshot = await get(userRef);
-      if (snapshot.exists()) {
-        const val = snapshot.val();
-        setSearchedUser({
-          userId: input,
-          name: val.name || 'مستخدم مجهول',
-          avatar: val.avatar || 'boy1',
-          avatarPosV: val.avatarPosV || '50',
-          avatarPosH: val.avatarPosH || '50',
-          avatarZoom: val.avatarZoom || '100',
-          template: val.template || ''
-        });
-      } else {
-        setSearchError('عذراً، لم نجد أي مستخدم يحمل هذا الرقم المعرف (ID) ⚠️');
+      // 1. Sanitize the input for RTDB path. If it contains invalid characters, skip direct lookup to avoid Firebase crash
+      const hasInvalidChars = /[\.#\$\[\]]/.test(input);
+      
+      if (!hasInvalidChars) {
+        // Direct ID search (Fast Path)
+        const userRef = ref(db, `users/${input}`);
+        const snapshot = await get(userRef);
+        if (snapshot.exists()) {
+          const val = snapshot.val();
+          setSearchedUser({
+            userId: input,
+            name: val.name || 'مستخدم مجهول',
+            avatar: val.avatar || 'boy1',
+            avatarPosV: val.avatarPosV || '50',
+            avatarPosH: val.avatarPosH || '50',
+            avatarZoom: val.avatarZoom || '100',
+            template: val.template || ''
+          });
+          setIsSearching(false);
+          return;
+        }
       }
+
+      // 2. Fallback: Search by Display Name or ID in database users
+      const usersRef = ref(db, 'users');
+      const snapshot = await get(usersRef);
+      if (snapshot.exists()) {
+        const allUsers = snapshot.val();
+        const searchLower = input.toLowerCase();
+        
+        // Find a user whose name contains the query, or whose ID matches the search term
+        const foundEntry = Object.entries(allUsers).find(([uid, uVal]: [string, any]) => {
+          if (!uVal) return false;
+          const nameMatch = uVal.name && uVal.name.toLowerCase().includes(searchLower);
+          const idMatch = uid.toLowerCase() === searchLower;
+          return nameMatch || idMatch;
+        });
+
+        if (foundEntry) {
+          const [uid, val]: [string, any] = foundEntry;
+          setSearchedUser({
+            userId: uid,
+            name: val.name || 'مستخدم مجهول',
+            avatar: val.avatar || 'boy1',
+            avatarPosV: val.avatarPosV || '50',
+            avatarPosH: val.avatarPosH || '50',
+            avatarZoom: val.avatarZoom || '100',
+            template: val.template || ''
+          });
+          setIsSearching(false);
+          return;
+        }
+      }
+
+      setSearchError('عذراً، لم نجد أي مستخدم يحمل هذا الاسم أو المعرف (ID) ⚠️');
     } catch (err) {
-      console.error(err);
+      console.error('Search error:', err);
       setSearchError('حدث خطأ أثناء البحث، يرجى المحاولة لاحقاً.');
     } finally {
       setIsSearching(false);
@@ -691,16 +756,34 @@ export default function DirectMessagesScreen() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
 
+      const isIOSorSafari = /iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent) || 
+        (navigator.userAgent.includes("Safari") && !navigator.userAgent.includes("Chrome"));
+
       let mimeType = 'audio/webm';
-      if (typeof MediaRecorder.isTypeSupported === 'function') {
-        if (MediaRecorder.isTypeSupported('audio/mp4')) {
+      if (isIOSorSafari) {
+        mimeType = 'audio/mp4';
+      } else if (typeof MediaRecorder.isTypeSupported === 'function') {
+        if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
           mimeType = 'audio/mp4';
         } else if (MediaRecorder.isTypeSupported('audio/aac')) {
           mimeType = 'audio/aac';
         }
       }
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      let options: any = {};
+      if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(mimeType)) {
+        options = { mimeType };
+      } else if (isIOSorSafari) {
+        try {
+          options = { mimeType: 'audio/mp4' };
+        } catch (e) {
+          options = {};
+        }
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -710,13 +793,22 @@ export default function DirectMessagesScreen() {
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
+        const isMp4 = mediaRecorder.mimeType?.includes('mp4') || mediaRecorder.mimeType?.includes('aac') || isIOSorSafari;
+        const blobType = isMp4 ? 'audio/mp4' : 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
+        
         stream.getTracks().forEach(track => track.stop());
+
+        if (audioBlob.size === 0) {
+          alert("تنبيه: التسجيل الصوتي فارغ، يرجى المحاولة مرة أخرى.");
+          return;
+        }
 
         setIsUploadingImage(true);
         try {
           const formData = new FormData();
-          const extension = mediaRecorder.mimeType?.includes('mp4') ? 'm4a' : 'mp3';
+          // Use 'mp4' instead of 'm4a' since top4top.io does not support '.m4a'
+          const extension = isMp4 ? 'mp4' : 'mp3';
           formData.append("file", audioBlob, `dm_voice_${Date.now()}.${extension}`);
 
           const uploadRes = await fetch("/api/v1/upload-media", {
@@ -1194,6 +1286,7 @@ export default function DirectMessagesScreen() {
                             transform: `scale(${(parseFloat(profileCache[activeChatFriendId]?.avatarZoom || '100')) / 100})`
                           }}
                           alt="" 
+                          referrerPolicy="no-referrer"
                         />
                       ) : (
                         AVATARS.find(a => a.id === profileCache[activeChatFriendId]?.avatar)?.svg
@@ -1258,6 +1351,7 @@ export default function DirectMessagesScreen() {
                                   transform: `scale(${(parseFloat(isMe ? (localStorage.getItem('user_avatar_zoom') || '100') : (senderProfile?.avatarZoom || '100'))) / 100})`
                                 }}
                                 alt="" 
+                                referrerPolicy="no-referrer"
                               />
                             ) : (
                               avatarObj?.svg
@@ -1562,7 +1656,7 @@ export default function DirectMessagesScreen() {
         </div>
       )}
 
-      <BottomNav />
+      {!activeChatFriendId && <BottomNav />}
     </div>
   );
 }

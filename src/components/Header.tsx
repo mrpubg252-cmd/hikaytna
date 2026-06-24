@@ -204,8 +204,8 @@ export default function Header() {
         
         <div className="flex items-center gap-3 sm:gap-6">
           <div className="flex items-center gap-2 sm:gap-4">
-             <button 
-                onClick={() => setIsAiOpen(true)}
+             <Link 
+                to="/hakeem"
                 className="w-10 h-10 rounded-full flex items-center justify-center bg-primary/10 text-primary hover:bg-primary/20 transition-all border border-primary/20 cursor-pointer relative group"
                 title="ذكاء اصطناعي (حكيم)"
               >
@@ -214,7 +214,7 @@ export default function Header() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                 </span>
-              </button>
+              </Link>
              <button 
                 onClick={() => setIsSearchOpen(true)}
                 className="w-10 h-10 rounded-full flex items-center justify-center bg-white/5 text-zinc-400 hover:text-primary transition-all border border-white/5"

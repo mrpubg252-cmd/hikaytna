@@ -19,15 +19,41 @@ import ProfileTemplateOverlay from './ProfileTemplateOverlay';
 
 const getProxiedUrl = (url?: string) => {
   if (!url) return '';
-  if (
-    url.startsWith('https://f.top4top.') || 
-    url.startsWith('http://f.top4top.') || 
-    url.includes('top4top.') ||
-    url.includes('catbox.moe') ||
-    url.startsWith('http://')
-  ) {
-    return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
+  const lower = url.toLowerCase();
+  
+  // If it's a relative URL or already proxied, return as-is
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return url;
   }
+
+  // Check if it's a known image format or has "image" related words
+  const isImage = 
+    lower.endsWith('.png') || 
+    lower.endsWith('.jpg') || 
+    lower.endsWith('.jpeg') || 
+    lower.endsWith('.gif') || 
+    lower.endsWith('.webp') || 
+    lower.endsWith('.svg') ||
+    lower.includes('/avatar') ||
+    lower.includes('avatar') ||
+    lower.includes('image');
+
+  // Check if we need to proxy (top4top, catbox, or any other external media)
+  const needsProxy = 
+    lower.includes('top4top') || 
+    lower.includes('catbox') || 
+    lower.includes('moe') ||
+    url.startsWith('http://') || 
+    url.startsWith('https://');
+
+  if (needsProxy) {
+    if (isImage) {
+      return `/api/v1/image-proxy?url=${encodeURIComponent(url)}`;
+    } else {
+      return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
+    }
+  }
+
   return url;
 };
 
@@ -1291,17 +1317,35 @@ export default function SeriesChat({
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
       
+      const isIOSorSafari = /iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent) || 
+        (navigator.userAgent.includes("Safari") && !navigator.userAgent.includes("Chrome"));
+      
       // Determine best MIME type for the browser (Safari prefers audio/mp4)
       let mimeType = 'audio/webm';
-      if (typeof MediaRecorder.isTypeSupported === 'function') {
-        if (MediaRecorder.isTypeSupported('audio/mp4')) {
+      if (isIOSorSafari) {
+        mimeType = 'audio/mp4';
+      } else if (typeof MediaRecorder.isTypeSupported === 'function') {
+        if (MediaRecorder.isTypeSupported('audio/webm')) {
+          mimeType = 'audio/webm';
+        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
           mimeType = 'audio/mp4';
         } else if (MediaRecorder.isTypeSupported('audio/aac')) {
           mimeType = 'audio/aac';
         }
       }
 
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      let options: any = {};
+      if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(mimeType)) {
+        options = { mimeType };
+      } else if (isIOSorSafari) {
+        try {
+          options = { mimeType: 'audio/mp4' };
+        } catch (e) {
+          options = {};
+        }
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
@@ -1311,14 +1355,23 @@ export default function SeriesChat({
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
+        const isMp4 = mediaRecorder.mimeType?.includes('mp4') || mediaRecorder.mimeType?.includes('aac') || isIOSorSafari;
+        const blobType = isMp4 ? 'audio/mp4' : 'audio/webm';
+        const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
+        
         // Release hardware mic resource
         stream.getTracks().forEach(track => track.stop());
+
+        if (audioBlob.size === 0) {
+          alert("تنبيه: التسجيل الصوتي فارغ، يرجى المحاولة مرة أخرى.");
+          return;
+        }
 
         setUploadingImage(true);
         try {
           const formData = new FormData();
-          const extension = mediaRecorder.mimeType?.includes('mp4') ? 'm4a' : 'mp3';
+          // Use 'mp4' instead of 'm4a' since top4top.io does not support '.m4a'
+          const extension = isMp4 ? 'mp4' : 'mp3';
           formData.append("file", audioBlob, `voice_${Date.now()}.${extension}`);
 
           const uploadEndpoint = getApiUrl ? getApiUrl("/api/v1/upload-media") : "/api/v1/upload-media";
@@ -1800,6 +1853,7 @@ export default function SeriesChat({
                         transform: `scale(${(parseFloat(displayAvatarZoom)) / 100})`
                       }}
                       alt="Avatar" 
+                      referrerPolicy="no-referrer"
                     />
                   ) : (
                     msgAvatarObj?.svg

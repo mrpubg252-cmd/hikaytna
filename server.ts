@@ -61,6 +61,34 @@ let USER_CUSTOM_AI_CONFIG: {
   type: 'gemini' | 'openai';
 } | null = null;
 
+async function getDynamicAiConfig() {
+  const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || "mo-play-b0cb7";
+  try {
+    const res = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, { timeout: 3000 });
+    if (res.data && res.data.key) {
+      USER_CUSTOM_AI_CONFIG = res.data;
+      return res.data;
+    }
+  } catch (err: any) {
+    // silent fallback
+  }
+
+  try {
+    const res = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_admin_ai_config`, { timeout: 3000 });
+    if (res.data && res.data.fields && res.data.fields.data && res.data.fields.data.stringValue) {
+      const parsed = JSON.parse(res.data.fields.data.stringValue);
+      if (parsed && parsed.key) {
+        USER_CUSTOM_AI_CONFIG = parsed;
+        return parsed;
+      }
+    }
+  } catch (err: any) {
+    // silent fallback
+  }
+
+  return USER_CUSTOM_AI_CONFIG;
+}
+
 // ============ Remote GitHub Chatbot Controller ============
 let lastFetchedConfigTime = 0;
 let cachedRemoteConfig: any = null;
@@ -235,7 +263,7 @@ function getGeminiClient(customKey?: string) {
   return geminiClientInstance;
 }
 
-async function callGeminiFallback(msg: string, systemPrompt: string, history: any[]) {
+async function callGeminiFallback(msg: string, systemPrompt: string, history: any[], image?: any, audio?: any) {
   try {
     if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.type === 'openai') {
       return { ok: false, error: "using_custom_openai" };
@@ -300,13 +328,36 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
       }
     }
 
-    // Append the current message
+    // Append the current user message with image/audio support
+    const userParts: any[] = [{ text: msg }];
+    
+    if (image && image.data && image.mimeType) {
+      userParts.push({
+        inlineData: {
+          mimeType: image.mimeType,
+          data: image.data
+        }
+      });
+    }
+
+    if (audio && audio.data && audio.mimeType) {
+      userParts.push({
+        inlineData: {
+          mimeType: audio.mimeType,
+          data: audio.data
+        }
+      });
+    }
+
     if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
       contents[contents.length - 1].parts[0].text += "\n" + msg;
+      if (userParts.length > 1) {
+        contents[contents.length - 1].parts.push(...userParts.slice(1));
+      }
     } else {
       contents.push({
         role: 'user',
-        parts: [{ text: msg }]
+        parts: userParts
       });
     }
 
@@ -355,7 +406,7 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
 }
 
 // Unified Robust AI Caller for Hakeem (Direct Priority)
-async function smartChat(msg: string, systemPrompt: string, history: any[]) {
+async function smartChat(msg: string, systemPrompt: string, history: any[], image?: any, audio?: any) {
   // 1. Priority: Custom Overrides (Set by Admin)
   if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key) {
     if (USER_CUSTOM_AI_CONFIG.type === 'openai') {
@@ -367,14 +418,14 @@ async function smartChat(msg: string, systemPrompt: string, history: any[]) {
       const rCustom = await callDeepSeek(msg, systemPrompt, history, 0, customConfig, true);
       if (rCustom.ok && rCustom.reply) return rCustom;
     } else {
-      const rCustomGemini = await callGeminiFallback(msg, systemPrompt, history);
+      const rCustomGemini = await callGeminiFallback(msg, systemPrompt, history, image, audio);
       if (rCustomGemini.ok && rCustomGemini.reply) return rCustomGemini;
     }
   }
 
   // 2. Priority: Stable Platform Google Gemini Key (Highly reliable, provided by AI Studio environment)
   if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY") {
-    const rPlatform = await callGeminiFallback(msg, systemPrompt, history);
+    const rPlatform = await callGeminiFallback(msg, systemPrompt, history, image, audio);
     if (rPlatform.ok && rPlatform.reply) {
       return rPlatform;
     }
@@ -393,7 +444,7 @@ async function smartChat(msg: string, systemPrompt: string, history: any[]) {
   }
 
   // 4. Absolute Final Backstop
-  const gemiResult = await callGeminiFallback(msg, systemPrompt, history);
+  const gemiResult = await callGeminiFallback(msg, systemPrompt, history, image, audio);
   if (gemiResult.ok && gemiResult.reply) {
     return { ok: true, reply: gemiResult.reply };
   }
@@ -2158,8 +2209,12 @@ async function startServer() {
     apiCache.set(`ratelimit:${clientIp}`, { data: true, expiresAt: now + 2000 });
 
     try {
-      const { message, history = [], seriesList = [] } = req.body;
+      const { message, history = [], seriesList = [], image, audio } = req.body;
       if (!message) return res.status(400).json({ status: false, error: "المحتوى فارغ" });
+
+      // Fetch latest AI configuration dynamically from Firebase (RTDB/Firestore)
+      // This enables live key updates without rebuilding or restarting the server!
+      await getDynamicAiConfig();
 
       // Fetch remote configuration dynamically from GitHub raw JSON
       const remoteConfig = await getRemoteConfig();
@@ -2210,7 +2265,7 @@ async function startServer() {
 إليك قائمة المسلسلات المتوفرة على منصة حكايتنا لتطابقها بذكاء مع أوصاف وتفاصيل المستخدمين:
 ${seriesContext}`;
 
-      const result = await smartChat(message, systemInstruction, history);
+      const result = await smartChat(message, systemInstruction, history, image, audio);
 
       res.json({
         status: true,

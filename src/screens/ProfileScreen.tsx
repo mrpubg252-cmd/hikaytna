@@ -30,6 +30,46 @@ import BottomNav from '../components/BottomNav';
 import ProfileTemplateOverlay from '../components/ProfileTemplateOverlay';
 import { syncProfileToFirebase } from '../utils/profileSync';
 
+const getProxiedUrl = (url?: string) => {
+  if (!url) return '';
+  const lower = url.toLowerCase();
+  
+  // If it's a relative URL or already proxied, return as-is
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return url;
+  }
+
+  // Check if it's a known image format or has "image" related words
+  const isImage = 
+    lower.endsWith('.png') || 
+    lower.endsWith('.jpg') || 
+    lower.endsWith('.jpeg') || 
+    lower.endsWith('.gif') || 
+    lower.endsWith('.webp') || 
+    lower.endsWith('.svg') ||
+    lower.includes('/avatar') ||
+    lower.includes('avatar') ||
+    lower.includes('image');
+
+  // Check if we need to proxy (top4top, catbox, or any other external media)
+  const needsProxy = 
+    lower.includes('top4top') || 
+    lower.includes('catbox') || 
+    lower.includes('moe') ||
+    url.startsWith('http://') || 
+    url.startsWith('https://');
+
+  if (needsProxy) {
+    if (isImage) {
+      return `/api/v1/image-proxy?url=${encodeURIComponent(url)}`;
+    } else {
+      return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
+    }
+  }
+
+  return url;
+};
+
 export default function ProfileScreen() {
   const [currentName, setCurrentName] = useState(() => {
     return localStorage.getItem('guest_chat_name') || 'غير مسجل (حساب زائر)';
@@ -316,13 +356,14 @@ export default function ProfileScreen() {
                   
                   {avatarUrl ? (
                     <img 
-                      src={avatarUrl} 
+                      src={getProxiedUrl(avatarUrl)} 
                       className="w-full h-full object-cover rounded-full" 
                       style={{ 
                         objectPosition: `${horizontalPos}% ${verticalPos}%`,
                         transform: `scale(${zoomVal / 100})`
                       }}
                       alt="Profile" 
+                      referrerPolicy="no-referrer"
                     />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-tr from-zinc-950 to-zinc-900 flex items-center justify-center rounded-full">
@@ -335,8 +376,17 @@ export default function ProfileScreen() {
                     <ProfileTemplateOverlay template={selectedTemplate} />
                   )}
                   
-                  {/* Photo Edit Trigger on Hover */}
-                  <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center cursor-pointer z-40">
+                  {/* Native transparent input overlay that covers the entire circle */}
+                  <input 
+                    type="file" 
+                    className="absolute inset-0 opacity-0 cursor-pointer z-50 w-full h-full" 
+                    accept="image/*" 
+                    onChange={handleAvatarUpload} 
+                    disabled={isUploadingAvatar} 
+                  />
+
+                  {/* Visual hover overlay styled purely for design, pointer-events-none so it doesn't block clicks */}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center z-40 pointer-events-none">
                     <div className="p-2 bg-white/10 rounded-full mb-1">
                       {isUploadingAvatar ? (
                         <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
@@ -348,8 +398,15 @@ export default function ProfileScreen() {
                       )}
                     </div>
                     <span className="text-[9px] font-black text-white">تغيير الصورة</span>
-                    <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={isUploadingAvatar} />
-                  </label>
+                  </div>
+                </div>
+
+                {/* Floating camera edit badge in bottom-right corner, pointer-events-none so click goes through to input */}
+                <div className="absolute bottom-1.5 right-1.5 bg-red-600 hover:bg-red-700 text-white p-2 rounded-full z-30 shadow-lg border-2 border-zinc-950 transition active:scale-90 pointer-events-none">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
                 </div>
 
                 {isUploadingAvatar && (
@@ -512,7 +569,7 @@ export default function ProfileScreen() {
                               <div className="w-full h-full rounded-full overflow-hidden bg-zinc-900 relative flex items-center justify-center">
                                 {avatarUrl ? (
                                   <img 
-                                    src={avatarUrl} 
+                                    src={getProxiedUrl(avatarUrl)} 
                                     className="w-full h-full object-cover rounded-full" 
                                     style={{ 
                                       objectPosition: `${horizontalPos}% ${verticalPos}%`,

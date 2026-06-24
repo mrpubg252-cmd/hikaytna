@@ -15,6 +15,7 @@ import ChatScreen from './screens/ChatScreen';
 import DirectMessagesScreen from './screens/DirectMessagesScreen';
 import AdminScreen from './screens/AdminScreen';
 import MatchesScreen from './screens/MatchesScreen';
+import HakeemScreen from './screens/HakeemScreen';
 import { getApiUrl } from './lib/apiConfig';
 import AppIntro from './components/AppIntro';
 import InstallWizard from './components/InstallWizard';
@@ -247,6 +248,7 @@ function AppLayout() {
         <Route path="/shorts" element={<DirectMessagesScreen />} />
         <Route path="/dms" element={<DirectMessagesScreen />} />
         <Route path="/matches" element={<MatchesScreen />} />
+        <Route path="/hakeem" element={<HakeemScreen />} />
         <Route path="/admin" element={<AdminScreen />} />
       </Routes>
 

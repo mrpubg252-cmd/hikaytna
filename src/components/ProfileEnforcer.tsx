@@ -157,19 +157,18 @@ export default function ProfileEnforcer() {
             <div className="flex flex-col items-center gap-6">
               <div className="relative">
                 {/* Main clickable circle */}
-                <button
-                  type="button"
-                  onClick={triggerFileSelect}
+                <div
                   className="w-36 h-36 rounded-full border-4 border-zinc-900 overflow-hidden bg-gradient-to-br from-zinc-900 to-black hover:from-zinc-850 hover:to-zinc-950 flex items-center justify-center shadow-2xl transition-all duration-300 hover:border-red-600/50 relative active:scale-95 group focus:outline-none"
-                  disabled={isAdjusting}
                 >
-                  <input 
-                    ref={fileInputRef}
-                    type="file" 
-                    accept="image/*" 
-                    className="hidden"
-                    onChange={handleFileSelect}
-                  />
+                  {!isAdjusting && (
+                    <input 
+                      ref={fileInputRef}
+                      type="file" 
+                      accept="image/*" 
+                      className="absolute inset-0 opacity-0 cursor-pointer z-50 w-full h-full"
+                      onChange={handleFileSelect}
+                    />
+                  )}
 
                   {isAdjusting ? (
                     <div className="w-[120px] h-[120px] rounded-full overflow-hidden relative border-2 border-dashed border-zinc-700 bg-zinc-950 flex items-center justify-center">
@@ -207,6 +206,7 @@ export default function ProfileEnforcer() {
                               transform: `scale(${zoomVal / 100})`
                             }}
                             alt="Custom Avatar" 
+                            referrerPolicy="no-referrer"
                           />
                           {/* Hover Overlay */}
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center rounded-full">
@@ -232,11 +232,11 @@ export default function ProfileEnforcer() {
                     </div>
                   )}
                   {isUploading && (
-                    <div className="absolute inset-0 bg-black/65 flex items-center justify-center z-40">
+                    <div className="absolute inset-0 bg-black/65 flex items-center justify-center z-45">
                       <div className="w-6 h-6 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
                     </div>
                   )}
-                </button>
+                </div>
               </div>
 
               {/* Adjustment Controls with high-quality sliders */}
