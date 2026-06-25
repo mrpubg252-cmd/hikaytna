@@ -25,7 +25,8 @@ import {
   ChevronLeft,
   Copy,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Pencil
 } from 'lucide-react';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { ref, push, set, onValue, remove, get, getDatabase, Database } from 'firebase/database';
@@ -242,6 +243,7 @@ export default function DirectMessagesScreen() {
   const [activeChatFriendId, setActiveChatFriendId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<DirectMessage[]>([]);
   const [inputText, setInputText] = useState('');
+  const [editingMsg, setEditingMsg] = useState<DirectMessage | null>(null);
   const [attachedImage, setAttachedImage] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
@@ -685,11 +687,41 @@ export default function DirectMessagesScreen() {
     }
   };
 
+  // Delete Private Message
+  const handleDeletePrivateMessage = async (msgId: string) => {
+    if (!db || !myId || !activeChatFriendId) return;
+    if (!confirm('هل أنت متأكد من حذف هذه الرسالة؟')) return;
+    const chatKey = [myId, activeChatFriendId].sort().join('_');
+    try {
+      await remove(ref(db, `private_chats/${chatKey}/${msgId}`));
+    } catch (err) {
+      console.error("Delete message error:", err);
+    }
+  };
+
   // Send Direct Message
   const handleSendPrivateMessage = async (textOverride?: string, customImg?: string, customAud?: string, isStickerOption = false) => {
     if (!db || !myId || !activeChatFriendId) return;
 
     const txt = textOverride !== undefined ? textOverride : inputText.trim();
+
+    if (editingMsg) {
+      if (!txt) return;
+      const chatKey = [myId, activeChatFriendId].sort().join('_');
+      try {
+        await set(ref(db, `private_chats/${chatKey}/${editingMsg.id}/text`), txt);
+        
+        // Update user conversations lastMessage for both users
+        await set(ref(db, `user_conversations/${myId}/${activeChatFriendId}/lastMessage`), txt);
+        await set(ref(db, `user_conversations/${activeChatFriendId}/${myId}/lastMessage`), txt);
+      } catch (err) {
+        console.error("Edit message error:", err);
+      }
+      setEditingMsg(null);
+      setInputText('');
+      return;
+    }
+
     const finalImg = customImg !== undefined ? customImg : attachedImage;
     const finalAud = customAud !== undefined ? customAud : '';
 
@@ -1295,10 +1327,14 @@ export default function DirectMessagesScreen() {
                 <div className="px-4 py-3 border-b border-white/5 bg-zinc-950/80 flex items-center justify-between select-none">
                   <div className="flex items-center gap-3">
                     <button 
-                      onClick={() => setActiveChatFriendId(null)}
-                      className="md:hidden p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-all"
+                      onClick={() => {
+                        setActiveChatFriendId(null);
+                        setEditingMsg(null);
+                      }}
+                      className="p-2 bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white rounded-xl transition-all flex items-center gap-1.5 border border-white/5 cursor-pointer text-xs font-black"
                     >
                       <ArrowLeft className="w-4 h-4" />
+                      <span>رجوع</span>
                     </button>
 
                     <div 
@@ -1363,7 +1399,7 @@ export default function DirectMessagesScreen() {
                         <div
                           key={msg.id}
                           className={cn(
-                            "flex items-start gap-2.5",
+                            "flex items-start gap-2.5 group",
                             isMe ? "flex-row-reverse text-right" : "flex-row text-right"
                           )}
                         >
@@ -1397,26 +1433,52 @@ export default function DirectMessagesScreen() {
                               </span>
                             </div>
 
-                            <div
-                              className={cn(
-                                "relative px-3.5 py-2 rounded-2xl text-[12px] font-semibold leading-relaxed shadow-lg transition-all",
-                                isMe ? "bg-primary text-black rounded-tr-none" : "bg-zinc-900 border border-white/5 text-zinc-100 rounded-tl-none"
-                              )}
-                            >
-                              {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
+                            <div className={cn("flex items-center gap-2", isMe ? "flex-row" : "flex-row-reverse")}>
+                              <div
+                                className={cn(
+                                  "relative px-3.5 py-2 rounded-2xl text-[12px] font-semibold leading-relaxed shadow-lg transition-all",
+                                  isMe ? "bg-primary text-black rounded-tr-none" : "bg-zinc-900 border border-white/5 text-zinc-100 rounded-tl-none"
+                                )}
+                              >
+                                {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
 
-                              {msg.imageUrl && (
-                                <div className={cn("rounded-xl overflow-hidden mt-1 max-w-sm", msg.isSticker ? "w-28 h-28 bg-transparent" : "aspect-video bg-zinc-950")}>
-                                  <img 
-                                    src={getProxiedUrl(msg.imageUrl)} 
-                                    alt="Shared media" 
-                                    className="w-full h-full object-contain" 
-                                  />
+                                {msg.imageUrl && (
+                                  <div className={cn("rounded-xl overflow-hidden mt-1 max-w-sm", msg.isSticker ? "w-28 h-28 bg-transparent" : "aspect-video bg-zinc-950")}>
+                                    <img 
+                                      src={getProxiedUrl(msg.imageUrl)} 
+                                      alt="Shared media" 
+                                      className="w-full h-full object-contain" 
+                                    />
+                                  </div>
+                                )}
+
+                                {msg.audioUrl && (
+                                  <CustomAudioPlayer src={msg.audioUrl} />
+                                )}
+                              </div>
+
+                              {isMe && (
+                                <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all duration-150 shrink-0 self-center">
+                                  {msg.text && (
+                                    <button
+                                      onClick={() => {
+                                        setEditingMsg(msg);
+                                        setInputText(msg.text || '');
+                                      }}
+                                      className="p-1.5 bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-amber-400 rounded-lg transition-all border border-white/5 cursor-pointer"
+                                      title="تعديل الرسالة"
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => handleDeletePrivateMessage(msg.id)}
+                                    className="p-1.5 bg-zinc-900/80 hover:bg-red-950/40 text-zinc-400 hover:text-red-500 rounded-lg transition-all border border-white/5 cursor-pointer"
+                                    title="حذف الرسالة"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
                                 </div>
-                              )}
-
-                              {msg.audioUrl && (
-                                <CustomAudioPlayer src={msg.audioUrl} />
                               )}
                             </div>
                           </div>
@@ -1431,6 +1493,27 @@ export default function DirectMessagesScreen() {
                 {/* Input panel */}
                 <div className="p-3 border-t border-white/5 bg-zinc-950/80 flex flex-col gap-2 select-none relative">
                   
+                  {/* Editing Message Banner Indicator */}
+                  {editingMsg && (
+                    <div className="flex items-center justify-between bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-xl text-[10px] text-amber-400 font-bold mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse shrink-0" />
+                        <span>تعديل رسالتك السابقة:</span>
+                        <span className="text-zinc-400 font-normal truncate max-w-[150px]">{editingMsg.text}</span>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setEditingMsg(null);
+                          setInputText('');
+                        }}
+                        className="text-zinc-500 hover:text-white p-1 cursor-pointer shrink-0"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
                   {/* Attached media previews */}
                   {attachedImage && (
                     <div className="relative inline-block mr-auto ml-3 bg-zinc-900 border border-zinc-800 p-1 rounded-xl mb-1">

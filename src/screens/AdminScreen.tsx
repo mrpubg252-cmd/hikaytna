@@ -63,6 +63,9 @@ export default function AdminScreen() {
   const [appIosDownloadUrl, setAppIosDownloadUrl] = useState('');
   const [blockShortsOnBrowser, setBlockShortsOnBrowser] = useState(true);
   const [geminiKey, setGeminiKey] = useState('');
+  const [aiBaseUrl, setAiBaseUrl] = useState('');
+  const [aiModel, setAiModel] = useState('');
+  const [aiType, setAiType] = useState<'gemini' | 'openai'>('gemini');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [guideTab, setGuideTab] = useState<'flutter' | 'android' | 'ios' | 'query'>('flutter');
 
@@ -173,11 +176,12 @@ export default function AdminScreen() {
     };
   }, [isAuthenticated]);
 
-  // Load AI Configuration (Gemini API Key)
+  // Load AI Configuration (Gemini/OpenAI API Key)
   useEffect(() => {
     if (!isAuthenticated) return;
     
     let isMounted = true;
+    let unsubscribeRtdb: (() => void) | null = null;
 
     const loadAiConfig = async () => {
       // 1. Try Firestore 'shorts/app_admin_ai_config'
@@ -190,6 +194,9 @@ export default function AdminScreen() {
               const parsed = JSON.parse(val.data);
               if (parsed && parsed.key) {
                 setGeminiKey(parsed.key);
+                setAiBaseUrl(parsed.baseUrl || '');
+                setAiModel(parsed.model || '');
+                setAiType(parsed.type || (parsed.key.startsWith('sk-') ? 'openai' : 'gemini'));
                 return;
               }
             } catch (e) {}
@@ -202,15 +209,15 @@ export default function AdminScreen() {
       // 2. Try RTDB 'ai_config'
       try {
         const aiConfigRef = ref(db, 'ai_config');
-        const unsubscribe = onValue(aiConfigRef, (snapshot) => {
+        unsubscribeRtdb = onValue(aiConfigRef, (snapshot) => {
           const val = snapshot.val();
           if (val && val.key && isMounted) {
             setGeminiKey(val.key);
+            setAiBaseUrl(val.baseUrl || '');
+            setAiModel(val.model || '');
+            setAiType(val.type || (val.key.startsWith('sk-') ? 'openai' : 'gemini'));
           }
         });
-        return () => {
-          unsubscribe();
-        };
       } catch (e) {
         console.error("Failed to load AI config from RTDB:", e);
       }
@@ -219,6 +226,9 @@ export default function AdminScreen() {
     loadAiConfig();
     return () => {
       isMounted = false;
+      if (unsubscribeRtdb) {
+        unsubscribeRtdb();
+      }
     };
   }, [isAuthenticated]);
 
@@ -233,12 +243,15 @@ export default function AdminScreen() {
         block_shorts_on_browser: blockShortsOnBrowser
       });
 
-      // Save Gemini API Key to Firestore
+      // Save AI Key and Config to Firestore
       if (geminiKey.trim()) {
+        const computedType = geminiKey.trim().startsWith('sk-') ? 'openai' : aiType;
         await setDoc(doc(firestore, 'shorts', 'app_admin_ai_config'), {
           data: JSON.stringify({
-            type: 'gemini',
-            key: geminiKey.trim()
+            type: computedType,
+            key: geminiKey.trim(),
+            baseUrl: aiBaseUrl.trim(),
+            model: aiModel.trim()
           })
         });
       }
@@ -252,9 +265,12 @@ export default function AdminScreen() {
         });
 
         if (geminiKey.trim()) {
+          const computedType = geminiKey.trim().startsWith('sk-') ? 'openai' : aiType;
           await set(ref(db, 'ai_config'), {
-            type: 'gemini',
-            key: geminiKey.trim()
+            type: computedType,
+            key: geminiKey.trim(),
+            baseUrl: aiBaseUrl.trim(),
+            model: aiModel.trim()
           });
         }
       } catch (rtdbErr) {
@@ -923,23 +939,95 @@ export default function AdminScreen() {
                 />
               </div>
 
-              <div className="space-y-2 p-5 bg-gradient-to-br from-primary/10 to-indigo-950/20 border border-primary/20 rounded-2xl relative overflow-hidden group">
+              <div className="space-y-4 p-5 bg-gradient-to-br from-primary/10 to-indigo-950/20 border border-primary/20 rounded-2xl relative overflow-hidden group">
                 <div className="absolute top-[-30px] left-[-30px] w-20 h-20 rounded-full bg-primary/10 blur-xl pointer-events-none" />
-                <label className="text-xs font-black text-zinc-300 flex items-center gap-2 mb-2">
+                <label className="text-xs font-black text-zinc-300 flex items-center gap-2 mb-1">
                   <Sparkles className="w-4 h-4 text-primary animate-pulse" />
-                  مفتاح ذكاء اصطناعي (Google Gemini API Key)
+                  إعدادات المستشار الذكي (حكيم AI Config)
                 </label>
-                <p className="text-[10px] text-zinc-400 mb-3 leading-relaxed">
-                  يستخدم هذا المفتاح لتشغيل المستشار الذكي حكيم والإجابة على الرسائل الصوتية وتحليل الصور واللقطات المرفقة مباشرة. يمكنك استبداله في أي وقت هنا دون الحاجة لإعادة رفع التطبيق!
+                <p className="text-[10px] text-zinc-400 leading-relaxed mb-1">
+                  يستخدم هذا المفتاح لتشغيل حكيم والإجابة على الرسائل الصوتية والصور. يمكنك استخدام مفتاح Google Gemini أو أي مفتاح آخر متوافق مع OpenAI (مثل DeepSeek أو Groq أو ChatGPT).
                 </p>
-                <input
-                  type="text"
-                  placeholder="AIzaSy..."
-                  value={geminiKey}
-                  onChange={(e) => setGeminiKey(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-xs font-mono"
-                  dir="ltr"
-                />
+
+                {/* API Provider Type */}
+                <div className="grid grid-cols-2 gap-2 mt-2 select-none">
+                  <button
+                    type="button"
+                    onClick={() => setAiType('gemini')}
+                    className={cn(
+                      "px-3 py-2 rounded-xl text-xs font-black border transition-all cursor-pointer flex flex-col items-center justify-center gap-1",
+                      aiType === 'gemini' 
+                        ? 'bg-primary/20 border-primary text-primary' 
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                    )}
+                  >
+                    <span>Google Gemini</span>
+                    <span className="text-[8px] opacity-70 font-normal">الموصى به (سريع ومجاني)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAiType('openai')}
+                    className={cn(
+                      "px-3 py-2 rounded-xl text-xs font-black border transition-all cursor-pointer flex flex-col items-center justify-center gap-1",
+                      aiType === 'openai' 
+                        ? 'bg-primary/20 border-primary text-primary' 
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                    )}
+                  >
+                    <span>OpenAI / Custom API</span>
+                    <span className="text-[8px] opacity-70 font-normal">DeepSeek, Groq, ChatGPT</span>
+                  </button>
+                </div>
+
+                {/* API Key Input */}
+                <div className="space-y-1.5 mt-2">
+                  <label className="text-[10px] font-black text-zinc-400">
+                    مفتاح الـ API Key الخاص بك:
+                  </label>
+                  <input
+                    type="password"
+                    placeholder={aiType === 'openai' ? "sk-..." : "AIzaSy..."}
+                    value={geminiKey}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setGeminiKey(val);
+                      // Auto-detect openai if key starts with sk-
+                      if (val.trim().startsWith('sk-')) {
+                        setAiType('openai');
+                      }
+                    }}
+                    className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-xs font-mono"
+                    dir="ltr"
+                  />
+                </div>
+
+                {/* Optional Configuration for OpenAI / Custom Providers */}
+                {aiType === 'openai' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1.5 pt-2 border-t border-white/5 animate-fadeIn">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-zinc-400">رابط الـ Base URL المخصص (اختياري):</label>
+                      <input
+                        type="url"
+                        placeholder="https://api.openai.com/v1"
+                        value={aiBaseUrl}
+                        onChange={(e) => setAiBaseUrl(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 text-zinc-200 rounded-xl px-3 py-2 outline-none focus:border-primary transition-all text-[10px] font-mono"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-zinc-400">اسم النموذج المخصص (Model - اختياري):</label>
+                      <input
+                        type="text"
+                        placeholder="gpt-4o-mini"
+                        value={aiModel}
+                        onChange={(e) => setAiModel(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 text-zinc-200 rounded-xl px-3 py-2 outline-none focus:border-primary transition-all text-[10px] font-mono"
+                        dir="ltr"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="p-4 bg-zinc-950/80 rounded-2xl border border-zinc-800/80 space-y-4">

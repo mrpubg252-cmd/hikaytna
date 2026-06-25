@@ -150,12 +150,27 @@ export default function HakeemScreen() {
     setIsSpeaking(false);
   };
 
+  const unlockSpeechSynthesis = () => {
+    try {
+      if (window.speechSynthesis) {
+        const utterance = new SpeechSynthesisUtterance("");
+        utterance.volume = 0;
+        utterance.rate = 1.0;
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch (e) {
+      console.warn("Speech synthesis unlock failed:", e);
+    }
+  };
+
   const toggleSound = () => {
     const nextState = !isSoundMuted;
     setIsSoundMuted(nextState);
     localStorage.setItem('hakeem_sound_muted', String(nextState));
     if (nextState) {
       stopSpeaking();
+    } else {
+      unlockSpeechSynthesis();
     }
   };
 
@@ -306,6 +321,7 @@ export default function HakeemScreen() {
 
   // Message Sender
   const handleSend = async (textToSend: string, forceVoiceBase64?: string) => {
+    unlockSpeechSynthesis();
     const finalMsg = textToSend.trim();
     const hasVoice = !!(forceVoiceBase64 || audioBase64);
     
@@ -478,17 +494,23 @@ export default function HakeemScreen() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Audio toggle button */}
+          {/* Audio toggle button with clear text for absolute UX clarity */}
           <button 
             onClick={toggleSound}
-            className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-full flex items-center gap-2 border text-xs font-bold transition-all cursor-pointer ${
               isSoundMuted 
-                ? 'bg-zinc-900 border-white/5 text-zinc-400 hover:text-zinc-200' 
-                : 'bg-primary/10 border-primary/20 text-primary hover:bg-primary/20'
+                ? 'bg-zinc-900 border-white/5 text-zinc-400 hover:text-zinc-200 hover:border-white/10' 
+                : 'bg-primary/10 border-primary/20 text-primary hover:bg-primary/20 hover:border-primary/40'
             }`}
-            title={isSoundMuted ? "تشغيل الصوت" : "كتم صوت حكيم"}
+            title={isSoundMuted ? "تفعيل النطق الصوتي لحكيم" : "تعطيل النطق الصوتي لحكيم"}
           >
-            {isSoundMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            {isSoundMuted ? <VolumeX className="w-4 h-4 shrink-0" /> : <Volume2 className="w-4 h-4 shrink-0 animate-pulse text-primary" />}
+            <span className="hidden md:inline font-bold">
+              {isSoundMuted ? "نطق الإجابة بالصوت: معطل (اضغط للتفعيل)" : "نطق الإجابة بالصوت: مفعل (اضغط للإيقاف)"}
+            </span>
+            <span className="inline md:hidden font-bold">
+              {isSoundMuted ? "تشغيل صوت حكيم" : "إيقاف صوت حكيم"}
+            </span>
           </button>
         </div>
       </header>

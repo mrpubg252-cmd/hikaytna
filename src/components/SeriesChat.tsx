@@ -439,14 +439,16 @@ export default function SeriesChat({
     userTemplate?: string;
   }>>({});
 
+  const subscribedProfilesRef = useRef<Record<string, () => void>>({});
+
   useEffect(() => {
     if (!db || messages.length === 0) return;
     
     const uniqueUserIds: string[] = Array.from(new Set(messages.map(m => m.userId).filter((id): id is string => !!id)));
-    const unsubscribes: (() => void)[] = [];
     
     uniqueUserIds.forEach((uid: string) => {
-      if (userProfiles[uid]) return;
+      // If we already have a real-time listener for this user, do not add another one
+      if (subscribedProfilesRef.current[uid]) return;
       
       const userRef = ref(db, `users/${uid}`);
       const unsub = onValue(userRef, (snapshot) => {
@@ -466,13 +468,20 @@ export default function SeriesChat({
           });
         }
       });
-      unsubscribes.push(unsub);
+      subscribedProfilesRef.current[uid] = unsub;
     });
     
-    return () => {
-      unsubscribes.forEach(unsub => unsub());
-    };
   }, [messages, isDbReady]);
+
+  // Cleanup all listeners on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(subscribedProfilesRef.current).forEach(unsub => {
+        if (typeof unsub === 'function') unsub();
+      });
+      subscribedProfilesRef.current = {};
+    };
+  }, []);
 
   const [copiedSticker, setCopiedSticker] = useState<string | null>(() => localStorage.getItem('copied_chat_sticker'));
   const [copiedFeedback, setCopiedFeedback] = useState(false);
@@ -2009,8 +2018,8 @@ export default function SeriesChat({
                   </div>
                   <div 
                     className={cn(
-                      "group relative px-3.5 py-2 rounded-2xl text-[12px] font-semibold leading-relaxed shadow-lg cursor-pointer hover:scale-[0.99] active:scale-[0.97] transition-all",
-                      isMe ? "bg-primary text-black rounded-tr-none hover:opacity-90" : "bg-zinc-900 border border-white/5 text-zinc-100 rounded-tl-none hover:bg-zinc-800"
+                      "group relative px-3.5 py-2 rounded-2xl text-[12px] font-semibold leading-relaxed shadow-lg cursor-default transition-all",
+                      isMe ? "bg-primary text-black rounded-tr-none" : "bg-zinc-900 border border-white/5 text-zinc-100 rounded-tl-none hover:bg-zinc-900/90"
                     )}
                     onClick={(e) => {
                       if ((e.target as HTMLElement).closest('button, a, input, [role="button"], video, audio')) return;

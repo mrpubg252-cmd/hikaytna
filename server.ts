@@ -61,12 +61,51 @@ let USER_CUSTOM_AI_CONFIG: {
   type: 'gemini' | 'openai';
 } | null = null;
 
+function findFirebaseProjectId(): string {
+  // 1. Try environment variable
+  if (process.env.FIREBASE_PROJECT_ID) {
+    return process.env.FIREBASE_PROJECT_ID;
+  }
+  // 2. Try firebase-applet-config.json (AI Studio dynamic configuration)
+  try {
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (config && config.projectId && config.projectId !== "remixed-project-id") {
+        return config.projectId;
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to parse firebase-applet-config.json:", e);
+  }
+  // 3. Try src/services/firebase.ts parsing to be fully portable
+  try {
+    const fbServicePath = path.join(process.cwd(), 'src/services/firebase.ts');
+    if (fs.existsSync(fbServicePath)) {
+      const content = fs.readFileSync(fbServicePath, 'utf-8');
+      const match = content.match(/projectId\s*:\s*["']([^"']+)["']/);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to parse src/services/firebase.ts:", e);
+  }
+  // 4. Default fallback
+  return "mo-play-b0cb7";
+}
+
 async function getDynamicAiConfig() {
-  const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || "mo-play-b0cb7";
+  const firebaseProjectId = findFirebaseProjectId();
   try {
     const res = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, { timeout: 3000 });
     if (res.data && res.data.key) {
       USER_CUSTOM_AI_CONFIG = res.data;
+      if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
+        USER_CUSTOM_AI_CONFIG.type = 'openai';
+        if (!USER_CUSTOM_AI_CONFIG.baseUrl) USER_CUSTOM_AI_CONFIG.baseUrl = 'https://api.openai.com/v1';
+        if (!USER_CUSTOM_AI_CONFIG.model) USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
+      }
       return res.data;
     }
   } catch (err: any) {
@@ -79,6 +118,11 @@ async function getDynamicAiConfig() {
       const parsed = JSON.parse(res.data.fields.data.stringValue);
       if (parsed && parsed.key) {
         USER_CUSTOM_AI_CONFIG = parsed;
+        if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
+          USER_CUSTOM_AI_CONFIG.type = 'openai';
+          if (!USER_CUSTOM_AI_CONFIG.baseUrl) USER_CUSTOM_AI_CONFIG.baseUrl = 'https://api.openai.com/v1';
+          if (!USER_CUSTOM_AI_CONFIG.model) USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
+        }
         return parsed;
       }
     }
@@ -120,6 +164,64 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
   }
   
   try {
+    let cleanBaseUrl = config.baseUrl.trim().replace(/\/$/, "");
+    let cleanModel = config.model;
+
+    const isOpenAiKey = key.startsWith("sk-");
+    const isResponsesModel = cleanModel === "gpt-5.4-mini";
+    const isResponsesEndpoint = cleanBaseUrl.endsWith("/responses") || cleanBaseUrl.includes("/responses") || isResponsesModel;
+
+    // Support OpenAI's responses endpoint if requested or when using gpt-5.4-mini
+    if (isOpenAiKey && isResponsesEndpoint) {
+      try {
+        let targetEndpoint = cleanBaseUrl;
+        if (!targetEndpoint.endsWith("/responses") && !targetEndpoint.includes("/responses")) {
+          targetEndpoint = targetEndpoint.replace(/\/chat\/completions$/, "") + "/responses";
+        }
+        if (!targetEndpoint.startsWith("http")) {
+          targetEndpoint = "https://api.openai.com/v1/responses";
+        }
+
+        const payload = {
+          model: cleanModel || "gpt-5.4-mini",
+          input: `${systemPrompt}\n\n${history.map((m: any) => `${m.role === 'user' ? 'المستخدم' : 'حكيم'}: ${m.text}`).join('\n')}\n\nالمستخدم: ${msg}`,
+          store: true
+        };
+
+        const res = await axios.post(targetEndpoint, payload, {
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${key}`
+          },
+          timeout: 30000
+        });
+
+        let reply = "";
+        if (res.data) {
+          if (res.data.output) {
+            reply = res.data.output;
+          } else if (res.data.response && res.data.response.output) {
+            if (Array.isArray(res.data.response.output)) {
+              reply = res.data.response.output.map((o: any) => o.text || "").join("");
+            } else {
+              reply = res.data.response.output;
+            }
+          } else if (res.data.choices && res.data.choices[0] && res.data.choices[0].message) {
+            reply = res.data.choices[0].message.content;
+          } else if (typeof res.data === "string") {
+            reply = res.data;
+          }
+        }
+
+        if (reply) {
+          return { ok: true, reply };
+        }
+      } catch (err: any) {
+        console.warn("[Responses API Fallback to Chat Completions] error:", err.message);
+        // Fallback to standard chat/completions if the responses API errored or is not available
+      }
+    }
+
     const messages = [
       { role: "system", content: systemPrompt || "أجب بإيجاز وسرعة فائقة. لا تقدم مقدمات. ادخل في صلب الموضوع فوراً." },
       ...history.map((m: any) => ({
@@ -152,8 +254,6 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
       reqHeaders["Authorization"] = `Bearer ${key}`;
     }
 
-    let cleanBaseUrl = config.baseUrl.trim().replace(/\/$/, "");
-    
     // Auto-fix Google OpenAI endpoint path ONLY if completely missing
     if (isGoogleDomain && !cleanBaseUrl.includes("/openai")) {
         if (!cleanBaseUrl.includes("/v1beta") && !cleanBaseUrl.includes("/v1")) {
@@ -163,13 +263,17 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
         }
     }
     // Google OpenAI endpoint handles model names without 'models/' prefix
-    let cleanModel = config.model;
     if (isGoogleDomain && cleanModel.startsWith("models/")) {
       cleanModel = cleanModel.replace("models/", "");
     }
 
-    const res = await axios.post(`${cleanBaseUrl}/chat/completions`, {
-      model: cleanModel,
+    let requestUrl = `${cleanBaseUrl}/chat/completions`;
+    if (!requestUrl.startsWith("http")) {
+      requestUrl = `https://api.openai.com/v1/chat/completions`;
+    }
+
+    const res = await axios.post(requestUrl, {
+      model: cleanModel || "gpt-4o-mini",
       messages,
       temperature: 0.7,
       max_tokens: 800,
