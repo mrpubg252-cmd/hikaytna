@@ -71,7 +71,7 @@ function findFirebaseProjectId(): string {
     const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      if (config && config.projectId && config.projectId !== "remixed-project-id") {
+      if (config && config.projectId) {
         return config.projectId;
       }
     }
@@ -95,8 +95,24 @@ function findFirebaseProjectId(): string {
   return "mo-play-b0cb7";
 }
 
+function findFirebaseDatabaseId(): string {
+  try {
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (config && config.firestoreDatabaseId) {
+        return config.firestoreDatabaseId;
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to parse firebase-applet-config.json for databaseId:", e);
+  }
+  return "(default)";
+}
+
 async function getDynamicAiConfig() {
   const firebaseProjectId = findFirebaseProjectId();
+  const firebaseDatabaseId = findFirebaseDatabaseId();
   try {
     const res = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, { timeout: 3000 });
     if (res.data && res.data.key) {
@@ -113,7 +129,7 @@ async function getDynamicAiConfig() {
   }
 
   try {
-    const res = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_admin_ai_config`, { timeout: 3000 });
+    const res = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_admin_ai_config`, { timeout: 3000 });
     if (res.data && res.data.fields && res.data.fields.data && res.data.fields.data.stringValue) {
       const parsed = JSON.parse(res.data.fields.data.stringValue);
       if (parsed && parsed.key) {

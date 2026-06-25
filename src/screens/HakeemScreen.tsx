@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { fetchAllSeries } from '../services/dataService';
-import { Series } from '../services/firebase';
+import { Series, firestore } from '../services/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { getApiUrl } from '../lib/apiConfig';
 import { navigateToWatchOrAds } from '../utils/watchNavigation';
 
@@ -61,6 +62,12 @@ export default function HakeemScreen() {
 
   // Heart animation / rating reactions
   const [reactions, setReactions] = useState<Record<string, 'liked' | null>>({});
+  const [clientAiConfig, setClientAiConfig] = useState<{
+    type: 'gemini' | 'openai';
+    key: string;
+    baseUrl?: string;
+    model?: string;
+  } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -93,6 +100,24 @@ export default function HakeemScreen() {
       }
     }
     loadSeries();
+
+    async function loadClientAiConfig() {
+      try {
+        const docSnap = await getDoc(doc(firestore, 'shorts', 'app_admin_ai_config'));
+        if (docSnap.exists()) {
+          const val = docSnap.data();
+          if (val && val.data) {
+            const parsed = JSON.parse(val.data);
+            if (parsed && parsed.key) {
+              setClientAiConfig(parsed);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Could not load AI config on client side:", err);
+      }
+    }
+    loadClientAiConfig();
 
     return () => {
       stopSpeaking();
@@ -353,8 +378,9 @@ export default function HakeemScreen() {
 
     setIsTyping(true);
 
+    let replyText = '';
     try {
-      // Construct history
+      // 1. Construct history
       const historyPayload = messages.map(m => ({
         role: m.role === 'model' ? 'model' : 'user',
         text: m.text
@@ -371,22 +397,153 @@ export default function HakeemScreen() {
         mimeType: 'audio/webm'
       } : undefined;
 
-      const response = await fetch(getApiUrl('/api/v1/ai/chat'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: finalMsg || (audioPayload ? "استمع لرسالتي الصوتية وأجبني بحكمة ولطف." : "تفحص هذه اللقطة وأخبرني ما هذا المسلسل وبصيرة عنه بالتفصيل."),
-          history: historyPayload,
-          seriesList: seriesList,
-          image: imagePayload,
-          audio: audioPayload
-        })
-      });
+      try {
+        const response = await fetch(getApiUrl('/api/v1/ai/chat'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: finalMsg || (audioPayload ? "استمع لرسالتي الصوتية وأجبني بحكمة ولطف." : "تفحص هذه اللقطة وأخبرني ما هذا المسلسل وبصيرة عنه بالتفصيل."),
+            history: historyPayload,
+            seriesList: seriesList,
+            image: imagePayload,
+            audio: audioPayload
+          })
+        });
 
-      if (!response.ok) throw new Error('Failed to connect to Hakeem service');
+        if (response.ok) {
+          const data = await response.json();
+          replyText = data.text || '';
+        } else {
+          throw new Error('Server returned non-ok response');
+        }
+      } catch (backendErr) {
+        console.warn("Backend chat failed, trying client-side direct fallback...", backendErr);
+        
+        // Load latest AI config from Firestore if not already loaded
+        let activeConfig = clientAiConfig;
+        if (!activeConfig) {
+          try {
+            const docSnap = await getDoc(doc(firestore, 'shorts', 'app_admin_ai_config'));
+            if (docSnap.exists()) {
+              const val = docSnap.data();
+              if (val && val.data) {
+                activeConfig = JSON.parse(val.data);
+              }
+            }
+          } catch (configErr) {
+            console.error("Could not load AI config on client fallback:", configErr);
+          }
+        }
 
-      const data = await response.json();
-      const replyText = data.text || '';
+        const apiKey = activeConfig?.key || "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY";
+        const apiType = activeConfig?.type || "gemini";
+
+        const seriesContext = seriesList.length > 0
+          ? `المسلسلات والأفلام المتوفرة لدينا حالياً على منصة "حكايتنا" هي:\n` + 
+            seriesList.map((s, idx) => `${idx + 1}. الاسم: "${s.title}"، التصنيف أو القسم: "${s.category || 'غير محدد'}"، المعرف (ID) الخاص به للتنقل المباشر: "${s.id}"`).join('\n')
+          : "لا توجد مسلسلات متوفرة حالياً بالمنصة.";
+
+        const systemInstruction = `أنت "حكيم" (Hakeem)، ومساعد الذكاء الاصطناعي وخبير الدراما ومستشار المشاهد العربي على منصة "حكايتنا" لمشاهدة المسلسلات والأفلام.
+تحدث بتلقائية كاملة وشغف وحماس شديد مثل البشر وصديق مخلص ولا تتحدث برسمية جافة أبداً!
+المسلسلات المتوفرة:\n${seriesContext}\n
+عندما يسألك عن قصة مسلسل أو أبطاله، أو تلمح فرصة، شجعه على مشاهدته فوراً بالتطبيق بوضع رابط الانتقال السحري المباشر كالتالي: [شاهد مسلسل {اسم المسلسل} من هنا](navigate:{id})`;
+
+        const userPrompt = finalMsg || (audioPayload ? "استمع لرسالتي الصوتية وأجبني بحكمة ولطف." : "تفحص هذه اللقطة وأخبرني ما هذا المسلسل وبصيرة عنه بالتفصيل.");
+
+        if (apiType === 'openai' || apiKey.startsWith('sk-')) {
+          const baseUrl = activeConfig?.baseUrl || "https://api.openai.com/v1";
+          const modelName = activeConfig?.model || "gpt-4o-mini";
+          const openAiMessages = [
+            { role: 'system', content: systemInstruction },
+            ...historyPayload.map(h => ({
+              role: h.role === 'model' ? 'assistant' : 'user',
+              content: h.text
+            })),
+            { role: 'user', content: userPrompt }
+          ];
+
+          if (imagePayload) {
+            openAiMessages[openAiMessages.length - 1].content = [
+              { type: 'text', text: userPrompt },
+              { type: 'image_url', image_url: { url: `data:${imagePayload.mimeType};base64,${imagePayload.data}` } }
+            ] as any;
+          }
+
+          const oaiRes = await fetch(`${baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+              model: modelName,
+              messages: openAiMessages
+            })
+          });
+
+          if (!oaiRes.ok) {
+            throw new Error(`OpenAI API returned status ${oaiRes.status}`);
+          }
+          const oaiData = await oaiRes.json();
+          replyText = oaiData.choices?.[0]?.message?.content || '';
+        } else {
+          // Gemini API Call
+          const modelName = activeConfig?.model || "gemini-1.5-flash";
+          const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+          const contents = [];
+          if (historyPayload && historyPayload.length > 0) {
+            for (const h of historyPayload) {
+              const role = h.role === 'model' ? 'model' : 'user';
+              contents.push({
+                role: role,
+                parts: [{ text: h.text }]
+              });
+            }
+          }
+
+          const userParts: any[] = [{ text: userPrompt }];
+          if (imagePayload) {
+            userParts.push({
+              inlineData: {
+                mimeType: imagePayload.mimeType,
+                data: imagePayload.data
+              }
+            });
+          }
+          if (audioPayload) {
+            userParts.push({
+              inlineData: {
+                mimeType: audioPayload.mimeType,
+                data: audioPayload.data
+              }
+            });
+          }
+
+          contents.push({
+            role: 'user',
+            parts: userParts
+          });
+
+          const geminiRes = await fetch(geminiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: contents,
+              systemInstruction: {
+                parts: [{ text: systemInstruction }]
+              }
+            })
+          });
+
+          if (!geminiRes.ok) {
+            throw new Error(`Gemini API returned status ${geminiRes.status}`);
+          }
+
+          const geminiData = await geminiRes.json();
+          replyText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        }
+      }
 
       if (replyText) {
         playChime('receive');
@@ -435,35 +592,45 @@ export default function HakeemScreen() {
 
   // Link Parser Helper
   const parseNavigationLinks = (text: string): Series[] => {
+    if (typeof text !== 'string') return [];
     const matches: Series[] = [];
     const regex = /navigate:([a-zA-Z0-9_\-]+)/g;
     let match;
-    while ((match = regex.exec(text)) !== null) {
-      const id = match[1];
-      const series = seriesList.find(s => s.id === id);
-      if (series && !matches.some(m => m.id === series.id)) {
-        matches.push(series);
-      }
-    }
-
-    // Secondary name match fallback
-    seriesList.forEach(s => {
-      if (s.title && s.title.length > 2 && text.includes(s.title)) {
-        if (!matches.some(m => m.id === s.id)) {
-          matches.push(s);
+    try {
+      while ((match = regex.exec(text)) !== null) {
+        const id = match[1];
+        const series = seriesList.find(s => s.id === id);
+        if (series && !matches.some(m => m.id === series.id)) {
+          matches.push(series);
         }
       }
-    });
+
+      // Secondary name match fallback
+      seriesList.forEach(s => {
+        if (s.title && s.title.length > 2 && text.includes(s.title)) {
+          if (!matches.some(m => m.id === s.id)) {
+            matches.push(s);
+          }
+        }
+      });
+    } catch (e) {
+      console.warn("parseNavigationLinks failed:", e);
+    }
 
     return matches;
   };
 
   // Text cleaner
   const cleanMessageText = (text: string): string => {
-    let clean = text.replace(/\[([^\]]+)\]\(navigate:[^\s\)]+\)/g, '$1');
-    clean = clean.replace(/navigate:[a-zA-Z0-9_\-]+/gi, '');
-    clean = clean.replace(/[\(\)\[\]]/g, '');
-    return clean;
+    if (typeof text !== 'string') return '';
+    try {
+      let clean = text.replace(/\[([^\]]+)\]\(navigate:[^\s\)]+\)/g, '$1');
+      clean = clean.replace(/navigate:[a-zA-Z0-9_\-]+/gi, '');
+      clean = clean.replace(/[\(\)\[\]]/g, '');
+      return clean;
+    } catch (e) {
+      return text;
+    }
   };
 
   return (

@@ -243,18 +243,16 @@ export default function AdminScreen() {
         block_shorts_on_browser: blockShortsOnBrowser
       });
 
-      // Save AI Key and Config to Firestore
-      if (geminiKey.trim()) {
-        const computedType = geminiKey.trim().startsWith('sk-') ? 'openai' : aiType;
-        await setDoc(doc(firestore, 'shorts', 'app_admin_ai_config'), {
-          data: JSON.stringify({
-            type: computedType,
-            key: geminiKey.trim(),
-            baseUrl: aiBaseUrl.trim(),
-            model: aiModel.trim()
-          })
-        });
-      }
+      // Save AI Key and Config to Firestore (always, so we can clear/modify)
+      const computedType = geminiKey.trim().startsWith('sk-') ? 'openai' : aiType;
+      await setDoc(doc(firestore, 'shorts', 'app_admin_ai_config'), {
+        data: JSON.stringify({
+          type: computedType,
+          key: geminiKey.trim(),
+          baseUrl: aiBaseUrl.trim(),
+          model: aiModel.trim()
+        })
+      });
 
       // Synced Save to RTDB (might fail if rules block, but we ignore so user gets success alert)
       try {
@@ -264,15 +262,12 @@ export default function AdminScreen() {
           block_shorts_on_browser: blockShortsOnBrowser
         });
 
-        if (geminiKey.trim()) {
-          const computedType = geminiKey.trim().startsWith('sk-') ? 'openai' : aiType;
-          await set(ref(db, 'ai_config'), {
-            type: computedType,
-            key: geminiKey.trim(),
-            baseUrl: aiBaseUrl.trim(),
-            model: aiModel.trim()
-          });
-        }
+        await set(ref(db, 'ai_config'), {
+          type: computedType,
+          key: geminiKey.trim(),
+          baseUrl: aiBaseUrl.trim(),
+          model: aiModel.trim()
+        });
       } catch (rtdbErr) {
         console.warn("RTDB save failed (which is fine, Firestore settings were saved successfully!):", rtdbErr);
       }
