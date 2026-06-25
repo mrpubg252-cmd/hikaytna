@@ -451,8 +451,16 @@ export default function HakeemScreen() {
         const userPrompt = finalMsg || (audioPayload ? "استمع لرسالتي الصوتية وأجبني بحكمة ولطف." : "تفحص هذه اللقطة وأخبرني ما هذا المسلسل وبصيرة عنه بالتفصيل.");
 
         if (apiType === 'openai' || apiKey.startsWith('sk-')) {
-          const baseUrl = activeConfig?.baseUrl || "https://api.openai.com/v1";
-          const modelName = activeConfig?.model || "gpt-4o-mini";
+          let baseUrl = activeConfig?.baseUrl || "https://api.openai.com/v1";
+          let modelName = activeConfig?.model || "gpt-4o-mini";
+          
+          if (apiKey.startsWith('sk-or-')) {
+            baseUrl = "https://openrouter.ai/api/v1";
+            if (!modelName || !modelName.includes('/')) {
+              modelName = "google/gemini-2.5-flash";
+            }
+          }
+
           const openAiMessages = [
             { role: 'system', content: systemInstruction },
             ...historyPayload.map(h => ({

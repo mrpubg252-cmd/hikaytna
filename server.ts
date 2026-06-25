@@ -119,17 +119,16 @@ async function getDynamicAiConfig() {
       USER_CUSTOM_AI_CONFIG = res.data;
       if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
         USER_CUSTOM_AI_CONFIG.type = 'openai';
-        if (!USER_CUSTOM_AI_CONFIG.baseUrl) {
-          if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
-            USER_CUSTOM_AI_CONFIG.baseUrl = 'https://openrouter.ai/api/v1';
-          } else {
+        if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
+          USER_CUSTOM_AI_CONFIG.baseUrl = 'https://openrouter.ai/api/v1';
+          if (!USER_CUSTOM_AI_CONFIG.model || !USER_CUSTOM_AI_CONFIG.model.includes('/')) {
+            USER_CUSTOM_AI_CONFIG.model = 'google/gemini-2.5-flash';
+          }
+        } else {
+          if (!USER_CUSTOM_AI_CONFIG.baseUrl || USER_CUSTOM_AI_CONFIG.baseUrl.includes('openrouter.ai')) {
             USER_CUSTOM_AI_CONFIG.baseUrl = 'https://api.openai-proxy.org/v1';
           }
-        }
-        if (!USER_CUSTOM_AI_CONFIG.model) {
-          if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
-            USER_CUSTOM_AI_CONFIG.model = 'openai/gpt-4o-mini';
-          } else {
+          if (!USER_CUSTOM_AI_CONFIG.model) {
             USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
           }
         }
@@ -148,17 +147,16 @@ async function getDynamicAiConfig() {
         USER_CUSTOM_AI_CONFIG = parsed;
         if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
           USER_CUSTOM_AI_CONFIG.type = 'openai';
-          if (!USER_CUSTOM_AI_CONFIG.baseUrl) {
-            if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
-              USER_CUSTOM_AI_CONFIG.baseUrl = 'https://openrouter.ai/api/v1';
-            } else {
+          if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
+            USER_CUSTOM_AI_CONFIG.baseUrl = 'https://openrouter.ai/api/v1';
+            if (!USER_CUSTOM_AI_CONFIG.model || !USER_CUSTOM_AI_CONFIG.model.includes('/')) {
+              USER_CUSTOM_AI_CONFIG.model = 'google/gemini-2.5-flash';
+            }
+          } else {
+            if (!USER_CUSTOM_AI_CONFIG.baseUrl || USER_CUSTOM_AI_CONFIG.baseUrl.includes('openrouter.ai')) {
               USER_CUSTOM_AI_CONFIG.baseUrl = 'https://api.openai-proxy.org/v1';
             }
-          }
-          if (!USER_CUSTOM_AI_CONFIG.model) {
-            if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
-              USER_CUSTOM_AI_CONFIG.model = 'openai/gpt-4o-mini';
-            } else {
+            if (!USER_CUSTOM_AI_CONFIG.model) {
               USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
             }
           }
@@ -183,6 +181,7 @@ async function getRemoteConfig() {
 
 // Start with bootstrap keys as fallback (Stable Working Token)
 let API_KEYS: string[] = [
+  "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI",
   "AQ.Ab8RN6LuoIRrBX0LERCLIBIk1OXcz52VfoxJj4gszphbrbEoog",
   "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY"
 ];
@@ -206,6 +205,16 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
   try {
     let cleanBaseUrl = config.baseUrl.trim().replace(/\/$/, "");
     let cleanModel = config.model;
+
+    if (key === "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI") {
+      cleanBaseUrl = "https://aiapiv2.pekpik.com/v1";
+      cleanModel = "deepseek-chat";
+    } else if (key.startsWith("sk-or-")) {
+      cleanBaseUrl = "https://openrouter.ai/api/v1";
+      if (!cleanModel || !cleanModel.includes("/")) {
+        cleanModel = "google/gemini-2.5-flash";
+      }
+    }
 
     const isOpenAiKey = key.startsWith("sk-");
     const isResponsesModel = cleanModel === "gpt-5.4-mini";
@@ -879,6 +888,27 @@ async function startServer() {
       console.warn("Could not save slider.json", e);
     }
   };
+
+  // Post-healing verification and seeding
+  if (!USER_CUSTOM_AI_CONFIG || !USER_CUSTOM_AI_CONFIG.key || USER_CUSTOM_AI_CONFIG.key.startsWith("AQ.") || USER_CUSTOM_AI_CONFIG.key === "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY") {
+    console.log("No valid AI config found or expired key on startup. Seeding default working Hakeem AI config!");
+    USER_CUSTOM_AI_CONFIG = {
+      key: "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI",
+      baseUrl: "https://aiapiv2.pekpik.com/v1",
+      model: "deepseek-chat",
+      type: "openai"
+    };
+    saveAIConfigToCloud();
+  }
+
+  if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key === "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI") {
+    if (USER_CUSTOM_AI_CONFIG.baseUrl !== "https://aiapiv2.pekpik.com/v1" || USER_CUSTOM_AI_CONFIG.model !== "deepseek-chat") {
+      USER_CUSTOM_AI_CONFIG.baseUrl = "https://aiapiv2.pekpik.com/v1";
+      USER_CUSTOM_AI_CONFIG.model = "deepseek-chat";
+      USER_CUSTOM_AI_CONFIG.type = "openai";
+      saveAIConfigToCloud();
+    }
+  }
 
   // Prevent generic CORS "Failed to fetch" blocks in complex iframe previews
   app.use((req, res, next) => {
