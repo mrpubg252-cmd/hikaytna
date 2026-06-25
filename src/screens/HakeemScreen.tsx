@@ -471,6 +471,7 @@ export default function HakeemScreen() {
 
           const clientUrls = [`${baseUrl}/chat/completions`];
           if (baseUrl.includes("api.openai.com")) {
+            clientUrls.push("https://api.openai-proxy.org/v1/chat/completions");
             clientUrls.push("https://api.openai-proxy.com/v1/chat/completions");
             clientUrls.push("https://api.chatanywhere.tech/v1/chat/completions");
             clientUrls.push("https://api.openai-sb.com/v1/chat/completions");
@@ -482,12 +483,19 @@ export default function HakeemScreen() {
           for (const url of clientUrls) {
             try {
               console.log(`[Hakeem Client Fallback] Trying URL: ${url}`);
+              const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+              };
+
+              if (apiKey.startsWith("sk-or-") || url.includes("openrouter.ai")) {
+                headers["HTTP-Referer"] = "https://hakeem-ai-drama.com";
+                headers["X-Title"] = "Hakeem AI";
+              }
+
               const oaiRes = await fetch(url, {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${apiKey}`
-                },
+                headers,
                 body: JSON.stringify({
                   model: modelName,
                   messages: openAiMessages

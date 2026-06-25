@@ -119,8 +119,20 @@ async function getDynamicAiConfig() {
       USER_CUSTOM_AI_CONFIG = res.data;
       if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
         USER_CUSTOM_AI_CONFIG.type = 'openai';
-        if (!USER_CUSTOM_AI_CONFIG.baseUrl) USER_CUSTOM_AI_CONFIG.baseUrl = 'https://api.openai.com/v1';
-        if (!USER_CUSTOM_AI_CONFIG.model) USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
+        if (!USER_CUSTOM_AI_CONFIG.baseUrl) {
+          if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
+            USER_CUSTOM_AI_CONFIG.baseUrl = 'https://openrouter.ai/api/v1';
+          } else {
+            USER_CUSTOM_AI_CONFIG.baseUrl = 'https://api.openai-proxy.org/v1';
+          }
+        }
+        if (!USER_CUSTOM_AI_CONFIG.model) {
+          if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
+            USER_CUSTOM_AI_CONFIG.model = 'openai/gpt-4o-mini';
+          } else {
+            USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
+          }
+        }
       }
       return res.data;
     }
@@ -136,8 +148,20 @@ async function getDynamicAiConfig() {
         USER_CUSTOM_AI_CONFIG = parsed;
         if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
           USER_CUSTOM_AI_CONFIG.type = 'openai';
-          if (!USER_CUSTOM_AI_CONFIG.baseUrl) USER_CUSTOM_AI_CONFIG.baseUrl = 'https://api.openai.com/v1';
-          if (!USER_CUSTOM_AI_CONFIG.model) USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
+          if (!USER_CUSTOM_AI_CONFIG.baseUrl) {
+            if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
+              USER_CUSTOM_AI_CONFIG.baseUrl = 'https://openrouter.ai/api/v1';
+            } else {
+              USER_CUSTOM_AI_CONFIG.baseUrl = 'https://api.openai-proxy.org/v1';
+            }
+          }
+          if (!USER_CUSTOM_AI_CONFIG.model) {
+            if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
+              USER_CUSTOM_AI_CONFIG.model = 'openai/gpt-4o-mini';
+            } else {
+              USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
+            }
+          }
         }
         return parsed;
       }
@@ -270,6 +294,11 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
       reqHeaders["Authorization"] = `Bearer ${key}`;
     }
 
+    if (key.startsWith("sk-or-") || cleanBaseUrl.includes("openrouter.ai")) {
+      reqHeaders["HTTP-Referer"] = "https://hakeem-ai-drama.com";
+      reqHeaders["X-Title"] = "Hakeem AI";
+    }
+
     // Auto-fix Google OpenAI endpoint path ONLY if completely missing
     if (isGoogleDomain && !cleanBaseUrl.includes("/openai")) {
         if (!cleanBaseUrl.includes("/v1beta") && !cleanBaseUrl.includes("/v1")) {
@@ -290,6 +319,7 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
 
     const urlsToTry = [requestUrl];
     if (requestUrl.includes("api.openai.com")) {
+      urlsToTry.push("https://api.openai-proxy.org/v1/chat/completions");
       urlsToTry.push("https://api.openai-proxy.com/v1/chat/completions");
       urlsToTry.push("https://api.chatanywhere.tech/v1/chat/completions");
       urlsToTry.push("https://api.openai-sb.com/v1/chat/completions");

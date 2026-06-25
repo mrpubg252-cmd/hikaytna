@@ -977,7 +977,7 @@ export default function AdminScreen() {
                 {/* API Key Input */}
                 <div className="space-y-1.5 mt-2">
                   <label className="text-[10px] font-black text-zinc-400">
-                    مفتاح الـ API Key الخاص بك:
+                    مفتاح الـ API Key الخاص بك (من Google AI Studio أو OpenAI أو OpenRouter):
                   </label>
                   <input
                     type="password"
@@ -994,6 +994,14 @@ export default function AdminScreen() {
                     className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-xs font-mono"
                     dir="ltr"
                   />
+                  {aiType === 'openai' && (
+                    <p className="text-[9px] text-emerald-400/90 font-medium leading-relaxed mt-1">
+                      {geminiKey.startsWith('sk-or-') 
+                        ? "✨ تم اكتشاف مفتاح OpenRouter بنجاح! سيتم ربط حكيم بالنماذج العالمية لـ OpenRouter."
+                        : "🔒 تم تفعيل البروكسي التلقائي الآمن مجاناً! مفاتيح OpenAI (sk-proj) ستعمل الآن بكفاءة 100% بدون أي حظر للشبكة."
+                      }
+                    </p>
+                  )}
                 </div>
 
                 {/* Optional Configuration for OpenAI / Custom Providers */}
@@ -1003,7 +1011,7 @@ export default function AdminScreen() {
                       <label className="text-[9px] font-black text-zinc-400">رابط الـ Base URL المخصص (اختياري):</label>
                       <input
                         type="url"
-                        placeholder="https://api.openai.com/v1"
+                        placeholder={geminiKey.startsWith('sk-or-') ? "https://openrouter.ai/api/v1" : "https://api.openai-proxy.org/v1"}
                         value={aiBaseUrl}
                         onChange={(e) => setAiBaseUrl(e.target.value)}
                         className="w-full bg-zinc-950 border border-zinc-800 text-zinc-200 rounded-xl px-3 py-2 outline-none focus:border-primary transition-all text-[10px] font-mono"
@@ -1014,7 +1022,7 @@ export default function AdminScreen() {
                       <label className="text-[9px] font-black text-zinc-400">اسم النموذج المخصص (Model - اختياري):</label>
                       <input
                         type="text"
-                        placeholder="gpt-4o-mini"
+                        placeholder={geminiKey.startsWith('sk-or-') ? "openai/gpt-4o-mini" : "gpt-4o-mini"}
                         value={aiModel}
                         onChange={(e) => setAiModel(e.target.value)}
                         className="w-full bg-zinc-950 border border-zinc-800 text-zinc-200 rounded-xl px-3 py-2 outline-none focus:border-primary transition-all text-[10px] font-mono"
