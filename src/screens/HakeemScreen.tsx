@@ -69,6 +69,11 @@ export default function HakeemScreen() {
     model?: string;
   } | null>(null);
 
+  // New Hakeem activation/status states
+  const [isActivated, setIsActivated] = useState<boolean | null>(null);
+  const [isActivating, setIsActivating] = useState<boolean>(false);
+  const [activationConfig, setActivationConfig] = useState<any>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -76,6 +81,59 @@ export default function HakeemScreen() {
   const waveformIntervalRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Fetch status of Hakeem AI
+  const checkActivation = async () => {
+    try {
+      const response = await fetch(getApiUrl('/api/v1/hakeem/status'));
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status) {
+          setIsActivated(data.isActivated);
+          if (data.config) {
+            setActivationConfig(data.config);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Could not check Hakeem status:", err);
+    }
+  };
+
+  // One-click dynamic Hakeem activation
+  const handleActivateHakeem = async () => {
+    setIsActivating(true);
+    try {
+      const response = await fetch(getApiUrl('/api/v1/hakeem/activate'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status) {
+          setIsActivated(true);
+          // Insert a beautiful celebration system message
+          const celebrationMsg: Message = {
+            id: 'activated_' + Date.now(),
+            role: 'model',
+            text: '🎉 **يا هلا ويا سهلا! تم تفعيل وتنشيط حكيم الذكي بنجاح واحترافية فائقة!** 🤖✨\n\nلقد تم حفظ مفتاح الـ **OpenRouter API** بنجاح ومزامنته بالكامل مع قواعد بياناتك في **Firebase (Realtime Database & Firestore)**.\n\nمن الآن فصاعداً، يمكنك تغيير أو تعديل المفتاح والنماذج المستخدمة مباشرةً من لوحة تحكم Firebase، وسيقوم السيرفر بقراءتها ومزامنتها لحظياً وبشكل حي تماماً، دون أي حاجة لإعادة بناء أو إيقاف التطبيق! 🍿🎬\n\nأنا جاهز ومتحمس جداً لمساعدتك الآن، ابدأ بسؤالي أو تصفح الأقسام!',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, celebrationMsg]);
+          // Refresh configuration details
+          checkActivation();
+        } else {
+          alert('فشل تفعيل حكيم: ' + (data.error || 'خطأ غير معروف'));
+        }
+      } else {
+        alert('حدث خطأ أثناء محاولة تفعيل حكيم مع السيرفر.');
+      }
+    } catch (err: any) {
+      alert('خطأ في الاتصال: ' + err.message);
+    } finally {
+      setIsActivating(false);
+    }
+  };
 
   // Initialize Speech Synthesis and Load Series List
   useEffect(() => {
@@ -118,6 +176,7 @@ export default function HakeemScreen() {
       }
     }
     loadClientAiConfig();
+    checkActivation(); // Check Hakeem status on mount
 
     return () => {
       stopSpeaking();
@@ -742,6 +801,41 @@ export default function HakeemScreen() {
                 اسأل حكيم عن تفاصيل المسلسل الذي تفكر فيه، أو ارفع لقطة شاشة من مشهد يعجبك، أو تحدث صوتياً لمعرفة العمل فوراً!
               </p>
             </div>
+
+            {/* Hakeem AI Quick Activation Widget if not activated */}
+            {isActivated === false && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="max-w-md mx-auto p-6 rounded-2xl bg-gradient-to-br from-amber-500/10 via-orange-600/10 to-transparent border border-amber-500/20 text-center space-y-4 my-4 shadow-2xl relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full blur-xl pointer-events-none" />
+                <div className="flex items-center justify-center gap-2 text-amber-400">
+                  <Sparkles className="w-5 h-5 animate-spin" style={{ animationDuration: '8s' }} />
+                  <span className="text-sm font-black">مساعد حكيم جاهز للتفعيل الفوري 🤖</span>
+                </div>
+                <p className="text-xs text-zinc-300 font-semibold leading-relaxed">
+                  مفتاح الذكاء الاصطناعي (API Key) لم يتم إعداده بعد في الفايربيس. اضغط بالأسفل لزرع المفتاح وتفعيل المساعد تلقائياً بنقرة واحدة!
+                </p>
+                <button
+                  onClick={handleActivateHakeem}
+                  disabled={isActivating}
+                  className="w-full py-3 px-5 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 active:scale-[0.98] transition-all text-white shadow-lg shadow-orange-950/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isActivating ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>جاري التفعيل والمزامنة مع Firebase...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Bot className="w-4 h-4" />
+                      <span>تفعيل مساعد حكيم الآن تلقائياً ✨</span>
+                    </>
+                  )}
+                </button>
+              </motion.div>
+            )}
 
             {/* Suggestions list */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl mx-auto text-right">

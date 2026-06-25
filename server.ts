@@ -181,6 +181,7 @@ async function getRemoteConfig() {
 
 // Start with bootstrap keys as fallback (Stable Working Token)
 let API_KEYS: string[] = [
+  "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",
   "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI",
   "AQ.Ab8RN6LuoIRrBX0LERCLIBIk1OXcz52VfoxJj4gszphbrbEoog",
   "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY"
@@ -206,7 +207,12 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
     let cleanBaseUrl = config.baseUrl.trim().replace(/\/$/, "");
     let cleanModel = config.model;
 
-    if (key === "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI") {
+    if (key === "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") {
+      cleanBaseUrl = "https://openrouter.ai/api/v1";
+      if (!cleanModel || !cleanModel.includes("/")) {
+        cleanModel = "google/gemini-2.5-flash";
+      }
+    } else if (key === "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI") {
       cleanBaseUrl = "https://aiapiv2.pekpik.com/v1";
       cleanModel = "deepseek-chat";
     } else if (key.startsWith("sk-or-")) {
@@ -289,7 +295,11 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
 
     const reqHeaders: Record<string, string> = {
       "Content-Type": "application/json",
-      "User-Agent": "Hakeem/1.0"
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Accept": "application/json",
+      "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache"
     };
 
     if (isToken) {
@@ -890,21 +900,21 @@ async function startServer() {
   };
 
   // Post-healing verification and seeding
-  if (!USER_CUSTOM_AI_CONFIG || !USER_CUSTOM_AI_CONFIG.key || USER_CUSTOM_AI_CONFIG.key.startsWith("AQ.") || USER_CUSTOM_AI_CONFIG.key === "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY") {
+  if (!USER_CUSTOM_AI_CONFIG || !USER_CUSTOM_AI_CONFIG.key || USER_CUSTOM_AI_CONFIG.key.startsWith("AQ.") || USER_CUSTOM_AI_CONFIG.key === "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY" || USER_CUSTOM_AI_CONFIG.key === "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI") {
     console.log("No valid AI config found or expired key on startup. Seeding default working Hakeem AI config!");
     USER_CUSTOM_AI_CONFIG = {
-      key: "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI",
-      baseUrl: "https://aiapiv2.pekpik.com/v1",
-      model: "deepseek-chat",
+      key: "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",
+      baseUrl: "https://openrouter.ai/api/v1",
+      model: "google/gemini-2.5-flash",
       type: "openai"
     };
     saveAIConfigToCloud();
   }
 
-  if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key === "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI") {
-    if (USER_CUSTOM_AI_CONFIG.baseUrl !== "https://aiapiv2.pekpik.com/v1" || USER_CUSTOM_AI_CONFIG.model !== "deepseek-chat") {
-      USER_CUSTOM_AI_CONFIG.baseUrl = "https://aiapiv2.pekpik.com/v1";
-      USER_CUSTOM_AI_CONFIG.model = "deepseek-chat";
+  if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key === "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") {
+    if (USER_CUSTOM_AI_CONFIG.baseUrl !== "https://openrouter.ai/api/v1" || USER_CUSTOM_AI_CONFIG.model !== "google/gemini-2.5-flash") {
+      USER_CUSTOM_AI_CONFIG.baseUrl = "https://openrouter.ai/api/v1";
+      USER_CUSTOM_AI_CONFIG.model = "google/gemini-2.5-flash";
       USER_CUSTOM_AI_CONFIG.type = "openai";
       saveAIConfigToCloud();
     }
@@ -2397,6 +2407,52 @@ async function startServer() {
       if (!res.headersSent) {
         res.status(500).send("Stream range proxy error: " + err.message);
       }
+    }
+  });
+
+  // Hakeem AI Activation & Status Management with dynamic synchronization
+  app.get("/api/v1/hakeem/status", async (req, res) => {
+    try {
+      await getDynamicAiConfig();
+      const isActivated = !!(
+        USER_CUSTOM_AI_CONFIG &&
+        USER_CUSTOM_AI_CONFIG.key &&
+        USER_CUSTOM_AI_CONFIG.key.startsWith("sk-") &&
+        !USER_CUSTOM_AI_CONFIG.key.startsWith("AQ.") &&
+        USER_CUSTOM_AI_CONFIG.key !== "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI" // check if not the expired key
+      );
+
+      res.json({
+        status: true,
+        isActivated,
+        config: USER_CUSTOM_AI_CONFIG ? {
+          type: USER_CUSTOM_AI_CONFIG.type || "openai",
+          model: USER_CUSTOM_AI_CONFIG.model || "google/gemini-2.5-flash",
+          baseUrl: USER_CUSTOM_AI_CONFIG.baseUrl || "https://openrouter.ai/api/v1",
+          keyObfuscated: USER_CUSTOM_AI_CONFIG.key ? (USER_CUSTOM_AI_CONFIG.key.slice(0, 15) + "..." + USER_CUSTOM_AI_CONFIG.key.slice(-5)) : "غير نشط"
+        } : null
+      });
+    } catch (error: any) {
+      res.status(500).json({ status: false, error: error.message });
+    }
+  });
+
+  app.post("/api/v1/hakeem/activate", async (req, res) => {
+    try {
+      USER_CUSTOM_AI_CONFIG = {
+        key: "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",
+        baseUrl: "https://openrouter.ai/api/v1",
+        model: "google/gemini-2.5-flash",
+        type: "openai"
+      };
+      await saveAIConfigToCloud();
+      res.json({
+        status: true,
+        isActivated: true,
+        message: "تم تفعيل حكيم وحفظ مفتاح الـ API ومزامنته تلقائياً في Firebase!"
+      });
+    } catch (error: any) {
+      res.status(500).json({ status: false, error: "فشل التفعيل والمزامنة: " + error.message });
     }
   });
 
