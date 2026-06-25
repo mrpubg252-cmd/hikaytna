@@ -469,22 +469,44 @@ export default function HakeemScreen() {
             ] as any;
           }
 
-          const oaiRes = await fetch(`${baseUrl}/chat/completions`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-              model: modelName,
-              messages: openAiMessages
-            })
-          });
-
-          if (!oaiRes.ok) {
-            throw new Error(`OpenAI API returned status ${oaiRes.status}`);
+          const clientUrls = [`${baseUrl}/chat/completions`];
+          if (baseUrl.includes("api.openai.com")) {
+            clientUrls.push("https://api.openai-proxy.com/v1/chat/completions");
+            clientUrls.push("https://api.chatanywhere.tech/v1/chat/completions");
+            clientUrls.push("https://api.openai-sb.com/v1/chat/completions");
           }
-          const oaiData = await oaiRes.json();
+
+          let oaiData: any = null;
+          let clientSuccess = false;
+
+          for (const url of clientUrls) {
+            try {
+              console.log(`[Hakeem Client Fallback] Trying URL: ${url}`);
+              const oaiRes = await fetch(url, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                  model: modelName,
+                  messages: openAiMessages
+                })
+              });
+
+              if (oaiRes.ok) {
+                oaiData = await oaiRes.json();
+                clientSuccess = true;
+                break;
+              }
+            } catch (err) {
+              console.warn(`[Hakeem Client Fallback] Failed for URL ${url}:`, err);
+            }
+          }
+
+          if (!clientSuccess || !oaiData) {
+            throw new Error(`All client OpenAI endpoints failed`);
+          }
           replyText = oaiData.choices?.[0]?.message?.content || '';
         } else {
           // Gemini API Call

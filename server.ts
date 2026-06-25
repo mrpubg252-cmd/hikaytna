@@ -288,31 +288,56 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
       requestUrl = `https://api.openai.com/v1/chat/completions`;
     }
 
-    const res = await axios.post(requestUrl, {
-      model: cleanModel || "gpt-4o-mini",
-      messages,
-      temperature: 0.7,
-      max_tokens: 800,
-      stream: false
-    }, {
-      headers: reqHeaders,
-      timeout: 30000
-    });
+    const urlsToTry = [requestUrl];
+    if (requestUrl.includes("api.openai.com")) {
+      urlsToTry.push("https://api.openai-proxy.com/v1/chat/completions");
+      urlsToTry.push("https://api.chatanywhere.tech/v1/chat/completions");
+      urlsToTry.push("https://api.openai-sb.com/v1/chat/completions");
+    }
 
-    if (res.data && res.data.choices && res.data.choices[0]) {
-      return { ok: true, reply: res.data.choices[0].message.content };
+    let lastError: any = null;
+    let successRes: any = null;
+
+    for (const url of urlsToTry) {
+      try {
+        console.log(`[Hakeem AI] Trying OpenAI endpoint: ${url}`);
+        const res = await axios.post(url, {
+          model: cleanModel || "gpt-4o-mini",
+          messages,
+          temperature: 0.7,
+          max_tokens: 800,
+          stream: false
+        }, {
+          headers: reqHeaders,
+          timeout: 15000
+        });
+
+        if (res.data && res.data.choices && res.data.choices[0]) {
+          successRes = res;
+          break;
+        }
+      } catch (err: any) {
+        lastError = err;
+        const errMsg = err.response?.data?.error?.message || err.message;
+        console.warn(`[Hakeem AI] Endpoint failed: ${url}. Error: ${errMsg}`);
+      }
+    }
+
+    if (successRes) {
+      return { ok: true, reply: successRes.data.choices[0].message.content };
     }
     
-    return { ok: false, error: "Invalid AI response format" };
-  } catch (error: any) {
-    const errorMsg = error.response?.data?.error?.message || error.message;
+    const errorMsg = lastError?.response?.data?.error?.message || lastError?.message || "Invalid AI response format";
     console.error(`AI Error [${keyIdx}]:`, errorMsg);
     
-    if (error.response?.status === 429) {
+    if (lastError?.response?.status === 429) {
       KEY_COOLDOWNS.set(key, Date.now() + 5 * 60 * 1000);
     }
     
     return { ok: false, error: errorMsg };
+  } catch (outerErr: any) {
+    console.error("Outer callDeepSeek error:", outerErr);
+    return { ok: false, error: outerErr.message || "Outer callDeepSeek error" };
   }
 }
 
@@ -658,11 +683,12 @@ async function startServer() {
   // ============== SYSTEM-WIDE PERSISTENT CLOUD SELF-HEALING SYSTEM (FIRESTORE & RTDB) ==============
   // Fetches master backups from Firestore and Realtime Database raw REST APIs
   // This guarantees complete survival across restarts, rebuilds, and ephemeral disk wipes!
-  const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || "mo-play-b0cb7";
+  const firebaseProjectId = findFirebaseProjectId();
+  const firebaseDatabaseId = findFirebaseDatabaseId();
 
   // --- 1. AI Configuration Self-Healing ---
   try {
-    const aiConfigRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_admin_ai_config`, { timeout: 4000 }).catch(() => null);
+    const aiConfigRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_admin_ai_config`, { timeout: 4000 }).catch(() => null);
     if (aiConfigRes && aiConfigRes.data && aiConfigRes.data.fields && aiConfigRes.data.fields.data) {
       const dataStr = aiConfigRes.data.fields.data.stringValue;
       if (dataStr) {
@@ -689,7 +715,7 @@ async function startServer() {
 
   // --- 2. Pins Memory Self-Healing ---
   try {
-    const pinsRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_category_pins`, { timeout: 4000 }).catch(() => null);
+    const pinsRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_category_pins`, { timeout: 4000 }).catch(() => null);
     if (pinsRes && pinsRes.data && pinsRes.data.fields && pinsRes.data.fields.data) {
       const dataStr = pinsRes.data.fields.data.stringValue;
       if (dataStr) {
@@ -714,7 +740,7 @@ async function startServer() {
 
   // --- 3. Slider Selections Self-Healing ---
   try {
-    const sliderRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_slider_selections`, { timeout: 4000 }).catch(() => null);
+    const sliderRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_slider_selections`, { timeout: 4000 }).catch(() => null);
     if (sliderRes && sliderRes.data && sliderRes.data.fields && sliderRes.data.fields.data) {
       const dataStr = sliderRes.data.fields.data.stringValue;
       if (dataStr) {
@@ -741,7 +767,7 @@ async function startServer() {
   const savePinsToCloud = async () => {
     // Save to Firestore
     try {
-      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_category_pins?updateMask.fieldPaths=data`, {
+      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_category_pins?updateMask.fieldPaths=data`, {
         fields: {
           data: { stringValue: JSON.stringify(pinsMemory) }
         }
@@ -760,7 +786,7 @@ async function startServer() {
   const saveSliderToCloud = async () => {
     // Save to Firestore
     try {
-      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_slider_selections?updateMask.fieldPaths=data`, {
+      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_slider_selections?updateMask.fieldPaths=data`, {
         fields: {
           data: { stringValue: JSON.stringify(sliderMemory) }
         }
@@ -787,7 +813,7 @@ async function startServer() {
 
     // Save to Firestore
     try {
-      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/(default)/documents/shorts/app_admin_ai_config?updateMask.fieldPaths=data`, {
+      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_admin_ai_config?updateMask.fieldPaths=data`, {
         fields: {
           data: { stringValue: JSON.stringify(USER_CUSTOM_AI_CONFIG) }
         }

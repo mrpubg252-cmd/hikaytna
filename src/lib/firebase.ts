@@ -6,5 +6,9 @@ import firebaseConfig from '../../firebase-applet-config.json';
 // Use a named app to avoid conflict with the existing [DEFAULT] app used for data
 const app = getApps().find(a => a.name === 'warm-imagery') || initializeApp(firebaseConfig, 'warm-imagery');
 
-export const db = getFirestore(app);
+const dbId = firebaseConfig && firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "remixed-firestore-database-id"
+  ? firebaseConfig.firestoreDatabaseId 
+  : "(default)";
+
+export const db = getFirestore(app, dbId);
 export const auth = getAuth(app);

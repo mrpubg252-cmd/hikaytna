@@ -1,18 +1,23 @@
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, get } from 'firebase/database';
 import { getFirestore } from 'firebase/firestore';
+import appletConfig from '../../firebase-applet-config.json';
+
+const isRemixed = appletConfig && appletConfig.projectId && appletConfig.projectId !== "remixed-project-id";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCQpOf-eNn6Le8b5wsdiDuPabBV_scBD68",
-  authDomain: "mo-play-b0cb7.firebaseapp.com",
-  projectId: "mo-play-b0cb7",
-  databaseURL: "https://mo-play-b0cb7-default-rtdb.firebaseio.com",
-  storageBucket: "mo-play-b0cb7.firebasestorage.app",
+  apiKey: isRemixed ? appletConfig.apiKey : "AIzaSyCQpOf-eNn6Le8b5wsdiDuPabBV_scBD68",
+  authDomain: isRemixed ? appletConfig.authDomain : "mo-play-b0cb7.firebaseapp.com",
+  projectId: isRemixed ? appletConfig.projectId : "mo-play-b0cb7",
+  databaseURL: isRemixed ? `https://${appletConfig.projectId}-default-rtdb.firebaseio.com` : "https://mo-play-b0cb7-default-rtdb.firebaseio.com",
+  storageBucket: isRemixed ? appletConfig.storageBucket : "mo-play-b0cb7.firebasestorage.app",
 };
 
 const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
-export const firestore = getFirestore(app);
+
+const dbId = isRemixed && appletConfig.firestoreDatabaseId ? appletConfig.firestoreDatabaseId : "(default)";
+export const firestore = getFirestore(app, dbId);
 
 export interface Episode {
   title: string;
