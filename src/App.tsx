@@ -21,6 +21,7 @@ import AppIntro from './components/AppIntro';
 import InstallWizard from './components/InstallWizard';
 import CookieConsent from './components/CookieConsent';
 import ProfileEnforcer from './components/ProfileEnforcer';
+import { syncProfileToFirebase } from './utils/profileSync';
 
 function AppLayout() {
   const { deviceMode, isTV } = useDevice();
@@ -29,6 +30,7 @@ function AppLayout() {
   const [toastType, setToastType] = React.useState<'success' | 'info'>('success');
   const [isInstallOpen, setIsInstallOpen] = React.useState(false);
   const [isIntroRunning, setIsIntroRunning] = React.useState(false);
+  const [isOldDomain, setIsOldDomain] = React.useState(false);
 
   React.useEffect(() => {
     const handleTriggerInstall = () => {
@@ -55,6 +57,26 @@ function AppLayout() {
   }, [deviceMode]);
 
   React.useEffect(() => {
+    // Redirection from old domain
+    const currentHost = window.location.hostname;
+    if (currentHost.includes('hikaytna-production.up.railway.app') || currentHost.includes('railway')) {
+      setIsOldDomain(true);
+      const timer = setTimeout(() => {
+        window.location.replace('https://www.hikaytna.my' + window.location.pathname + window.location.search);
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+
+    // Ensure guest_chat_pid is initialized early
+    let presenceId = localStorage.getItem('guest_chat_pid');
+    if (!presenceId) {
+      presenceId = `guest_${Math.random().toString(36).substring(2, 9)}`;
+      localStorage.setItem('guest_chat_pid', presenceId);
+    }
+
+    // Sync profile on startup to guarantee we have users/ reference in real-time db
+    syncProfileToFirebase();
+
     // 0. Ensure user has a default guest name initialized immediately on startup
     const savedName = localStorage.getItem('guest_chat_name');
     const isAdminToken = localStorage.getItem('short_admin_access') === 'true';
@@ -223,6 +245,42 @@ function AppLayout() {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  if (isOldDomain) {
+    return (
+      <div className="fixed inset-0 z-[999999] bg-black text-white flex flex-col items-center justify-center p-6 text-center select-none font-sans">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.1),transparent_70%)] pointer-events-none" />
+        <div className="max-w-md space-y-6 relative z-10">
+          {/* Logo or icon */}
+          <div className="w-20 h-20 mx-auto rounded-full bg-red-600/10 border border-red-600/20 flex items-center justify-center animate-pulse">
+            <span className="text-4xl">🎬</span>
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-snug">لقد انتقلنا إلى عنواننا الرسمي الجديد!</h1>
+            <p className="text-zinc-400 text-xs leading-relaxed">
+              يسرنا أن نخبركم بأنه تم نقل موقع <b className="text-white font-extrabold">حكايتنا</b> بالكامل إلى النطاق الجديد والمميز للاستمتاع بتجربة مشاهدة أسرع وبأعلى دقة 4K وبدون أي بطء.
+            </p>
+          </div>
+          
+          <div className="p-4 bg-zinc-900/60 border border-white/5 rounded-2xl">
+            <span className="block text-[10px] text-zinc-500 font-extrabold uppercase">العنوان الجديد والرسمي</span>
+            <span className="text-lg font-black text-red-500 tracking-wider">www.hikaytna.my</span>
+          </div>
+
+          <p className="text-[10px] text-zinc-500 animate-pulse">
+            سيتم تحويلك تلقائياً خلال ثوانٍ معدودة...
+          </p>
+
+          <a 
+            href="https://www.hikaytna.my"
+            className="inline-block w-full py-3.5 px-5 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl text-xs transition-all active:scale-95 shadow-lg shadow-red-600/20"
+          >
+            الانتقال الفوري إلى حكايتنا 🚀
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   if (isIntroRunning) {
     return (

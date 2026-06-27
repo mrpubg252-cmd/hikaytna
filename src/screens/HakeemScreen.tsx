@@ -137,7 +137,10 @@ export default function HakeemScreen() {
 
   // Initialize Speech Synthesis and Load Series List
   useEffect(() => {
-    synthRef.current = window.speechSynthesis;
+    // Lazy-load speech synthesis with a delay to prevent main thread blocking on iOS/Safari mount
+    const synthTimer = setTimeout(() => {
+      synthRef.current = window.speechSynthesis;
+    }, 300);
 
     const greetingMsg: Message = {
       id: 'welcome',
@@ -179,6 +182,7 @@ export default function HakeemScreen() {
     checkActivation(); // Check Hakeem status on mount
 
     return () => {
+      clearTimeout(synthTimer);
       stopSpeaking();
       clearInterval(recordTimerRef.current);
       clearInterval(waveformIntervalRef.current);
@@ -520,12 +524,21 @@ export default function HakeemScreen() {
             }
           }
 
+          const chatMsgs: any[] = [];
+          if (historyPayload && historyPayload.length > 0) {
+            for (const h of historyPayload) {
+              if (!h.text || !h.text.trim()) continue;
+              const role = h.role === 'model' ? 'assistant' : 'user';
+              if (chatMsgs.length === 0 && role === 'assistant') {
+                continue; // skip leading assistant messages
+              }
+              chatMsgs.push({ role, content: h.text });
+            }
+          }
+
           const openAiMessages = [
             { role: 'system', content: systemInstruction },
-            ...historyPayload.map(h => ({
-              role: h.role === 'model' ? 'assistant' : 'user',
-              content: h.text
-            })),
+            ...chatMsgs,
             { role: 'user', content: userPrompt }
           ];
 
