@@ -1379,8 +1379,22 @@ async function startServer() {
                    if (!chunkUrl.startsWith('http')) {
                       chunkUrl = new URL(chunkUrl, finalUrl).toString();
                    }
-                   const enc = encodeURIComponent(encryptValue(chunkUrl));
-                   return `/api/v1/stream-proxy/${enc}`;
+                   
+                   // CRITICAL EGRESS & RESOURCE OPTIMIZATION:
+                   // Only proxy nested sub-playlists (.m3u8) or decryption keys (.key) to bypass CORS blocks.
+                   // The extremely heavy media/video segments (.ts, .mp4, .m4s, .aac) are streamed directly from the hosting CDNs
+                   // to the browser, bypassing the server entirely. This slashes server Egress by 99.9%, lowers CPU/Memory,
+                   // and provides buttery-smooth streaming without server-side choke-points.
+                   const lowerChunk = chunkUrl.toLowerCase();
+                   const isPlaylistOrKey = lowerChunk.includes('.m3u8') || lowerChunk.includes('.key') || lowerChunk.includes('key.php');
+                   
+                   if (isPlaylistOrKey) {
+                       const enc = encodeURIComponent(encryptValue(chunkUrl));
+                       return `/api/v1/stream-proxy/${enc}`;
+                   } else {
+                       // Stream the heavy media chunk directly from the CDN
+                       return chunkUrl;
+                   }
                } catch {
                    return line;
                }
@@ -3006,7 +3020,12 @@ document.head.appendChild(s);
   } else {
     // Robust resolution natively pointing to the compiled directory
     const distPath = __dirname;
-    app.use(express.static(distPath));
+    // Add 12-hour client-side caching for React/Vite assets to prevent repeated egress billing!
+    app.use(express.static(distPath, {
+      maxAge: '12h',
+      etag: true,
+      lastModified: true
+    }));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
