@@ -575,6 +575,10 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
     if (USER_CUSTOM_AI_CONFIG?.type === 'gemini' && USER_CUSTOM_AI_CONFIG.model) {
       modelsToTry.push(USER_CUSTOM_AI_CONFIG.model);
     }
+    // Universal stable standard models first
+    modelsToTry.push("gemini-2.5-flash");
+    modelsToTry.push("gemini-1.5-flash");
+    // Studio-specific preview models later
     modelsToTry.push("gemini-3.5-flash");
     modelsToTry.push("gemini-3.1-pro-preview");
 
@@ -709,6 +713,15 @@ async function smartChat(msg: string, systemPrompt: string, history: any[], imag
 async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10);
+
+  // Fast low-overhead redirect middleware for old domain to new domain
+  app.use((req, res, next) => {
+    const host = req.get('host') || '';
+    if (host.includes('hikaytna-production.up.railway.app')) {
+      return res.redirect(301, 'https://www.hikaytna.my' + req.originalUrl);
+    }
+    next();
+  });
 
   app.use(express.json({ limit: "200mb" }));
   app.use(express.urlencoded({ limit: "200mb", extended: true }));
