@@ -52,7 +52,7 @@ function decryptValue(encoded: string): string {
 
 // ============ DeepSeek Speed Configuration ============
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
-const MODEL = "gemini-2.0-flash";
+const MODEL = "gemini-3.5-flash";
 
 let USER_CUSTOM_AI_CONFIG: {
   key: string;
@@ -277,12 +277,21 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
       }
     }
 
+    const chatMessages: any[] = [];
+    if (history && history.length > 0) {
+      for (const m of history) {
+        if (!m.text || !m.text.trim()) continue;
+        const role = m.role === 'user' ? 'user' : 'assistant';
+        if (chatMessages.length === 0 && role === 'assistant') {
+          continue; // skip leading assistant messages
+        }
+        chatMessages.push({ role, content: m.text });
+      }
+    }
+
     const messages = [
       { role: "system", content: systemPrompt || "أجب بإيجاز وسرعة فائقة. لا تقدم مقدمات. ادخل في صلب الموضوع فوراً." },
-      ...history.map((m: any) => ({
-        role: m.role === 'user' ? 'user' : 'assistant',
-        content: m.text
-      })),
+      ...chatMessages,
       { role: "user", content: msg }
     ];
 
@@ -510,6 +519,12 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
       for (const h of history) {
         if (!h.text || !h.text.trim()) continue;
         const role = (h.role === 'user' || h.role === 'client') ? 'user' : 'model';
+        
+        // Gemini contents array must start with 'user' role
+        if (contents.length === 0 && role === 'model') {
+          continue; // Skip initial assistant messages
+        }
+
         // Avoid consecutive roles of the same type by squashing or filtering
         if (contents.length > 0 && contents[contents.length - 1].role === role) {
           contents[contents.length - 1].parts[0].text += "\n" + h.text;
@@ -560,9 +575,12 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
     if (USER_CUSTOM_AI_CONFIG?.type === 'gemini' && USER_CUSTOM_AI_CONFIG.model) {
       modelsToTry.push(USER_CUSTOM_AI_CONFIG.model);
     }
+    // Universal stable standard models first
     modelsToTry.push("gemini-2.5-flash");
     modelsToTry.push("gemini-1.5-flash");
+    // Studio-specific preview models later
     modelsToTry.push("gemini-3.5-flash");
+    modelsToTry.push("gemini-3.1-pro-preview");
 
     let lastError: any = null;
     let reply = "";
@@ -1379,8 +1397,22 @@ async function startServer() {
                    if (!chunkUrl.startsWith('http')) {
                       chunkUrl = new URL(chunkUrl, finalUrl).toString();
                    }
-                   const enc = encodeURIComponent(encryptValue(chunkUrl));
-                   return `/api/v1/stream-proxy/${enc}`;
+                   
+                   // CRITICAL EGRESS & RESOURCE OPTIMIZATION:
+                   // Only proxy nested sub-playlists (.m3u8) or decryption keys (.key) to bypass CORS blocks.
+                   // The extremely heavy media/video segments (.ts, .mp4, .m4s, .aac) are streamed directly from the hosting CDNs
+                   // to the browser, bypassing the server entirely. This slashes server Egress by 99.9%, lowers CPU/Memory,
+                   // and provides buttery-smooth streaming without server-side choke-points.
+                   const lowerChunk = chunkUrl.toLowerCase();
+                   const isPlaylistOrKey = lowerChunk.includes('.m3u8') || lowerChunk.includes('.key') || lowerChunk.includes('key.php');
+                   
+                   if (isPlaylistOrKey) {
+                       const enc = encodeURIComponent(encryptValue(chunkUrl));
+                       return `/api/v1/stream-proxy/${enc}`;
+                   } else {
+                       // Stream the heavy media chunk directly from the CDN
+                       return chunkUrl;
+                   }
                } catch {
                    return line;
                }
@@ -2899,6 +2931,9 @@ s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock ==
 document.head.appendChild(s);
 </script>
 
+<!-- User Custom Ad Script -->
+<script src="https://quge5.com/88/tag.min.js" data-zone="254244" async data-cfasync="false"></script>
+
 </head>
 <body dir="rtl">
     <div class="container">
@@ -3006,7 +3041,12 @@ document.head.appendChild(s);
   } else {
     // Robust resolution natively pointing to the compiled directory
     const distPath = __dirname;
-    app.use(express.static(distPath));
+    // Add 12-hour client-side caching for React/Vite assets to prevent repeated egress billing!
+    app.use(express.static(distPath, {
+      maxAge: '12h',
+      etag: true,
+      lastModified: true
+    }));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

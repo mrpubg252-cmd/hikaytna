@@ -135,10 +135,8 @@ export default function HakeemScreen() {
     }
   };
 
-  // Initialize Speech Synthesis and Load Series List
+  // Initialize Speech Synthesis and Load Series List (Optimized for iOS/Safari smooth transitions)
   useEffect(() => {
-    synthRef.current = window.speechSynthesis;
-
     const greetingMsg: Message = {
       id: 'welcome',
       role: 'model',
@@ -147,41 +145,46 @@ export default function HakeemScreen() {
     };
     setMessages([greetingMsg]);
 
-    async function loadSeries() {
+    // Lazy load non-critical resources after component transition finishes to keep it buttery smooth
+    const synthTimer = setTimeout(() => {
       try {
-        const list = await fetchAllSeries();
-        setSeriesList(list);
-      } catch (e) {
-        console.error('Error fetching series list for Hakeem:', e);
-      } finally {
-        setLoadingSeries(false);
-      }
-    }
-    loadSeries();
-
-    async function loadClientAiConfig() {
-      try {
-        const docSnap = await getDoc(doc(firestore, 'shorts', 'app_admin_ai_config'));
-        if (docSnap.exists()) {
-          const val = docSnap.data();
-          if (val && val.data) {
-            const parsed = JSON.parse(val.data);
-            if (parsed && parsed.key) {
-              setClientAiConfig(parsed);
-            }
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+          synthRef.current = window.speechSynthesis;
+          // Pre-trigger voices loading on iOS Safari without blocking
+          if (typeof window.speechSynthesis.getVoices === 'function') {
+            window.speechSynthesis.getVoices();
           }
         }
-      } catch (err) {
-        console.warn("Could not load AI config on client side:", err);
+      } catch (e) {
+        console.warn("Speech synthesis not supported or blocked by browser:", e);
       }
-    }
-    loadClientAiConfig();
-    checkActivation(); // Check Hakeem status on mount
+    }, 400);
+
+    const dataTimer = setTimeout(() => {
+      async function loadSeries() {
+        try {
+          const list = await fetchAllSeries();
+          setSeriesList(list);
+        } catch (e) {
+          console.error('Error fetching series list for Hakeem:', e);
+        } finally {
+          setLoadingSeries(false);
+        }
+      }
+      loadSeries();
+    }, 200);
+
+    const activationTimer = setTimeout(() => {
+      checkActivation(); // Check Hakeem status asynchronously with a delay
+    }, 600);
 
     return () => {
+      clearTimeout(synthTimer);
+      clearTimeout(dataTimer);
+      clearTimeout(activationTimer);
       stopSpeaking();
-      clearInterval(recordTimerRef.current);
-      clearInterval(waveformIntervalRef.current);
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      if (waveformIntervalRef.current) clearInterval(waveformIntervalRef.current);
     };
   }, []);
 
@@ -520,12 +523,21 @@ export default function HakeemScreen() {
             }
           }
 
+          const chatMsgs: any[] = [];
+          if (historyPayload && historyPayload.length > 0) {
+            for (const h of historyPayload) {
+              if (!h.text || !h.text.trim()) continue;
+              const role = h.role === 'model' ? 'assistant' : 'user';
+              if (chatMsgs.length === 0 && role === 'assistant') {
+                continue; // skip leading assistant messages
+              }
+              chatMsgs.push({ role, content: h.text });
+            }
+          }
+
           const openAiMessages = [
             { role: 'system', content: systemInstruction },
-            ...historyPayload.map(h => ({
-              role: h.role === 'model' ? 'assistant' : 'user',
-              content: h.text
-            })),
+            ...chatMsgs,
             { role: 'user', content: userPrompt }
           ];
 
@@ -702,9 +714,20 @@ export default function HakeemScreen() {
         }
       }
 
-      // Secondary name match fallback
+      // If we matched some explicit navigate: links, let's ONLY return those!
+      // This prevents matching other things on accidental generic Arabic words.
+      if (matches.length > 0) {
+        return matches;
+      }
+
+      // Secondary name match fallback - only if no navigate links exist
+      const blacklistedTitles = ["قصة", "بطل", "مسلسل", "افلام", "فيلم", "حب", "حرب", "بنات", "شباب", "أبطال", "ابطال", "موقع", "برنامج"];
       seriesList.forEach(s => {
         if (s.title && s.title.length > 2 && text.includes(s.title)) {
+          const lowerTitle = s.title.toLowerCase();
+          if (blacklistedTitles.some(b => lowerTitle === b || lowerTitle.includes(b) && lowerTitle.length <= 4)) {
+            return; // Skip extremely generic titles like "قصة" or "بطل" if matched generally
+          }
           if (!matches.some(m => m.id === s.id)) {
             matches.push(s);
           }
@@ -721,10 +744,14 @@ export default function HakeemScreen() {
   const cleanMessageText = (text: string): string => {
     if (typeof text !== 'string') return '';
     try {
-      let clean = text.replace(/\[([^\]]+)\]\(navigate:[^\s\)]+\)/g, '$1');
+      // Remove any [text](navigate:id) or similar navigate links completely to keep text clean of link placeholders
+      let clean = text.replace(/\[([^\]]+)\]\(navigate:[^\s\)]+\)/g, '');
       clean = clean.replace(/navigate:[a-zA-Z0-9_\-]+/gi, '');
       clean = clean.replace(/[\(\)\[\]]/g, '');
-      return clean;
+      // Clean up multiple spaces, double colons, or trailing/leading whitespace/newlines
+      clean = clean.replace(/:\s*$/g, '.'); // Replace trailing colon with dot
+      clean = clean.replace(/\s+/g, ' ');   // Collapse multiple spaces
+      return clean.trim();
     } catch (e) {
       return text;
     }
@@ -921,18 +948,52 @@ export default function HakeemScreen() {
                         </div>
                       </div>
 
-                      {/* Series Instant Actions (Quick Watching) */}
+                      {/* Series Instant Actions (Quick Watching) with Gorgeous Poster Cards */}
                       {isBot && directWatchSeries.length > 0 && (
-                        <div className="flex flex-wrap gap-2 pt-1">
+                        <div className="space-y-3 pt-2 w-full">
                           {directWatchSeries.map((series) => (
-                            <button
+                            <motion.div
                               key={series.id}
-                              onClick={() => navigateToWatchOrAds(navigate, series)}
-                              className="px-3 py-2 bg-primary/10 hover:bg-primary/20 border border-primary/25 rounded-full text-[10px] sm:text-xs font-bold text-primary flex items-center gap-2 cursor-pointer transition-all animate-pulse"
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              whileHover={{ scale: 1.01 }}
+                              className="flex gap-4 p-3 bg-gradient-to-r from-zinc-950 to-zinc-900/40 border border-white/5 rounded-2xl overflow-hidden shadow-2xl relative group w-full"
                             >
-                              <Play className="w-3 h-3 fill-current" />
-                              <span>شاهد مسلسل "{series.title}" الآن 🍿</span>
-                            </button>
+                              {/* Poster image */}
+                              <div className="w-16 h-24 sm:w-20 sm:h-28 rounded-xl overflow-hidden bg-zinc-800 shrink-0 border border-white/5 relative shadow-md">
+                                <img 
+                                  src={series.image || "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?auto=format&fit=crop&q=80&w=300"} 
+                                  alt={series.title}
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300" 
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+                              </div>
+
+                              {/* Details & Action */}
+                              <div className="flex flex-col justify-between py-1 flex-1 text-right">
+                                <div>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-amber-500 font-bold">
+                                    <Sparkles className="w-3 h-3 animate-pulse" />
+                                    <span>{series.category || "عمل درامي متوفر"}</span>
+                                  </div>
+                                  <h4 className="text-xs sm:text-sm font-black text-white mt-1 group-hover:text-primary transition-all">
+                                    {series.title}
+                                  </h4>
+                                  <p className="text-[10px] sm:text-xs text-zinc-400 mt-1 line-clamp-2 leading-relaxed">
+                                    {series.description || "انقر على زر التشغيل لمشاهدة جميع الحلقات المتوفرة وبث مباشر بجودة فائقة السرعة."}
+                                  </p>
+                                </div>
+
+                                <button
+                                  onClick={() => navigateToWatchOrAds(navigate, series)}
+                                  className="mt-2 py-1.5 px-3 sm:px-4 rounded-xl text-[10px] sm:text-xs font-black bg-gradient-to-r from-primary to-rose-700 hover:from-primary/90 hover:to-rose-600 text-white shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 w-fit cursor-pointer self-start sm:self-end"
+                                >
+                                  <Play className="w-3 h-3 fill-current" />
+                                  <span>تشغيل الآن 🎬</span>
+                                </button>
+                              </div>
+                            </motion.div>
                           ))}
                         </div>
                       )}
