@@ -714,15 +714,6 @@ async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || "3000", 10);
 
-  // Fast low-overhead redirect middleware for old domain to new domain
-  app.use((req, res, next) => {
-    const host = req.get('host') || '';
-    if (host.includes('hikaytna-production.up.railway.app')) {
-      return res.redirect(301, 'https://www.hikaytna.my' + req.originalUrl);
-    }
-    next();
-  });
-
   app.use(express.json({ limit: "200mb" }));
   app.use(express.urlencoded({ limit: "200mb", extended: true }));
 
