@@ -597,12 +597,6 @@ export default function DirectMessagesScreen() {
   // Send Friend Request
   const handleSendFriendRequest = async (targetUserId: string) => {
     if (!db || !myId) return;
-    
-    if (viewedProfile && viewedProfile.name.includes('حكيم')) {
-      alert('لا يمكن إرسال طلب صداقة لـ حكيم! حكيم هو مستشارك الذكي وهو متاح دائماً لمساعدتك. 🤖✨');
-      return;
-    }
-
     if (targetUserId === myId) {
       alert('لا يمكنك إرسال طلب صداقة لنفسك! 😄');
       return;
@@ -1266,73 +1260,6 @@ export default function DirectMessagesScreen() {
                   ) : (
                     incomingRequests.map(r => {
                       const avatarObj = AVATARS.find(a => a.id === r.senderAvatar);
-                      const isAdminUser = localStorage.getItem('short_admin_access') === 'true';
-                      
-                      if (isAdminUser) {
-                        return (
-                          <div
-                            key={r.senderId}
-                            className="w-full bg-gradient-to-br from-amber-950/20 via-[#12121e]/80 to-zinc-950/40 border-2 border-amber-500/40 p-4 rounded-3xl flex flex-col gap-3 relative overflow-hidden shadow-[0_0_20px_rgba(245,158,11,0.15)] group animate-pulse-subtle"
-                          >
-                            {/* Animated background flare */}
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-3xl pointer-events-none -mr-10 -mt-10" />
-                            
-                            <div className="flex items-center justify-between">
-                              <span className="text-[7px] sm:text-[8px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                <span className="w-1 h-1 bg-amber-400 rounded-full animate-ping" />
-                                طلب صداقة ملكي للمدير 👑
-                              </span>
-                              <span className="text-[6px] font-mono text-zinc-500">
-                                {r.timestamp ? new Date(r.timestamp).toLocaleDateString('ar-EG', { month: 'short', day: 'numeric' }) : ''}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-3">
-                              <div className="w-11 h-11 rounded-full bg-zinc-900 border-2 border-amber-500/30 shrink-0 overflow-hidden relative shadow-[0_0_10px_rgba(245,158,11,0.2)]">
-                                {r.senderAvatar.startsWith('http') ? (
-                                  <img 
-                                    src={getProxiedUrl(r.senderAvatar)} 
-                                    className="w-full h-full object-cover rounded-full" 
-                                    style={{ 
-                                      objectPosition: `${r.senderAvatarPosH || '50'}% ${r.senderAvatarPosV || '50'}%`,
-                                      transform: `scale(${(parseFloat(r.senderAvatarZoom || '100')) / 100})`
-                                    }}
-                                    alt="" 
-                                  />
-                                ) : (
-                                  avatarObj?.svg
-                                )}
-                                {r.senderTemplate && r.senderTemplate !== 'none' && (
-                                  <ProfileTemplateOverlay template={r.senderTemplate} />
-                                )}
-                              </div>
-                              <div className="space-y-0.5">
-                                <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-1.5">
-                                  {r.senderName}
-                                  <span className="text-[9px] text-amber-500">✨</span>
-                                </h4>
-                                <p className="text-[9px] text-zinc-400 leading-none">يرغب بالانضمام إلى قائمة أصدقاء الإدارة المميزين</p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 mt-1 relative z-10">
-                              <button
-                                onClick={() => handleAcceptRequest(r.senderId)}
-                                className="flex-1 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-black text-xs font-black rounded-xl transition-all active:scale-95 shadow-[0_4px_12px_rgba(245,158,11,0.25)] flex items-center justify-center gap-1"
-                              >
-                                👑 قبول طلب الإدارة
-                              </button>
-                              <button
-                                onClick={() => handleDeclineRequest(r.senderId)}
-                                className="px-4 py-2 bg-white/5 hover:bg-red-500/10 text-zinc-400 hover:text-red-500 text-xs font-bold rounded-xl border border-white/5 transition-all"
-                              >
-                                رفض
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      }
-
                       return (
                         <div
                           key={r.senderId}

@@ -808,12 +808,6 @@ export default function SeriesChat({
     if (!db) return;
     const myId = localStorage.getItem('guest_chat_pid') || 'guest_temp';
     const myName = localStorage.getItem('guest_chat_name') || 'مشاهد';
-    
-    if (clickedProfile && clickedProfile.name.includes('حكيم')) {
-      alert('لا يمكن إرسال طلب صداقة لـ حكيم! حكيم هو مستشارك الذكي وهو متاح دائماً لمساعدتك. 🤖✨');
-      return;
-    }
-
     if (targetUserId === myId) {
       alert('لا يمكنك إرسال طلب صداقة لنفسك! 😄');
       return;
@@ -3069,21 +3063,7 @@ export default function SeriesChat({
 
               {/* Friend Request States and Chat Navigation buttons */}
               <div className="space-y-2.5">
-                {clickedProfile.name.includes('حكيم') ? (
-                  <div className="bg-[#12121e]/80 border border-purple-500/30 p-4 rounded-2xl space-y-3 text-right">
-                    <p className="text-[11px] text-zinc-300 leading-relaxed">
-                      🤖 <span className="font-extrabold text-purple-400">مستشار الذكاء الاصطناعي الذكي:</span> حكيم هو مساعدك الشخصي في منصة حكايتنا. إنه متاح دائماً للإجابة على تساؤلاتك ومناقشة تفاصيل الحلقات واللقطات معك مباشرة في غرف الدردشة أو في صفحته الخاصة.
-                    </p>
-                    <button
-                      onClick={() => {
-                        window.location.href = '/hakeem';
-                      }}
-                      className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-purple-800 text-white font-black text-[11px] rounded-xl shadow-lg hover:shadow-purple-500/20 active:scale-95 transition-all"
-                    >
-                      زيارة صفحة حكيم 🔮✨
-                    </button>
-                  </div>
-                ) : clickedProfile.userId !== localStorage.getItem('guest_chat_pid') ? (
+                {clickedProfile.userId !== localStorage.getItem('guest_chat_pid') ? (
                   <>
                     {clickedFriendshipStatus === 'friends' ? (
                       <div className="flex items-center justify-center gap-1 bg-primary/10 border border-primary/20 py-2 rounded-xl text-primary text-xs font-black">
