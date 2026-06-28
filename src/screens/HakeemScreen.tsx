@@ -135,10 +135,8 @@ export default function HakeemScreen() {
     }
   };
 
-  // Initialize Speech Synthesis and Load Series List
+  // Initialize Speech Synthesis and Load Series List (Optimized for iOS/Safari smooth transitions)
   useEffect(() => {
-    synthRef.current = window.speechSynthesis;
-
     const greetingMsg: Message = {
       id: 'welcome',
       role: 'model',
@@ -147,41 +145,46 @@ export default function HakeemScreen() {
     };
     setMessages([greetingMsg]);
 
-    async function loadSeries() {
+    // Lazy load non-critical resources after component transition finishes to keep it buttery smooth
+    const synthTimer = setTimeout(() => {
       try {
-        const list = await fetchAllSeries();
-        setSeriesList(list);
-      } catch (e) {
-        console.error('Error fetching series list for Hakeem:', e);
-      } finally {
-        setLoadingSeries(false);
-      }
-    }
-    loadSeries();
-
-    async function loadClientAiConfig() {
-      try {
-        const docSnap = await getDoc(doc(firestore, 'shorts', 'app_admin_ai_config'));
-        if (docSnap.exists()) {
-          const val = docSnap.data();
-          if (val && val.data) {
-            const parsed = JSON.parse(val.data);
-            if (parsed && parsed.key) {
-              setClientAiConfig(parsed);
-            }
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+          synthRef.current = window.speechSynthesis;
+          // Pre-trigger voices loading on iOS Safari without blocking
+          if (typeof window.speechSynthesis.getVoices === 'function') {
+            window.speechSynthesis.getVoices();
           }
         }
-      } catch (err) {
-        console.warn("Could not load AI config on client side:", err);
+      } catch (e) {
+        console.warn("Speech synthesis not supported or blocked by browser:", e);
       }
-    }
-    loadClientAiConfig();
-    checkActivation(); // Check Hakeem status on mount
+    }, 400);
+
+    const dataTimer = setTimeout(() => {
+      async function loadSeries() {
+        try {
+          const list = await fetchAllSeries();
+          setSeriesList(list);
+        } catch (e) {
+          console.error('Error fetching series list for Hakeem:', e);
+        } finally {
+          setLoadingSeries(false);
+        }
+      }
+      loadSeries();
+    }, 200);
+
+    const activationTimer = setTimeout(() => {
+      checkActivation(); // Check Hakeem status asynchronously with a delay
+    }, 600);
 
     return () => {
+      clearTimeout(synthTimer);
+      clearTimeout(dataTimer);
+      clearTimeout(activationTimer);
       stopSpeaking();
-      clearInterval(recordTimerRef.current);
-      clearInterval(waveformIntervalRef.current);
+      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+      if (waveformIntervalRef.current) clearInterval(waveformIntervalRef.current);
     };
   }, []);
 
@@ -520,12 +523,21 @@ export default function HakeemScreen() {
             }
           }
 
+          const chatMsgs: any[] = [];
+          if (historyPayload && historyPayload.length > 0) {
+            for (const h of historyPayload) {
+              if (!h.text || !h.text.trim()) continue;
+              const role = h.role === 'model' ? 'assistant' : 'user';
+              if (chatMsgs.length === 0 && role === 'assistant') {
+                continue; // skip leading assistant messages
+              }
+              chatMsgs.push({ role, content: h.text });
+            }
+          }
+
           const openAiMessages = [
             { role: 'system', content: systemInstruction },
-            ...historyPayload.map(h => ({
-              role: h.role === 'model' ? 'assistant' : 'user',
-              content: h.text
-            })),
+            ...chatMsgs,
             { role: 'user', content: userPrompt }
           ];
 
