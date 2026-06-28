@@ -2940,6 +2940,9 @@ s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock ==
 document.head.appendChild(s);
 </script>
 
+<!-- User Custom Ad Script -->
+<script src="https://quge5.com/88/tag.min.js" data-zone="254244" async data-cfasync="false"></script>
+
 </head>
 <body dir="rtl">
     <div class="container">
