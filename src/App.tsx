@@ -30,7 +30,6 @@ function AppLayout() {
   const [toastType, setToastType] = React.useState<'success' | 'info'>('success');
   const [isInstallOpen, setIsInstallOpen] = React.useState(false);
   const [isIntroRunning, setIsIntroRunning] = React.useState(false);
-  const [isOldDomain, setIsOldDomain] = React.useState(false);
 
   React.useEffect(() => {
     const handleTriggerInstall = () => {
@@ -57,16 +56,6 @@ function AppLayout() {
   }, [deviceMode]);
 
   React.useEffect(() => {
-    // Redirection from old domain
-    const currentHost = window.location.hostname;
-    if (currentHost.includes('hikaytna-production.up.railway.app') || currentHost.includes('railway')) {
-      setIsOldDomain(true);
-      const timer = setTimeout(() => {
-        window.location.replace('https://www.hikaytna.my' + window.location.pathname + window.location.search);
-      }, 3500);
-      return () => clearTimeout(timer);
-    }
-
     // Ensure guest_chat_pid is initialized early
     let presenceId = localStorage.getItem('guest_chat_pid');
     if (!presenceId) {
@@ -84,11 +73,11 @@ function AppLayout() {
     // Check for fake admins or if savedName is not configured, or if they forged a reserved admin name
     const matchesReserved = (name: string) => {
       const lower = name.toLowerCase();
-      return lower.includes('مدير') || lower.includes('المدير') || lower.includes('ادمن') || lower.includes('أدمن') || lower.includes('admin') || lower.includes('moderator');
+      return lower.includes('ÙØ¯ÙØ±') || lower.includes('Ø§ÙÙØ¯ÙØ±') || lower.includes('Ø§Ø¯ÙÙ') || lower.includes('Ø£Ø¯ÙÙ') || lower.includes('admin') || lower.includes('moderator');
     };
 
     if (!savedName || (matchesReserved(savedName) && !isAdminToken)) {
-      const generatedName = `مستخدم جديد 🍿`;
+      const generatedName = `ÙØ³ØªØ®Ø¯Ù Ø¬Ø¯ÙØ¯ ð¿`;
       localStorage.setItem('guest_chat_name', generatedName);
       localStorage.setItem('comment_author_name', generatedName);
       localStorage.setItem('guest_chat_avatar', 'boy1');
@@ -167,7 +156,7 @@ function AppLayout() {
             window.removeEventListener('mousemove', handleHumanActivity);
             window.removeEventListener('keydown', handleHumanActivity);
 
-            console.log("⚡ [Telemetry Verification] Human actions detected. Registering referral for:", trimmedRefCode);
+            console.log("â¡ [Telemetry Verification] Human actions detected. Registering referral for:", trimmedRefCode);
 
             fetch(getApiUrl('/api/v1/referral/register'), {
               method: 'POST',
@@ -184,7 +173,7 @@ function AppLayout() {
               if (data.status) {
                 localStorage.setItem('referred_registered', 'true');
                 setToastType('success');
-                setToastMessage(`🎉 تم احتساب إحالتك بنجاح! بفضل تفاعلك الحقيقي، ساعدت صديقك في إلغاء إعلاناته كلياً. شكراً لك!`);
+                setToastMessage(`ð ØªÙ Ø§Ø­ØªØ³Ø§Ø¨ Ø¥Ø­Ø§ÙØªÙ Ø¨ÙØ¬Ø§Ø­! Ø¨ÙØ¶Ù ØªÙØ§Ø¹ÙÙ Ø§ÙØ­ÙÙÙÙØ Ø³Ø§Ø¹Ø¯Øª ØµØ¯ÙÙÙ ÙÙ Ø¥ÙØºØ§Ø¡ Ø¥Ø¹ÙØ§ÙØ§ØªÙ ÙÙÙØ§Ù. Ø´ÙØ±Ø§Ù ÙÙ!`);
                 setTimeout(() => setToastMessage(null), 8500);
               } else {
                 if (data.selfReferral) {
@@ -193,7 +182,7 @@ function AppLayout() {
                   window.dispatchEvent(new Event('cheated-alert-updated'));
                 }
                 setToastType('info');
-                setToastMessage(data.message || `لقد قمت مسبقاً بدعم صديقك عبر هذا الجهاز، شكراً لرالقيّ تفاعلك ونبل أخلاقك! ❤️`);
+                setToastMessage(data.message || `ÙÙØ¯ ÙÙØª ÙØ³Ø¨ÙØ§Ù Ø¨Ø¯Ø¹Ù ØµØ¯ÙÙÙ Ø¹Ø¨Ø± ÙØ°Ø§ Ø§ÙØ¬ÙØ§Ø²Ø Ø´ÙØ±Ø§Ù ÙØ±Ø§ÙÙÙÙ ØªÙØ§Ø¹ÙÙ ÙÙØ¨Ù Ø£Ø®ÙØ§ÙÙ! â¤ï¸`);
                 setTimeout(() => setToastMessage(null), 7000);
               }
             })
@@ -246,42 +235,6 @@ function AppLayout() {
     };
   }, []);
 
-  if (isOldDomain) {
-    return (
-      <div className="fixed inset-0 z-[999999] bg-black text-white flex flex-col items-center justify-center p-6 text-center select-none font-sans">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.1),transparent_70%)] pointer-events-none" />
-        <div className="max-w-md space-y-6 relative z-10">
-          {/* Logo or icon */}
-          <div className="w-20 h-20 mx-auto rounded-full bg-red-600/10 border border-red-600/20 flex items-center justify-center animate-pulse">
-            <span className="text-4xl">🎬</span>
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-snug">لقد انتقلنا إلى عنواننا الرسمي الجديد!</h1>
-            <p className="text-zinc-400 text-xs leading-relaxed">
-              يسرنا أن نخبركم بأنه تم نقل موقع <b className="text-white font-extrabold">حكايتنا</b> بالكامل إلى النطاق الجديد والمميز للاستمتاع بتجربة مشاهدة أسرع وبأعلى دقة 4K وبدون أي بطء.
-            </p>
-          </div>
-          
-          <div className="p-4 bg-zinc-900/60 border border-white/5 rounded-2xl">
-            <span className="block text-[10px] text-zinc-500 font-extrabold uppercase">العنوان الجديد والرسمي</span>
-            <span className="text-lg font-black text-red-500 tracking-wider">www.hikaytna.my</span>
-          </div>
-
-          <p className="text-[10px] text-zinc-500 animate-pulse">
-            سيتم تحويلك تلقائياً خلال ثوانٍ معدودة...
-          </p>
-
-          <a 
-            href="https://www.hikaytna.my"
-            className="inline-block w-full py-3.5 px-5 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl text-xs transition-all active:scale-95 shadow-lg shadow-red-600/20"
-          >
-            الانتقال الفوري إلى حكايتنا 🚀
-          </a>
-        </div>
-      </div>
-    );
-  }
-
   if (isIntroRunning) {
     return (
       <AppIntro 
@@ -313,7 +266,7 @@ function AppLayout() {
       {isTV && showTvBadge && (
         <div className="fixed top-4 left-4 z-[9999] bg-gradient-to-r from-red-600 to-red-800 text-white px-3 py-1.5 rounded-full text-[10px] sm:text-xs font-black shadow-[0_0_20px_rgba(229,9,20,0.6)] border border-white/10 flex items-center gap-2 select-none animate-bounce">
           <span className="w-2 h-2 rounded-full bg-yellow-400 animate-ping" />
-          <span>وضع التلفزيون نشط 📺 (استخدم أزرار الريموت)</span>
+          <span>ÙØ¶Ø¹ Ø§ÙØªÙÙØ²ÙÙÙ ÙØ´Ø· ðº (Ø§Ø³ØªØ®Ø¯Ù Ø£Ø²Ø±Ø§Ø± Ø§ÙØ±ÙÙÙØª)</span>
         </div>
       )}
 
@@ -325,10 +278,10 @@ function AppLayout() {
               ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_12px_rgba(245,158,11,0.2)]' 
               : 'bg-zinc-900 text-zinc-400 border-white/5'
           }`}>
-            <span className="text-xl">{toastType === 'success' ? '👑' : '✨'}</span>
+            <span className="text-xl">{toastType === 'success' ? 'ð' : 'â¨'}</span>
           </div>
           <div className="flex-1 space-y-1">
-            <h4 className="text-xs font-black text-white">نظام التفاعل الذهبي ⚡</h4>
+            <h4 className="text-xs font-black text-white">ÙØ¸Ø§Ù Ø§ÙØªÙØ§Ø¹Ù Ø§ÙØ°ÙØ¨Ù â¡</h4>
             <p className="text-[11px] text-zinc-400 leading-relaxed font-semibold">
               {toastMessage}
             </p>
@@ -337,7 +290,7 @@ function AppLayout() {
             onClick={() => setToastMessage(null)} 
             className="text-zinc-400 hover:text-white transition-colors text-xs self-start p-1"
           >
-            ✕
+            â
           </button>
         </div>
       )}
