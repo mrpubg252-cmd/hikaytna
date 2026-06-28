@@ -1,9 +1,10 @@
 {
-  "apiKey": "AIzaSyAnYkOnP2XWfaKrXXvTO3Euq7s-pl9QGKg",
-  "authDomain": "chat-516a8.firebaseapp.com",
-  "projectId": "chat-516a8",
-  "databaseURL": "https://chat-516a8-default-rtdb.firebaseio.com",
-  "storageBucket": "chat-516a8.firebasestorage.app",
-  "messagingSenderId": "276393305302",
-  "appId": "1:276393305302:web:12f90a55d7c13a4c57d577"
+  "projectId": "remixed-project-id",
+  "appId": "remixed-app-id",
+  "apiKey": "remixed-api-key",
+  "authDomain": "remixed-auth-domain",
+  "firestoreDatabaseId": "remixed-firestore-database-id",
+  "storageBucket": "remixed-storage-bucket",
+  "messagingSenderId": "remixed-messaging-sender-id",
+  "measurementId": "remixed-measurement-id"
 }

@@ -21,7 +21,6 @@ interface ChatRepliedMsg {
 
 interface ChatMessage {
   id: string;
-  userId?: string;
   userName: string;
   userAvatar: string; // 'boy1' | 'boy2' | 'girl1' | 'girl2'
   text: string;
@@ -186,12 +185,6 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
   const [inputGender, setInputGender] = useState<'boy' | 'girl'>('boy');
   const [db, setDb] = useState<Database | null>(null);
   const [isDbReady, setIsDbReady] = useState(false);
-
-  const [userProfiles, setUserProfiles] = useState<Record<string, {
-    userName: string;
-    userAvatar: string;
-  }>>({});
-  const subscribedProfilesRef = useRef<Record<string, () => void>>({});
 
   // Direct Image and file upload states
   const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
@@ -378,7 +371,6 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
       if (data) {
         const parsed: ChatMessage[] = Object.entries(data).map(([key, value]: [string, any]) => ({
           id: key,
-          userId: value.userId || '',
           userName: value.userName || 'مشجع مجهول',
           userAvatar: value.userAvatar || 'boy1',
           text: value.text || '',
@@ -396,44 +388,6 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
 
     return () => unsubscribe();
   }, [matchId, isDbReady, db]);
-
-  // Sync unique message user profiles dynamically
-  useEffect(() => {
-    if (!db || messages.length === 0) return;
-
-    const uniqueUserIds: string[] = Array.from(new Set(messages.map(m => m.userId).filter((id): id is string => !!id)));
-
-    uniqueUserIds.forEach((uid: string) => {
-      if (subscribedProfilesRef.current[uid]) return;
-
-      const userRef = ref(db, `users/${uid}`);
-      const unsub = onValue(userRef, (snapshot) => {
-        const val = snapshot.val();
-        if (val) {
-          setUserProfiles(prev => {
-            const copy = { ...prev };
-            copy[uid] = {
-              userName: val.name || val.userName || 'مشجع مجهول',
-              userAvatar: val.avatar || val.userAvatar || 'boy1'
-            };
-            return copy;
-          });
-        }
-      });
-      subscribedProfilesRef.current[uid] = unsub;
-    });
-
-  }, [messages, isDbReady, db]);
-
-  // Cleanup profiles subscription
-  useEffect(() => {
-    return () => {
-      Object.values(subscribedProfilesRef.current).forEach(unsub => {
-        if (typeof unsub === 'function') unsub();
-      });
-      subscribedProfilesRef.current = {};
-    };
-  }, []);
 
   // Scroll to bottom on new message
   useEffect(() => {
@@ -453,7 +407,6 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
     try {
       const chatRef = ref(db, `matchesChat/${matchId}`);
       const payload: any = {
-        userId: localStorage.getItem('guest_chat_pid') || 'guest_temp',
         userName,
         userAvatar,
         text: trimmed,
@@ -733,16 +686,7 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
           </div>
         ) : (
           messages.map((msg) => {
-            // Dynamically resolve sender profile if available
-            const profile = msg.userId ? userProfiles[msg.userId] : null;
-            const displayName = profile?.userName || msg.userName;
-            const displayAvatar = profile?.userAvatar || msg.userAvatar;
-
-            // Identify if current user's message using persistent userId
-            const isMyMsg = msg.userId 
-              ? msg.userId === (localStorage.getItem('guest_chat_pid') || 'guest_temp')
-              : msg.userName === userName;
-
+            const isMyMsg = msg.userName === userName;
             const isEditing = editingMessageId === msg.id;
 
             return (
@@ -750,11 +694,11 @@ export default function MatchChat({ matchId, matchTitle }: MatchChatProps) {
                 key={msg.id} 
                 className={`flex gap-2.5 items-start ${isMyMsg ? 'flex-row' : 'flex-row-reverse'}`}
               >
-                {renderAvatarInitials(displayAvatar, displayName)}
+                {renderAvatarInitials(msg.userAvatar, msg.userName)}
                 <div className="flex flex-col max-w-[75%] space-y-1">
                   <div className={`flex items-center gap-2 ${isMyMsg ? 'justify-start' : 'justify-end'}`}>
                     <span className={`text-[9px] font-bold ${isMyMsg ? 'text-rose-400' : 'text-zinc-400'}`}>
-                      {isMyMsg ? 'أنا' : displayName}
+                      {msg.userName === userName ? 'أنا' : msg.userName}
                     </span>
                     <span className="text-[7px] text-zinc-650">
                       {new Date(msg.createdAt).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
