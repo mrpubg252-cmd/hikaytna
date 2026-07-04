@@ -953,26 +953,7 @@ async function startServer() {
     }
   };
 
-  // Post-healing verification and seeding
-  if (!USER_CUSTOM_AI_CONFIG || !USER_CUSTOM_AI_CONFIG.key || USER_CUSTOM_AI_CONFIG.key.startsWith("AQ.") || USER_CUSTOM_AI_CONFIG.key === "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY" || USER_CUSTOM_AI_CONFIG.key === "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI") {
-    console.log("No valid AI config found or expired key on startup. Seeding default working Hakeem AI config!");
-    USER_CUSTOM_AI_CONFIG = {
-      key: "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",
-      baseUrl: "https://openrouter.ai/api/v1",
-      model: "google/gemini-2.5-flash",
-      type: "openai"
-    };
-    saveAIConfigToCloud();
-  }
-
-  if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key === "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") {
-    if (USER_CUSTOM_AI_CONFIG.baseUrl !== "https://openrouter.ai/api/v1" || USER_CUSTOM_AI_CONFIG.model !== "google/gemini-2.5-flash") {
-      USER_CUSTOM_AI_CONFIG.baseUrl = "https://openrouter.ai/api/v1";
-      USER_CUSTOM_AI_CONFIG.model = "google/gemini-2.5-flash";
-      USER_CUSTOM_AI_CONFIG.type = "openai";
-      saveAIConfigToCloud();
-    }
-  }
+  // Seeding and automatic configuration writing removed to ensure that Hakeem AI credentials only appear in Firebase Firestore and RTDB after the user clicks 'Activate' in the frontend.
 
   // Prevent generic CORS "Failed to fetch" blocks in complex iframe previews
   app.use((req, res, next) => {
@@ -1171,7 +1152,11 @@ async function startServer() {
     }
 
     if (requestedUrl.includes("fitnur.com/alooytv")) {
-      return `${activeDomain}/tv-series.html`;
+      const cleaned = requestedUrl.replace(/\/$/, "");
+      if (cleaned.endsWith("fitnur.com/alooytv") || cleaned.endsWith("fitnur.com/alooytv/tv-series.html")) {
+        return `${activeDomain}/tv-series.html`;
+      }
+      return requestedUrl.replace(/https?:\/\/(?:www\.)?fitnur\.com\/alooytv/i, activeDomain);
     }
 
     // Replace domain of original URL with the active one
@@ -2719,18 +2704,6 @@ async function startServer() {
     try {
       await getDynamicAiConfig();
 
-      // Auto-initialize if empty to write configuration fields to Firestore/RTDB automatically
-      if (!USER_CUSTOM_AI_CONFIG || !USER_CUSTOM_AI_CONFIG.key || USER_CUSTOM_AI_CONFIG.key.trim().length === 0) {
-        console.log("[Hakeem Status] Auto-initializing Hakeem configuration in Firebase...");
-        USER_CUSTOM_AI_CONFIG = {
-          key: "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",
-          baseUrl: "https://openrouter.ai/api/v1",
-          model: "google/gemini-2.5-flash",
-          type: "openai"
-        };
-        await saveAIConfigToCloud();
-      }
-
       const isActivated = !!(
         USER_CUSTOM_AI_CONFIG &&
         USER_CUSTOM_AI_CONFIG.key &&
@@ -2740,7 +2713,7 @@ async function startServer() {
       res.json({
         status: true,
         isActivated,
-        config: USER_CUSTOM_AI_CONFIG ? {
+        config: USER_CUSTOM_AI_CONFIG && isActivated ? {
           type: USER_CUSTOM_AI_CONFIG.type || "openai",
           model: USER_CUSTOM_AI_CONFIG.model || "google/gemini-2.5-flash",
           baseUrl: USER_CUSTOM_AI_CONFIG.baseUrl || "https://openrouter.ai/api/v1",

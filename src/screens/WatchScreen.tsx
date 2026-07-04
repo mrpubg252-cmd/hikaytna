@@ -864,6 +864,7 @@ export default function WatchScreen() {
       return resolvedUrlsCache.current[rawUrl];
     }
     
+    let targetUrl = rawUrl;
     const lowerUrl = rawUrl.toLowerCase();
     const isDirect = lowerUrl.includes('.mp4') || 
                      lowerUrl.includes('.m3u8') || 
@@ -871,17 +872,34 @@ export default function WatchScreen() {
                      lowerUrl.includes('.ogg') || 
                      lowerUrl.includes('.mov');
 
-    if (isDirect) {
-      const secureUrl = rawUrl.replace(/^http:\/\//i, 'https://');
-      resolvedUrlsCache.current[rawUrl] = secureUrl;
-      return secureUrl;
-    } else {
+    if (!isDirect) {
       // It's probably an iframe player that requires resolving
       const playUrl = await fetchPlayUrlFromAPI(rawUrl, signal);
-      const result = playUrl ? playUrl.replace(/^http:\/\//i, 'https://') : rawUrl.replace(/^http:\/\//i, 'https://');
-      resolvedUrlsCache.current[rawUrl] = result;
-      return result;
+      if (playUrl) {
+        targetUrl = playUrl;
+      }
     }
+
+    let result = targetUrl.replace(/^http:\/\//i, 'https://');
+    const resultLower = result.toLowerCase();
+
+    // If it's a direct video stream, or if it points to AlooyTV/fitnur, or if the system resolved to an archive.org warning video,
+    // proxy it via our server-side secure stream-proxy to inject the correct Referer/Origin headers.
+    const isVideoFile = resultLower.includes('.mp4') || 
+                        resultLower.includes('.m3u8') || 
+                        resultLower.includes('.webm');
+                        
+    const isAlooySource = resultLower.includes('alooytv') || 
+                          resultLower.includes('fitnur.com') || 
+                          resultLower.includes('archive.org');
+
+    if ((isVideoFile || isAlooySource) && !result.startsWith('/api/v1/')) {
+      const encrypted = encodeURIComponent(encryptValue(result));
+      result = getApiUrl(`/api/v1/stream-proxy/${encrypted}`);
+    }
+
+    resolvedUrlsCache.current[rawUrl] = result;
+    return result;
   }
 
   const playControllerRef = useRef<AbortController | null>(null);
