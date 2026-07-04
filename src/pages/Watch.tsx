@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Loader2, ChevronRight, ChevronLeft, LayoutGrid, Play, AlertTriangle, Heart, Share2, Download } from 'lucide-react';
+import { Loader2, ChevronRight, ChevronLeft, LayoutGrid, Play } from 'lucide-react';
 import { cn, triggerAdFlow } from '../lib/utils';
 import { Series } from '../types';
 import CustomPlayer from '../components/CustomPlayer';
 import SeriesChat from '../components/SeriesChat';
-import ReportModal from '../components/ReportModal';
 
 export default function Watch() {
   const { slug } = useParams();
@@ -18,7 +17,6 @@ export default function Watch() {
   const [resolvedVideo, setResolvedVideo] = useState<{ videoUrl: string | null; type: string } | null>(null);
   const [resolving, setResolving] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
-  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   useEffect(() => {
     async function fetchWatchData() {
@@ -180,23 +178,16 @@ export default function Watch() {
 
             {/* Action Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 mt-8 md:mt-10">
-              <button className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-white/10 transition-all border border-white/10 flex items-center justify-center gap-2.5 text-sm md:text-base text-gray-300 hover:text-white cursor-pointer">
-                <Download className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
+              <button className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-white/10 transition-all border border-white/10 flex items-center justify-center gap-2 text-sm md:text-base">
                 <span>تحميل</span>
               </button>
-              <button className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-[#b72424]/10 hover:border-[#b72424]/30 hover:text-[#b72424] transition-all border border-white/10 flex items-center justify-center gap-2.5 text-sm md:text-base text-gray-300 cursor-pointer">
-                <Heart className="w-4 h-4 md:w-5 md:h-5 text-rose-500 fill-rose-500/20" />
+              <button className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-white/10 transition-all border border-white/10 flex items-center justify-center gap-2 text-sm md:text-base">
                 <span>المفضلة</span>
               </button>
-              <button 
-                onClick={() => setIsReportModalOpen(true)}
-                className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-amber-500/10 hover:border-amber-500/30 hover:text-amber-500 transition-all border border-white/10 flex items-center justify-center gap-2.5 text-sm md:text-base text-gray-300 cursor-pointer"
-              >
-                <AlertTriangle className="w-4 h-4 md:w-5 md:h-5 text-amber-500" />
+              <button className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-white/10 transition-all border border-white/10 flex items-center justify-center gap-2 text-sm md:text-base">
                 <span>إبلاغ</span>
               </button>
-              <button className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-white/10 transition-all border border-white/10 flex items-center justify-center gap-2.5 text-sm md:text-base text-gray-300 hover:text-white cursor-pointer">
-                <Share2 className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
+              <button className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-white/10 transition-all border border-white/10 flex items-center justify-center gap-2 text-sm md:text-base">
                 <span>مشاركة</span>
               </button>
             </div>
@@ -211,15 +202,6 @@ export default function Watch() {
                 <SeriesChat seriesId={series.slug} seriesTitle={series.title} />
               </div>
             )}
-
-            {/* Report Dialog Modal */}
-            <ReportModal
-              isOpen={isReportModalOpen}
-              onClose={() => setIsReportModalOpen(false)}
-              seriesTitle={series?.title}
-              episodeTitle={data?.title}
-              episodeSlug={slug}
-            />
           </div>
 
           {/* Sidebar (Episode List) */}

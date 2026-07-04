@@ -80,15 +80,9 @@ export default function CustomPlayer({
   const [showServerMenu, setShowServerMenu] = useState(false);
   const [showEpisodesDrawer, setShowEpisodesDrawer] = useState(false);
   const [doubleTapFeedback, setDoubleTapFeedback] = useState<{ side: 'left' | 'right'; show: boolean }>({ side: 'left', show: false });
-  const [forceIframe, setForceIframe] = useState(false);
-
-  // Reset forceIframe when video or server changes
-  useEffect(() => {
-    setForceIframe(false);
-  }, [videoUrl, activeServerUrl]);
 
   // Check if the current source is a direct stream or iframe embed
-  const isDirectStream = !forceIframe && videoUrl && (
+  const isDirectStream = videoUrl && (
     videoUrl.includes('/api/proxy-hls') || 
     videoUrl.includes('.m3u8') || 
     videoUrl.includes('.mp4') || 
@@ -423,41 +417,15 @@ export default function CustomPlayer({
 
             {/* Loading Indicator */}
             {isLoading && (
-              <div className="absolute inset-0 flex flex-col gap-4 items-center justify-center bg-black/80 backdrop-blur-md z-50">
+              <div className="absolute inset-0 flex flex-col gap-3 items-center justify-center bg-black/40 backdrop-blur-sm z-50 pointer-events-none">
                 <Loader2 className="w-12 h-12 text-[#b72424] animate-spin drop-shadow-md" />
-                <div className="text-center space-y-1">
-                  <p className="text-sm font-bold text-zinc-200">جاري تحميل البث المباشر...</p>
-                  <p className="text-[11px] text-zinc-500 font-medium">إذا استغرق التحميل طويلاً، يمكنك التبديل للمشغل الاحتياطي</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setForceIframe(true);
-                  }}
-                  className="px-4 py-2.5 bg-[#b72424] hover:bg-red-600 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-[#b72424]/20 flex items-center gap-1.5 cursor-pointer z-50"
-                >
-                  <Server className="w-3.5 h-3.5" />
-                  تشغيل عبر المشغل الاحتياطي
-                </button>
+                <span className="text-xs font-bold tracking-wider text-zinc-300 font-mono">جاري تحميل البث المباشر...</span>
               </div>
             )}
           </>
         ) : (
           /* Iframe Server Embed Sandbox Mode */
-          <div className="relative w-full h-full bg-black">
-            {forceIframe && (
-              <div className="absolute top-4 right-4 z-50">
-                <button
-                  type="button"
-                  onClick={() => setForceIframe(false)}
-                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all border border-emerald-500/30 flex items-center gap-1.5 text-xs font-black shadow-lg cursor-pointer"
-                >
-                  <Tv className="w-3.5 h-3.5" />
-                  <span>العودة للمشغل المتطور</span>
-                </button>
-              </div>
-            )}
+          <div className="relative w-full h-full">
             {videoUrl ? (
               <iframe
                 src={videoUrl}
@@ -500,16 +468,6 @@ export default function CustomPlayer({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button 
-                    type="button"
-                    onClick={() => setForceIframe(true)}
-                    className="px-3 py-2 rounded-lg bg-[#b72424]/40 hover:bg-[#b72424] text-white transition-all border border-[#b72424]/50 flex items-center gap-1.5 text-xs font-black shadow-md cursor-pointer"
-                    title="التحويل إلى المشغل الاحتياطي"
-                  >
-                    <Server className="w-3.5 h-3.5" />
-                    <span>المشغل الاحتياطي</span>
-                  </button>
-
                   {/* Quick toggle fullscreen and maximize screen */}
                   <button 
                     onClick={onToggleMaximize}

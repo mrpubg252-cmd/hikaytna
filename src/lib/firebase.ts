@@ -1,15 +1,14 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAnYkOnP2XWfaKrXXvTO3Euq7s-pl9QGKg",
-  authDomain: "chat-516a8.firebaseapp.com",
-  projectId: "chat-516a8",
-  databaseURL: "https://chat-516a8-default-rtdb.firebaseio.com",
-  storageBucket: "chat-516a8.firebasestorage.app",
-  messagingSenderId: "276393305302",
-  appId: "1:276393305302:web:12f90a55d7c13a4c57d577"
+  apiKey: "AIzaSyCkm6DMKkB2V76zGCbiB_KnN3GoLhjGCAc",
+  authDomain: "gen-lang-client-0269374578.firebaseapp.com",
+  projectId: "gen-lang-client-0269374578",
+  storageBucket: "gen-lang-client-0269374578.firebasestorage.app",
+  messagingSenderId: "370254284633",
+  appId: "1:370254284633:web:fcb1f60aec0894668b2e48"
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+export const db = initializeFirestore(app, {}, "ai-studio-048a39af-ab79-48db-b170-6e12d74acd6f");
