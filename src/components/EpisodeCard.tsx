@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Play } from 'lucide-react';
 import { Episode } from '../types';
 import { motion } from 'motion/react';
@@ -10,9 +11,10 @@ interface EpisodeCardProps {
 }
 
 export default function EpisodeCard({ episode }: EpisodeCardProps) {
+  const navigate = useNavigate();
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    triggerAdFlow(`/watch/${episode.slug}`);
+    triggerAdFlow(`/watch/${episode.slug}`, navigate);
   };
 
   return (

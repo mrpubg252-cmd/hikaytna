@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Series } from '../types';
 import { Loader2, Play, Info, ChevronLeft } from 'lucide-react';
@@ -7,10 +7,19 @@ import { triggerAdFlow } from '../lib/utils';
 
 export default function SeriesDetails() {
   const { slug } = useParams();
+  const navigate = useNavigate();
   const [series, setSeries] = useState<Series | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Direct link copy ad flow redirect
+    const hasAdShown = sessionStorage.getItem('ad_shown_this_session') === 'true';
+    if (!hasAdShown) {
+      sessionStorage.setItem('ad_shown_this_session', 'true');
+      window.location.replace(`/ad?redirectUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      return;
+    }
+
     async function fetchDetails() {
       try {
         const { data } = await axios.get(`/api/series/${slug}`);
@@ -59,7 +68,7 @@ export default function SeriesDetails() {
             </p>
             <div className="flex flex-wrap gap-3 justify-center md:justify-start px-4">
               <button 
-                onClick={() => firstEpSlug && triggerAdFlow(`/watch/${firstEpSlug}`)}
+                onClick={() => firstEpSlug && triggerAdFlow(`/watch/${firstEpSlug}`, navigate)}
                 disabled={!firstEpSlug}
                 className={`bg-white text-black px-6 md:px-10 py-2.5 md:py-4 rounded-md font-black flex items-center justify-center gap-2 md:gap-3 hover:bg-gray-200 transition-all text-sm md:text-xl shadow-xl flex-1 md:flex-none ${
                   !firstEpSlug ? 'opacity-50 cursor-not-allowed' : ''
@@ -94,7 +103,7 @@ export default function SeriesDetails() {
             series.episodes.map((ep, index) => (
               <button 
                 key={ep.epSlug} 
-                onClick={() => triggerAdFlow(`/watch/${ep.epSlug}`)}
+                onClick={() => triggerAdFlow(`/watch/${ep.epSlug}`, navigate)}
                 className="w-full text-right group flex items-center gap-4 md:gap-10 p-4 md:p-8 rounded-2xl bg-[#111] hover:bg-[#1a1a1a] transition-all duration-500 border border-white/5 hover:border-[#b72424]/30 shadow-2xl relative overflow-hidden"
               >
                 {/* Background Glow Effect */}

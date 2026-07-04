@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, User, Menu, X } from 'lucide-react';
+import { Search, User, Menu, X, Heart } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/src/lib/utils';
 
@@ -46,11 +46,25 @@ export default function Header() {
           >
             <Search size={24} />
           </button>
+
+          {/* Sidebar Drawer Toggle Action */}
+          <button 
+            onClick={() => window.dispatchEvent(new Event('toggle_sidebar_drawer'))}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-black/20 hover:bg-[#921e1e] border border-white/10 rounded-xl transition-all font-black text-xs cursor-pointer shadow-md"
+            title="مفضلتي وسجل المشاهدة"
+          >
+            <Heart size={14} className="text-white fill-white/80 animate-pulse" />
+            <span className="text-zinc-100">مفضلتي وسجلي</span>
+          </button>
+
           <button className="hidden sm:flex items-center gap-2 p-2 hover:bg-[#921e1e] rounded-lg transition-colors">
             <User size={20} />
             <span className="text-sm font-medium">دخول</span>
           </button>
-          <button className="md:hidden p-2 hover:bg-[#921e1e] rounded-full">
+          <button 
+            onClick={() => window.dispatchEvent(new Event('toggle_sidebar_drawer'))}
+            className="md:hidden p-2 hover:bg-[#921e1e] rounded-full"
+          >
             <Menu size={24} />
           </button>
         </div>

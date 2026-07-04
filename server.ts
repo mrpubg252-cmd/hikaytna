@@ -932,6 +932,9 @@ app.get("/ad", (req, res) => {
         }, 100);
 
         function triggerRedirect() {
+            try {
+                sessionStorage.setItem('ad_shown_this_session', 'true');
+            } catch (e) {}
             if (redirectUrl) {
                 window.location.replace(redirectUrl);
             } else if (seriesId) {

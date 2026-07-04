@@ -1,14 +1,6 @@
 import { initializeApp } from "firebase/app";
-import { initializeFirestore } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
+import appletConfig from "../../firebase-applet-config.json";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCkm6DMKkB2V76zGCbiB_KnN3GoLhjGCAc",
-  authDomain: "gen-lang-client-0269374578.firebaseapp.com",
-  projectId: "gen-lang-client-0269374578",
-  storageBucket: "gen-lang-client-0269374578.firebasestorage.app",
-  messagingSenderId: "370254284633",
-  appId: "1:370254284633:web:fcb1f60aec0894668b2e48"
-};
-
-const app = initializeApp(firebaseConfig);
-export const db = initializeFirestore(app, {}, "ai-studio-048a39af-ab79-48db-b170-6e12d74acd6f");
+const app = initializeApp(appletConfig);
+export const db = getFirestore(app, appletConfig.firestoreDatabaseId);

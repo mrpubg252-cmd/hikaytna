@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import HeroSlider from '../components/HeroSlider';
 import EpisodeCard from '../components/EpisodeCard';
@@ -7,6 +8,7 @@ import { Loader2, Zap } from 'lucide-react';
 import { triggerAdFlow } from '../lib/utils';
 
 export default function Home() {
+  const navigate = useNavigate();
   const [latest, setLatest] = useState<Episode[]>([]);
   const [featured, setFeatured] = useState<Featured[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,7 +80,7 @@ export default function Home() {
           {featured.slice(0, 6).map((item) => (
             <div 
               key={item.slug} 
-              onClick={() => triggerAdFlow(`/series/${item.slug}`)}
+              onClick={() => triggerAdFlow(`/series/${item.slug}`, navigate)}
               className="group relative h-48 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 cursor-pointer"
             >
               <img 

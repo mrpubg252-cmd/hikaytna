@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Loader2, ChevronRight, ChevronLeft, LayoutGrid, Play } from 'lucide-react';
+import { Loader2, ChevronRight, ChevronLeft, LayoutGrid, Play, AlertTriangle, Heart, Share2, Download } from 'lucide-react';
 import { cn, triggerAdFlow } from '../lib/utils';
 import { Series } from '../types';
 import CustomPlayer from '../components/CustomPlayer';
 import SeriesChat from '../components/SeriesChat';
+import ReportModal from '../components/ReportModal';
 
 export default function Watch() {
   const { slug } = useParams();
@@ -17,8 +18,18 @@ export default function Watch() {
   const [resolvedVideo, setResolvedVideo] = useState<{ videoUrl: string | null; type: string } | null>(null);
   const [resolving, setResolving] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isFavorited, setIsFavorited] = useState(false);
 
   useEffect(() => {
+    // Intercept direct external link copies to require going through the ad skip page
+    const hasAdShown = sessionStorage.getItem('ad_shown_this_session') === 'true';
+    if (!hasAdShown) {
+      sessionStorage.setItem('ad_shown_this_session', 'true');
+      window.location.replace(`/ad?redirectUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      return;
+    }
+
     async function fetchWatchData() {
       setLoading(true);
       try {
@@ -45,6 +56,67 @@ export default function Watch() {
     fetchWatchData();
     window.scrollTo(0, 0);
   }, [slug]);
+
+  // Save to Watch History when episode and series are loaded
+  useEffect(() => {
+    if (data && series) {
+      try {
+        const historyJson = localStorage.getItem('watch_history') || '[]';
+        const history = JSON.parse(historyJson);
+        const newItem = {
+          slug: slug,
+          title: data.title,
+          seriesTitle: series.title,
+          seriesSlug: series.slug,
+          img: series.img,
+          watchedAt: Date.now()
+        };
+        const filtered = history.filter((item: any) => item.slug !== newItem.slug);
+        const updated = [newItem, ...filtered].slice(0, 8);
+        localStorage.setItem('watch_history', JSON.stringify(updated));
+        window.dispatchEvent(new Event('watch_history_updated'));
+      } catch (err) {
+        console.error("Failed to save history:", err);
+      }
+    }
+  }, [data, series]);
+
+  // Check Favorite State
+  useEffect(() => {
+    if (series) {
+      try {
+        const favs = JSON.parse(localStorage.getItem('favorites_series') || '[]');
+        setIsFavorited(favs.some((fav: any) => fav.slug === series.slug));
+      } catch (e) {
+        setIsFavorited(false);
+      }
+    }
+  }, [series]);
+
+  const toggleFavorite = () => {
+    if (!series) return;
+    try {
+      const favs = JSON.parse(localStorage.getItem('favorites_series') || '[]');
+      const isAlready = favs.some((fav: any) => fav.slug === series.slug);
+      let updated;
+      if (isAlready) {
+        updated = favs.filter((fav: any) => fav.slug !== series.slug);
+        setIsFavorited(false);
+      } else {
+        updated = [...favs, {
+          title: series.title,
+          slug: series.slug,
+          img: series.img,
+          addedAt: Date.now()
+        }];
+        setIsFavorited(true);
+      }
+      localStorage.setItem('favorites_series', JSON.stringify(updated));
+      window.dispatchEvent(new Event('favorites_updated'));
+    } catch (err) {
+      console.error("Failed to toggle favorite:", err);
+    }
+  };
 
   useEffect(() => {
     if (!activeServer) {
@@ -108,7 +180,7 @@ export default function Watch() {
               <div className="flex items-center gap-2 md:gap-3">
                 <button 
                   disabled={!prevEp}
-                  onClick={() => prevEp && triggerAdFlow(`/watch/${prevEp.epSlug}`)}
+                  onClick={() => prevEp && triggerAdFlow(`/watch/${prevEp.epSlug}`, navigate)}
                   className={cn(
                     "bg-[#1a1a1a] p-3 md:p-4 rounded-xl transition-all border border-white/10",
                     !prevEp ? "opacity-30 cursor-not-allowed" : "hover:bg-[#b72424] hover:border-[#b72424]"
@@ -118,7 +190,7 @@ export default function Watch() {
                 </button>
                 <button 
                   disabled={!nextEp}
-                  onClick={() => nextEp && triggerAdFlow(`/watch/${nextEp.epSlug}`)}
+                  onClick={() => nextEp && triggerAdFlow(`/watch/${nextEp.epSlug}`, navigate)}
                   className={cn(
                     "bg-[#1a1a1a] p-3 md:p-4 rounded-xl transition-all border border-white/10",
                     !nextEp ? "opacity-30 cursor-not-allowed" : "hover:bg-[#b72424] hover:border-[#b72424]"
@@ -139,7 +211,7 @@ export default function Watch() {
               episodes={series?.episodes || []}
               servers={data.servers || []}
               onSelectEpisode={(ep, index) => {
-                triggerAdFlow(`/watch/${ep.epSlug}`);
+                triggerAdFlow(`/watch/${ep.epSlug}`, navigate);
               }}
               onSelectServer={(url) => {
                 setActiveServer(url);
@@ -178,16 +250,31 @@ export default function Watch() {
 
             {/* Action Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 mt-8 md:mt-10">
-              <button className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-white/10 transition-all border border-white/10 flex items-center justify-center gap-2 text-sm md:text-base">
+              <button className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-white/10 transition-all border border-white/10 flex items-center justify-center gap-2.5 text-sm md:text-base text-gray-300 hover:text-white cursor-pointer">
+                <Download className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
                 <span>تحميل</span>
               </button>
-              <button className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-white/10 transition-all border border-white/10 flex items-center justify-center gap-2 text-sm md:text-base">
-                <span>المفضلة</span>
+              <button 
+                onClick={toggleFavorite}
+                className={cn(
+                  "py-4 md:py-5 rounded-xl md:rounded-2xl font-black transition-all border flex items-center justify-center gap-2.5 text-sm md:text-base cursor-pointer",
+                  isFavorited 
+                    ? "bg-[#b72424]/10 border-[#b72424]/30 text-[#b72424]" 
+                    : "bg-white/5 border-white/10 text-gray-300 hover:bg-[#b72424]/10 hover:border-[#b72424]/30 hover:text-[#b72424]"
+                )}
+              >
+                <Heart className={cn("w-4 h-4 md:w-5 md:h-5 text-rose-500", isFavorited && "fill-rose-500")} />
+                <span>{isFavorited ? "مضاف للمفضلة" : "المفضلة"}</span>
               </button>
-              <button className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-white/10 transition-all border border-white/10 flex items-center justify-center gap-2 text-sm md:text-base">
+              <button 
+                onClick={() => setIsReportModalOpen(true)}
+                className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-amber-500/10 hover:border-amber-500/30 hover:text-amber-500 transition-all border border-white/10 flex items-center justify-center gap-2.5 text-sm md:text-base text-gray-300 cursor-pointer"
+              >
+                <AlertTriangle className="w-4 h-4 md:w-5 md:h-5 text-amber-500" />
                 <span>إبلاغ</span>
               </button>
-              <button className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-white/10 transition-all border border-white/10 flex items-center justify-center gap-2 text-sm md:text-base">
+              <button className="bg-white/5 py-4 md:py-5 rounded-xl md:rounded-2xl font-black hover:bg-white/10 transition-all border border-white/10 flex items-center justify-center gap-2.5 text-sm md:text-base text-gray-300 hover:text-white cursor-pointer">
+                <Share2 className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />
                 <span>مشاركة</span>
               </button>
             </div>
@@ -202,40 +289,96 @@ export default function Watch() {
                 <SeriesChat seriesId={series.slug} seriesTitle={series.title} />
               </div>
             )}
+
+            {/* Report Dialog Modal */}
+            <ReportModal
+              isOpen={isReportModalOpen}
+              onClose={() => setIsReportModalOpen(false)}
+              seriesTitle={series?.title}
+              episodeTitle={data?.title}
+              episodeSlug={slug}
+            />
           </div>
 
-          {/* Sidebar (Episode List) */}
+          {/* Sidebar (Episode List) - Netflix Style Sidebar */}
           {series && (
-            <div className="lg:w-[350px] xl:w-[400px] shrink-0">
-              <div className="bg-[#141414] rounded-2xl md:rounded-3xl border border-white/5 p-5 md:p-6 lg:sticky lg:top-24 max-h-[60vh] lg:max-h-[80vh] flex flex-col shadow-2xl">
-                <div className="flex items-center justify-between mb-4 md:mb-6 shrink-0">
-                  <h3 className="text-lg md:text-xl font-black">قائمة الحلقات</h3>
-                  <span className="text-[#b72424] font-bold text-sm md:text-base">{series.episodes?.length} حلقة</span>
+            <div className="lg:w-[380px] xl:w-[440px] shrink-0">
+              <div className="bg-[#111] rounded-2xl md:rounded-3xl border border-white/5 p-4 md:p-5 lg:sticky lg:top-24 max-h-[65vh] lg:max-h-[80vh] flex flex-col shadow-2xl">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/10 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-5 bg-[#b72424] rounded-full" />
+                    <h3 className="text-base md:text-lg font-black text-white">قائمة الحلقات</h3>
+                  </div>
+                  <span className="text-[#b72424] font-bold text-xs md:text-sm bg-[#b72424]/10 px-2.5 py-1 rounded-full">{series.episodes?.length} حلقة</span>
                 </div>
                 
-                <div className="flex-grow overflow-y-auto custom-scrollbar pr-1 md:pr-2 space-y-2">
-                  {series.episodes?.map((ep) => (
-                    <button 
-                      key={ep.epSlug} 
-                      onClick={() => triggerAdFlow(`/watch/${ep.epSlug}`)}
-                      className={cn(
-                        "w-full flex items-center gap-3 md:gap-4 p-3 md:p-4 rounded-xl md:rounded-2xl transition-all border text-right",
-                        slug === ep.epSlug 
-                          ? "bg-[#b72424] border-[#b72424] shadow-lg shadow-[#b72424]/20 text-white" 
-                          : "bg-white/5 border-transparent hover:bg-white/10 text-gray-300 hover:text-white"
-                      )}
-                    >
-                      <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-black/20 flex items-center justify-center shrink-0">
-                        <Play size={16} className="md:size-20" fill={slug === ep.epSlug ? "white" : "currentColor"} />
-                      </div>
-                      <div className="flex-grow overflow-hidden">
-                        <h4 className="font-bold text-xs md:text-sm line-clamp-1">
-                          الحلقة {ep.epNum}
-                        </h4>
-                        <p className="text-[10px] md:text-xs text-white/40 truncate">{series.title}</p>
-                      </div>
-                    </button>
-                  ))}
+                <div className="flex-grow overflow-y-auto custom-scrollbar pr-1 space-y-3">
+                  {series.episodes?.map((ep, idx) => {
+                    const isActive = slug === ep.epSlug;
+                    return (
+                      <button 
+                        key={ep.epSlug} 
+                        onClick={() => triggerAdFlow(`/watch/${ep.epSlug}`, navigate)}
+                        className={cn(
+                          "w-full flex gap-3.5 p-2 rounded-xl transition-all duration-300 text-right group border",
+                          isActive 
+                            ? "bg-gradient-to-l from-[#b72424]/20 to-transparent border-[#b72424]/40 shadow-lg shadow-[#b72424]/5" 
+                            : "bg-white/[0.02] border-transparent hover:bg-white/[0.06] hover:border-white/5"
+                        )}
+                      >
+                        {/* Thumbnail (Right side in RTL) */}
+                        <div className="relative w-24 h-14 md:w-28 md:h-16 rounded-lg overflow-hidden shrink-0 shadow-md ring-1 ring-white/10 bg-zinc-900 flex-shrink-0">
+                          <img 
+                            src={series.img} 
+                            alt={`الحلقة ${ep.epNum}`}
+                            className="w-full h-full object-cover opacity-60 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500" 
+                          />
+                          {/* Netflix Hover Overlay */}
+                          <div className={cn(
+                            "absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity duration-300",
+                            isActive ? "opacity-100 bg-black/55" : "opacity-0 group-hover:opacity-100"
+                          )}>
+                            <div className="w-7 h-7 rounded-full bg-[#b72424] text-white flex items-center justify-center shadow-lg transition-transform duration-300 group-hover:scale-110">
+                              <Play size={12} fill="white" className="mr-0.5" />
+                            </div>
+                          </div>
+                          
+                          {/* Episode Index Badge */}
+                          <span className="absolute top-1.5 right-1.5 bg-black/75 backdrop-blur-md text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded leading-none select-none">
+                            {idx + 1}
+                          </span>
+                          
+                          {/* Active Watch Progress Line */}
+                          {isActive && (
+                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#b72424] shadow-lg shadow-[#b72424]/50 animate-pulse" />
+                          )}
+                        </div>
+
+                        {/* Text Metadata (Left side in RTL) */}
+                        <div className="flex flex-col justify-center min-w-0 flex-grow select-none">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <h4 className={cn(
+                              "font-black text-xs md:text-sm truncate",
+                              isActive ? "text-[#b72424]" : "text-gray-100 group-hover:text-white"
+                            )}>
+                              الحلقة {ep.epNum}
+                            </h4>
+                            {isActive && (
+                              <span className="text-[9px] font-black text-[#b72424] bg-[#b72424]/15 px-1.5 py-0.5 rounded-full uppercase tracking-tight animate-pulse shrink-0">
+                                تشاهد الآن
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] md:text-xs text-zinc-400 group-hover:text-zinc-300 truncate font-medium">
+                            {series.title}
+                          </p>
+                          <p className="text-[9px] text-zinc-500 group-hover:text-zinc-400 truncate mt-0.5 font-medium">
+                            بث فوري فائق السرعة
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
