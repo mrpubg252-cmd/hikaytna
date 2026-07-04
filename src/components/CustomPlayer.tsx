@@ -92,17 +92,29 @@ export default function CustomPlayer({
 
   const isDirectStream = !forceIframe && videoUrl && (
     videoUrl.includes('/api/proxy-hls') || 
-    (!videoUrl.includes('/api/proxy-embed') && !videoUrl.includes('/api/proxy-player') && (videoUrl.includes('.m3u8') || videoUrl.includes('.mp4') || videoUrl.includes('.webm')))
+    videoUrl.includes('.m3u8') || 
+    videoUrl.includes('.mp4') || 
+    videoUrl.includes('.webm')
   );
 
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize and load video (HLS or native)
   useEffect(() => {
-    if (!isDirectStream || !videoRef.current) return;
+    if (!isDirectStream || !videoRef.current || !videoUrl) return;
 
     setIsLoading(true);
     setIsPlaying(false);
+    setError(null);
+
+    // If loading takes too long (e.g. 15 seconds), show error/suggest backup
+    if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    loadingTimeoutRef.current = setTimeout(() => {
+      if (isLoading && !isPlaying) {
+        setError("يبدو أن البث يستغرق وقتاً طويلاً للتحميل. يمكنك تجربة المشغل الاحتياطي.");
+      }
+    }, 15000);
 
     // Clean up previous Hls instance
     if (hlsRef.current) {
@@ -112,11 +124,14 @@ export default function CustomPlayer({
 
     const video = videoRef.current;
 
-    if (Hls.isSupported() && (videoUrl.includes('.m3u8') || videoUrl.includes('/api/proxy-hls'))) {
+    const isHls = videoUrl.includes('.m3u8') || videoUrl.includes('/api/proxy-hls');
+
+    if (Hls.isSupported() && isHls) {
       const hls = new Hls({
         maxMaxBufferLength: 15,
         enableWorker: true,
         lowLatencyMode: true,
+        backBufferLength: 60,
       });
 
       hlsRef.current = hls;
@@ -125,7 +140,7 @@ export default function CustomPlayer({
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setIsLoading(false);
-        // Safely attempt autoplay
+        if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
         video.play()
           .then(() => setIsPlaying(true))
           .catch(() => setIsPlaying(false));
@@ -135,14 +150,18 @@ export default function CustomPlayer({
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
+              console.error("HLS Network Error:", data);
               hls.startLoad();
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
+              console.error("HLS Media Error:", data);
               hls.recoverMediaError();
               break;
             default:
+              console.error("HLS Fatal Error:", data);
               setIsLoading(false);
-              setError("فشل تحميل البث. يرجى تجربة سيرفر آخر أو استخدام المشغل الاحتياطي.");
+              setError("فشل تحميل البث المباشر. يرجى تجربة المشغل الاحتياطي.");
+              hls.destroy();
               break;
           }
         }
@@ -154,6 +173,7 @@ export default function CustomPlayer({
       
       const handleCanPlay = () => {
         setIsLoading(false);
+        if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
         video.play()
           .then(() => setIsPlaying(true))
           .catch(() => setIsPlaying(false));
@@ -161,7 +181,8 @@ export default function CustomPlayer({
 
       const handleError = () => {
         setIsLoading(false);
-        setError("فشل تحميل الفيديو.");
+        if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+        setError("فشل تحميل ملف الفيديو مباشرة.");
       };
 
       video.addEventListener('canplay', handleCanPlay);
@@ -169,8 +190,13 @@ export default function CustomPlayer({
       return () => {
         video.removeEventListener('canplay', handleCanPlay);
         video.removeEventListener('error', handleError);
+        if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
       };
     }
+
+    return () => {
+      if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    };
   }, [videoUrl, isDirectStream]);
 
   // Sync volume states with video element

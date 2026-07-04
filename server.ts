@@ -401,11 +401,32 @@ app.get("/api/proxy-player", async (req, res) => {
   }
 });
 
+function getMyHost(req: express.Request) {
+  let protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
+  if (protocol.includes(',')) protocol = protocol.split(',')[0].trim();
+  
+  const host = req.get('x-forwarded-host') || req.get('host') || '';
+  
+  // Force https for known production domains to avoid mixed content issues in iframes
+  if (host.includes('railway.app') || host.includes('run.app') || host.includes('vercel.app') || protocol === 'https') {
+    protocol = 'https';
+  }
+  
+  return `${protocol}://${host}`;
+}
+
 // Dean Edwards unpacker
 function deobfuscateDeanEdwards(packedCode: string): string {
   // More flexible regex for Dean Edwards packing
   const regex = /return\s*p\s*\}\s*\(\s*['"](.*?)['"]\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*['"](.*?)['"]\s*\.split\s*\(\s*['"]\|['"]\s*\)/;
-  const match = packedCode.match(regex);
+  let match = packedCode.match(regex);
+  
+  if (!match) {
+    // Try another variation
+    const altRegex = /eval\s*\(\s*function\s*\(p,a,c,k,e,d\).*?\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)/;
+    match = packedCode.match(altRegex);
+  }
+
   if (!match) return "";
 
   let [_, p, aStr, cStr, kStr] = match;
@@ -420,18 +441,6 @@ function deobfuscateDeanEdwards(packedCode: string): string {
   }
 
   return p;
-}
-
-function getMyHost(req: express.Request) {
-  let protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
-  const host = req.get('x-forwarded-host') || req.get('host') || '';
-  
-  // Force https for known production domains to avoid mixed content issues in iframes
-  if (host.includes('railway.app') || host.includes('run.app') || host.includes('vercel.app')) {
-    protocol = 'https';
-  }
-  
-  return `${protocol}://${host}`;
 }
 
 async function resolveDirectVideo(nume: string, post: string, type: string): Promise<{ videoUrl: string | null; type: string; playerIframeSrc?: string } | null> {
