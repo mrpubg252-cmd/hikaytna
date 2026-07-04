@@ -1007,6 +1007,58 @@ async function startServer() {
   }
   // =======================================================
 
+  // Dynamic resolver for AlooyTV domains to automatically bypass Cloudflare Turnstile blocks
+  async function getActiveAlooyTvUrl(requestedUrl: string): Promise<string> {
+    if (!requestedUrl) return requestedUrl;
+    const lowerUrl = requestedUrl.toLowerCase();
+    if (!lowerUrl.includes("fitnur.com/alooytv") && !lowerUrl.includes("alooytv")) {
+      return requestedUrl;
+    }
+
+    const candidateDomains = [
+      "https://a.alooytv10.com",
+      "https://a.alooytv11.com",
+      "https://a.alooytv12.com",
+      "https://a.alooytv13.com",
+      "https://a.alooytv14.com",
+      "https://a.alooytv15.com",
+      "https://a.alooytv9.com"
+    ];
+
+    for (const domain of candidateDomains) {
+      try {
+        const response = await axios.head(domain, { 
+          timeout: 2500,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+          },
+          httpAgent: new http.Agent({ family: 4 }),
+          httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
+        });
+        if (response.status === 200 || response.status === 301 || response.status === 302) {
+          console.log(`[AlooyTV Resolver] Successfully resolved active domain: ${domain}`);
+          if (requestedUrl.includes("fitnur.com/alooytv")) {
+            return `${domain}/tv-series.html`;
+          }
+          // Replace domain of original URL with the active one
+          try {
+            const originalUrlObj = new URL(requestedUrl);
+            const activeDomainObj = new URL(domain);
+            originalUrlObj.hostname = activeDomainObj.hostname;
+            return originalUrlObj.toString();
+          } catch {
+            return `${domain}/tv-series.html`;
+          }
+        }
+      } catch (err) {
+        // Domain failed or is offline, try next
+      }
+    }
+
+    // Fallback if all candidate checks fail
+    return requestedUrl.includes("fitnur.com/alooytv") ? "https://a.alooytv10.com/tv-series.html" : requestedUrl;
+  }
+
   // API Proxy Routes
   // 1. Categories
   app.get("/api/v1/categories", async (req, res) => {
@@ -1070,7 +1122,7 @@ async function startServer() {
       const { url } = req.query;
       if (!url) return res.status(400).json({ status: false });
       
-      const realUrl = url as string;
+      const realUrl = await getActiveAlooyTvUrl(url as string);
       const cacheKey = `episodes_v3:${realUrl}`;
       const cached = getCachedData(cacheKey);
       if (cached) {
@@ -1089,7 +1141,7 @@ async function startServer() {
       }
 
       // ALWAYS TRY FALLBACK SCRAPING FOR WATCH LINKS TO ENSURE WE GET ALL EPISODES (the proxy api might truncate)
-      if (realUrl.includes("/watch/")) {
+      if (realUrl.includes("/watch/") || realUrl.includes("alooytv")) {
         try {
            const fallRes = await axios.get(realUrl, {
              headers: {
@@ -1206,21 +1258,106 @@ async function startServer() {
       const { url } = req.query;
       if (!url) return res.status(400).json({ status: false });
       
-      const realUrl = decryptValue(url as string) || (url as string);
+      const decryptedUrl = decryptValue(url as string) || (url as string);
+      const realUrl = await getActiveAlooyTvUrl(decryptedUrl);
       const cacheKey = `play:${realUrl}`;
       const cached = getCachedData(cacheKey);
       if (cached) {
         return res.json(cached);
       }
 
-      const response = await axiosFetch(`${API_BASE}?action=play&url=${encodeURIComponent(realUrl)}`);
-      if (response.data && response.data.player_url) {
-        response.data.player_url = encryptValue(response.data.player_url);
+      let responseData: any = null;
+      try {
+        const response = await axiosFetch(`${API_BASE}?action=play&url=${encodeURIComponent(realUrl)}`);
+        if (response.data && response.data.status && response.data.player_url) {
+          responseData = response.data;
+        }
+      } catch (e) {
+        console.warn("Primary play API failed, trying fallback...");
       }
-      if (response.data && response.data.status) {
-        setCachedData(cacheKey, response.data, 1 * 60 * 60 * 1000); // Cache for 1 hour
+
+      // Fallback Cheerio scraping specifically for AlooyTV URLs to find embedded play players or m3u8 sources
+      if ((!responseData || !responseData.player_url) && realUrl.includes("alooytv")) {
+        try {
+          const pageRes = await axios.get(realUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+              'Referer': 'https://alooytv.com/'
+            },
+            timeout: 10000,
+            httpAgent: new http.Agent({ family: 4 }),
+            httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
+          });
+
+          const $ = cheerio.load(pageRes.data);
+          let playerUrl = "";
+
+          // 1. Try finding iframe sources (players/embeds)
+          $('iframe').each((i, el) => {
+            const src = $(el).attr('src');
+            if (src && (src.includes('player') || src.includes('embed') || src.includes('vid') || src.includes('stream') || src.includes('play'))) {
+              playerUrl = src;
+              return false; // break
+            }
+          });
+
+          // 2. Try finding video/source sources (m3u8/mp4)
+          if (!playerUrl) {
+            $('video source, source').each((i, el) => {
+              const src = $(el).attr('src');
+              if (src && (src.includes('.m3u8') || src.includes('.mp4'))) {
+                playerUrl = src;
+                return false; // break
+              }
+            });
+          }
+
+          // 3. Try finding scripts with m3u8 or player URLs
+          if (!playerUrl) {
+            $('script').each((i, el) => {
+              const text = $(el).text();
+              const m3u8Match = text.match(/(https?:\/\/[^\s"'`]+\.m3u8[^\s"'`]*)/i);
+              if (m3u8Match) {
+                playerUrl = m3u8Match[1];
+                return false; // break
+              }
+              const iframeMatch = text.match(/src=["'](https?:\/\/[^\s"'`]+(?:player|embed)[^\s"'`]+)["']/i);
+              if (iframeMatch) {
+                playerUrl = iframeMatch[1];
+                return false; // break
+              }
+            });
+          }
+
+          if (playerUrl) {
+            if (playerUrl.startsWith('//')) {
+              playerUrl = 'https:' + playerUrl;
+            } else if (playerUrl.startsWith('/')) {
+              const parsed = new URL(realUrl);
+              playerUrl = parsed.origin + playerUrl;
+            }
+
+            console.log(`[AlooyTV Player Scraper] Successfully resolved fallback play URL: ${playerUrl}`);
+            responseData = {
+              status: true,
+              player_url: playerUrl
+            };
+          }
+        } catch (scrapeErr: any) {
+          console.error("Fallback player scraping failed:", scrapeErr.message);
+        }
       }
-      res.json(response.data);
+
+      if (responseData && responseData.player_url) {
+        responseData.player_url = encryptValue(responseData.player_url);
+      }
+
+      if (responseData && responseData.status) {
+        setCachedData(cacheKey, responseData, 1 * 60 * 60 * 1000); // Cache for 1 hour
+        res.json(responseData);
+      } else {
+        res.status(404).json({ status: false, message: "Video resource not found" });
+      }
     } catch (error) {
       res.status(500).json({ status: false });
     }

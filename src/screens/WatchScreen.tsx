@@ -105,7 +105,11 @@ export default function WatchScreen() {
 
   const [isAdGatePassed, setIsAdGatePassed] = useState<boolean>(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('unlocked') === 'true';
+    const locParams = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
+    const isUnlockedParam = params.get('unlocked') === 'true' || locParams.get('unlocked') === 'true';
+    const seriesIdFromUrl = seriesId || params.get('id');
+    const isUnlockedSession = seriesIdFromUrl ? sessionStorage.getItem('unlocked_' + seriesIdFromUrl) === 'true' : false;
+    return isUnlockedParam || isUnlockedSession;
   });
 
   // Dynamic series loading by ID if they arrived from the direct external ads link
@@ -151,7 +155,11 @@ export default function WatchScreen() {
   useEffect(() => {
     if (!series) return;
 
-    const params = new URLSearchParams(location.search);
+    const params = new URLSearchParams(window.location.search);
+    const locParams = new URLSearchParams(location.search);
+    const isUnlockedParam = params.get('unlocked') === 'true' || locParams.get('unlocked') === 'true';
+    const isUnlockedSession = sessionStorage.getItem('unlocked_' + series.id) === 'true';
+
     const isPremium = localStorage.getItem('ads_removed_forever') === 'true' || (() => {
       const adUntil = localStorage.getItem('ad_free_until');
       if (!adUntil) return false;
@@ -159,8 +167,9 @@ export default function WatchScreen() {
       return !isNaN(adUntilNum) && adUntilNum > Date.now();
     })();
 
-    if (params.get('unlocked') === 'true' || isPremium) {
+    if (isUnlockedParam || isUnlockedSession || isPremium) {
       setIsAdGatePassed(true);
+      sessionStorage.setItem('unlocked_' + series.id, 'true');
     } else {
       setIsAdGatePassed(false);
       // Direct full standalone window replace to the Express-served /ads endpoint (prevents history pollution)
