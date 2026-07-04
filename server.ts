@@ -401,7 +401,8 @@ app.get("/api/proxy-player", async (req, res) => {
 
 // Dean Edwards unpacker
 function deobfuscateDeanEdwards(packedCode: string): string {
-  const match = packedCode.match(/eval\s*\(\s*function\s*\(\s*p\s*,\s*a\s*,\s*c\s*,\s*k\s*,\s*e\s*,\s*d\s*\)\s*\{.*?\}\s*\(\s*'(.*?)'\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*'(.*?)'[\s\S]*?\.split\s*\(\s*'\|'\s*\)\s*\)\s*\)/);
+  const regex = /return\s*p\s*\}\s*\(\s*['"](.*?)['"]\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*['"](.*?)['"]\s*\.\s*split\s*\(\s*['"]\|['"]\s*\)/;
+  const match = packedCode.match(regex);
   if (!match) return "";
 
   let [_, p, aStr, cStr, kStr] = match;
@@ -409,25 +410,13 @@ function deobfuscateDeanEdwards(packedCode: string): string {
   let c = parseInt(cStr, 10);
   let k = kStr.split('|');
 
-  const baseConverter = (num: number, radix: number): string => {
-    const chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    if (num < radix) {
-      return chars[num];
-    }
-    return baseConverter(Math.floor(num / radix), radix) + chars[num % radix];
-  };
-
-  const dict: Record<string, string> = {};
-  for (let i = 0; i < k.length; i++) {
-    if (k[i]) {
-      const key = baseConverter(i, a);
-      dict[key] = k[i];
+  while (c--) {
+    if (k[c]) {
+      p = p.replace(new RegExp('\\b' + c.toString(a) + '\\b', 'g'), k[c]);
     }
   }
 
-  return p.replace(/\b[a-zA-Z0-9_]+\b/g, (token) => {
-    return dict[token] || token;
-  });
+  return p;
 }
 
 async function resolveDirectVideo(nume: string, post: string, type: string): Promise<{ videoUrl: string | null; type: string; playerIframeSrc?: string } | null> {
