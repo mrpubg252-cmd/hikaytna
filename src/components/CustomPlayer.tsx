@@ -81,6 +81,34 @@ export default function CustomPlayer({
   const [showEpisodesDrawer, setShowEpisodesDrawer] = useState(false);
   const [doubleTapFeedback, setDoubleTapFeedback] = useState<{ side: 'left' | 'right'; show: boolean }>({ side: 'left', show: false });
   const [forceIframe, setForceIframe] = useState(false);
+  const [iframeMode, setIframeMode] = useState<'proxy' | 'direct'>(() => {
+    try {
+      const saved = localStorage.getItem('player_iframe_mode');
+      return (saved === 'proxy' || saved === 'direct') ? saved : 'direct';
+    } catch {
+      return 'direct';
+    }
+  });
+
+  const getDirectEmbedUrl = (url: string): string => {
+    if (!url) return "";
+    if (url.startsWith("http") && !url.includes("/api/proxy-embed")) {
+      return url;
+    }
+    try {
+      const urlObj = new URL(url, window.location.origin);
+      const nume = urlObj.searchParams.get("nume");
+      const post = urlObj.searchParams.get("post");
+      const type = urlObj.searchParams.get("type");
+      if (nume && post) {
+        const mappedType = type === "tv" ? "2" : "1";
+        return `https://3iskk.xyz/embed/${nume}/${post}/${mappedType}/`;
+      }
+    } catch (e) {
+      console.error("Error parsing proxy URL:", e);
+    }
+    return url;
+  };
 
   // Reset forceIframe when video or server changes
   useEffect(() => {
@@ -88,7 +116,7 @@ export default function CustomPlayer({
   }, [videoUrl, activeServerUrl]);
 
   // Check if the current source is a direct stream or iframe embed
-  const isDirectStream = !forceIframe && videoUrl && (
+  const isDirectStream = iframeMode === 'proxy' && !forceIframe && videoUrl && (
     videoUrl.includes('/api/proxy-hls') || 
     videoUrl.includes('.m3u8') || 
     videoUrl.includes('.mp4') || 
@@ -367,15 +395,65 @@ export default function CustomPlayer({
   };
 
   return (
-    <div 
-      ref={containerRef}
-      onMouseMove={triggerActivity}
-      onClick={triggerActivity}
-      onMouseLeave={() => isPlaying && setShowControls(false)}
-      className={`relative aspect-video w-full bg-black overflow-hidden shadow-2xl transition-all duration-300 ring-1 ring-white/5 select-none ${
-        isMaximized && !isFullscreen ? 'fixed inset-0 z-[120] h-screen aspect-auto' : 'rounded-xl md:rounded-2xl'
-      }`}
-    >
+    <div className="flex flex-col gap-4">
+      {/* Dynamic connection bar / status */}
+      <div className="bg-zinc-900/60 backdrop-blur-md rounded-xl p-4 border border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${iframeMode === 'direct' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${iframeMode === 'direct' ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+            </span>
+            <h4 className="text-sm font-extrabold text-white">بوابات الاتصال والبث الذكي</h4>
+          </div>
+          <p className="text-xs text-zinc-400 text-right leading-relaxed">
+            {iframeMode === 'direct' 
+              ? "متصل الآن عبر البوابة المباشرة (تتجنب قيود استضافات Render/Railway وتوفر سرعة غير محدودة)." 
+              : "متصل الآن عبر البروكسي السحابي (يمرر البيانات عبر السيرفر لتجاوز الحجب الجغرافي)."}
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-2 self-stretch md:self-auto flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setIframeMode('direct');
+              localStorage.setItem('player_iframe_mode', 'direct');
+            }}
+            className={`flex-1 md:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
+              iframeMode === 'direct'
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-950/25 border border-emerald-500/30'
+                : 'bg-zinc-950/40 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/5'
+            }`}
+          >
+            ⚡ بوابة الاتصال المباشر (موصى به)
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIframeMode('proxy');
+              localStorage.setItem('player_iframe_mode', 'proxy');
+            }}
+            className={`flex-1 md:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
+              iframeMode === 'proxy'
+                ? 'bg-[#b72424] hover:bg-red-600 text-white shadow-lg shadow-red-950/25 border border-red-500/30'
+                : 'bg-zinc-950/40 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/5'
+            }`}
+          >
+            ☁️ البروكسي السحابي (احتياطي)
+          </button>
+        </div>
+      </div>
+
+      <div 
+        ref={containerRef}
+        onMouseMove={triggerActivity}
+        onClick={triggerActivity}
+        onMouseLeave={() => isPlaying && setShowControls(false)}
+        className={`relative aspect-video w-full bg-black overflow-hidden shadow-2xl transition-all duration-300 ring-1 ring-white/5 select-none ${
+          isMaximized && !isFullscreen ? 'fixed inset-0 z-[120] h-screen aspect-auto' : 'rounded-xl md:rounded-2xl'
+        }`}
+      >
       {/* Background ambient poster light */}
       {seriesImage && !isPlaying && (
         <div 
@@ -460,7 +538,7 @@ export default function CustomPlayer({
             )}
             {videoUrl ? (
               <iframe
-                src={videoUrl}
+                src={iframeMode === 'direct' ? getDirectEmbedUrl(videoUrl) : videoUrl}
                 className="w-full h-full border-none"
                 allowFullScreen
                 referrerPolicy="no-referrer"
@@ -800,6 +878,7 @@ export default function CustomPlayer({
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
     </div>
   );
 }

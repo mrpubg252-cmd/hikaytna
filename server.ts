@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import axios from "axios";
 import * as cheerio from "cheerio";
+import https from "https";
 
 const app = express();
 const PORT = 3000;
@@ -10,7 +11,8 @@ const PORT = 3000;
 const SOURCE_URL = "https://3iskk.xyz";
 
 const axiosInstance = axios.create({
-  timeout: 15000,
+  timeout: 30000,
+  httpsAgent: new https.Agent({ rejectUnauthorized: false }),
   headers: {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     'Referer': SOURCE_URL,
@@ -611,19 +613,15 @@ app.get("/api/proxy-hls", async (req, res) => {
       headers['Origin'] = SOURCE_URL;
     }
 
-    const response = await axiosInstance.get(url, {
-      responseType: 'arraybuffer',
-      headers,
-    });
-
-    const contentTypeRaw = response.headers['content-type'];
-    const contentType = typeof contentTypeRaw === 'string' ? contentTypeRaw : '';
-    const isM3U8 = url.endsWith('.m3u8') || 
-                   contentType.includes('mpegURL') || 
-                   contentType.includes('application/x-mpegurl') || 
-                   contentType.includes('vnd.apple.mpegurl');
+    // Check if it's an m3u8 playlist by looking at the URL path/extension
+    const isM3U8 = url.includes('.m3u8') || url.includes('m3u8');
 
     if (isM3U8) {
+      const response = await axiosInstance.get(url, {
+        responseType: 'arraybuffer',
+        headers,
+      });
+
       const text = response.data.toString('utf-8');
       const lines = text.split('\n');
       
@@ -665,11 +663,24 @@ app.get("/api/proxy-hls", async (req, res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.send(rewrittenLines.join('\n'));
     } else {
-      // It's a .ts segment or binary file
+      // It's a .ts segment or binary file, stream it directly to prevent high memory usage and timeout
+      const response = await axiosInstance.get(url, {
+        responseType: 'stream',
+        headers,
+      });
+
+      const contentTypeRaw = response.headers['content-type'];
+      const contentType = typeof contentTypeRaw === 'string' ? contentTypeRaw : '';
+
       res.setHeader('Content-Type', contentType || 'video/MP2T');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.send(response.data);
+      
+      if (response.headers['content-length']) {
+        res.setHeader('Content-Length', String(response.headers['content-length']));
+      }
+
+      response.data.pipe(res);
     }
   } catch (error) {
     console.error("HLS proxy error:", error);
