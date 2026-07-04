@@ -115,25 +115,34 @@ async function getDynamicAiConfig() {
   const firebaseDatabaseId = findFirebaseDatabaseId();
   try {
     const res = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, { timeout: 3000 });
-    if (res.data && res.data.key) {
-      USER_CUSTOM_AI_CONFIG = res.data;
-      if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
-        USER_CUSTOM_AI_CONFIG.type = 'openai';
-        if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
-          USER_CUSTOM_AI_CONFIG.baseUrl = 'https://openrouter.ai/api/v1';
-          if (!USER_CUSTOM_AI_CONFIG.model || !USER_CUSTOM_AI_CONFIG.model.includes('/')) {
-            USER_CUSTOM_AI_CONFIG.model = 'google/gemini-2.5-flash';
-          }
-        } else {
-          if (!USER_CUSTOM_AI_CONFIG.baseUrl || USER_CUSTOM_AI_CONFIG.baseUrl.includes('openrouter.ai')) {
-            USER_CUSTOM_AI_CONFIG.baseUrl = 'https://api.openai-proxy.org/v1';
-          }
-          if (!USER_CUSTOM_AI_CONFIG.model) {
-            USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
+    if (res.data) {
+      const data = res.data;
+      const keyVal = data.api_key || data.key || "";
+      if (keyVal) {
+        USER_CUSTOM_AI_CONFIG = {
+          key: keyVal,
+          baseUrl: data.url || data.baseUrl || "",
+          model: data.model_name || data.model || "",
+          type: data.type || (keyVal.startsWith('AIzaSy') ? 'gemini' : 'openai')
+        };
+        if (USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
+          USER_CUSTOM_AI_CONFIG.type = 'openai';
+          if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
+            USER_CUSTOM_AI_CONFIG.baseUrl = USER_CUSTOM_AI_CONFIG.baseUrl || 'https://openrouter.ai/api/v1';
+            if (!USER_CUSTOM_AI_CONFIG.model || !USER_CUSTOM_AI_CONFIG.model.includes('/')) {
+              USER_CUSTOM_AI_CONFIG.model = 'google/gemini-2.5-flash';
+            }
+          } else {
+            if (!USER_CUSTOM_AI_CONFIG.baseUrl || USER_CUSTOM_AI_CONFIG.baseUrl.includes('openrouter.ai')) {
+              USER_CUSTOM_AI_CONFIG.baseUrl = USER_CUSTOM_AI_CONFIG.baseUrl || 'https://api.openai-proxy.org/v1';
+            }
+            if (!USER_CUSTOM_AI_CONFIG.model) {
+              USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
+            }
           }
         }
+        return USER_CUSTOM_AI_CONFIG;
       }
-      return res.data;
     }
   } catch (err: any) {
     // silent fallback
@@ -143,25 +152,33 @@ async function getDynamicAiConfig() {
     const res = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_admin_ai_config`, { timeout: 3000 });
     if (res.data && res.data.fields && res.data.fields.data && res.data.fields.data.stringValue) {
       const parsed = JSON.parse(res.data.fields.data.stringValue);
-      if (parsed && parsed.key) {
-        USER_CUSTOM_AI_CONFIG = parsed;
-        if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
-          USER_CUSTOM_AI_CONFIG.type = 'openai';
-          if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
-            USER_CUSTOM_AI_CONFIG.baseUrl = 'https://openrouter.ai/api/v1';
-            if (!USER_CUSTOM_AI_CONFIG.model || !USER_CUSTOM_AI_CONFIG.model.includes('/')) {
-              USER_CUSTOM_AI_CONFIG.model = 'google/gemini-2.5-flash';
-            }
-          } else {
-            if (!USER_CUSTOM_AI_CONFIG.baseUrl || USER_CUSTOM_AI_CONFIG.baseUrl.includes('openrouter.ai')) {
-              USER_CUSTOM_AI_CONFIG.baseUrl = 'https://api.openai-proxy.org/v1';
-            }
-            if (!USER_CUSTOM_AI_CONFIG.model) {
-              USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
+      if (parsed) {
+        const keyVal = parsed.api_key || parsed.key || "";
+        if (keyVal) {
+          USER_CUSTOM_AI_CONFIG = {
+            key: keyVal,
+            baseUrl: parsed.url || parsed.baseUrl || "",
+            model: parsed.model_name || parsed.model || "",
+            type: parsed.type || (keyVal.startsWith('AIzaSy') ? 'gemini' : 'openai')
+          };
+          if (USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
+            USER_CUSTOM_AI_CONFIG.type = 'openai';
+            if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
+              USER_CUSTOM_AI_CONFIG.baseUrl = USER_CUSTOM_AI_CONFIG.baseUrl || 'https://openrouter.ai/api/v1';
+              if (!USER_CUSTOM_AI_CONFIG.model || !USER_CUSTOM_AI_CONFIG.model.includes('/')) {
+                USER_CUSTOM_AI_CONFIG.model = 'google/gemini-2.5-flash';
+              }
+            } else {
+              if (!USER_CUSTOM_AI_CONFIG.baseUrl || USER_CUSTOM_AI_CONFIG.baseUrl.includes('openrouter.ai')) {
+                USER_CUSTOM_AI_CONFIG.baseUrl = USER_CUSTOM_AI_CONFIG.baseUrl || 'https://api.openai-proxy.org/v1';
+              }
+              if (!USER_CUSTOM_AI_CONFIG.model) {
+                USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
+              }
             }
           }
+          return USER_CUSTOM_AI_CONFIG;
         }
-        return parsed;
       }
     }
   } catch (err: any) {
@@ -473,7 +490,7 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
     }
 
     let key = "";
-    if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.type === 'gemini') {
+    if (USER_CUSTOM_AI_CONFIG && (USER_CUSTOM_AI_CONFIG.type === 'gemini' || USER_CUSTOM_AI_CONFIG.key?.startsWith('AIzaSy'))) {
       key = USER_CUSTOM_AI_CONFIG.key;
     }
     key = key || process.env.GEMINI_API_KEY || "";
@@ -621,15 +638,22 @@ async function callGeminiFallback(msg: string, systemPrompt: string, history: an
 async function smartChat(msg: string, systemPrompt: string, history: any[], image?: any, audio?: any) {
   // 1. Priority: Custom Overrides (Set by Admin)
   if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key) {
-    if (USER_CUSTOM_AI_CONFIG.type === 'openai') {
+    const customKey = USER_CUSTOM_AI_CONFIG.key.trim();
+    const customBaseUrl = (USER_CUSTOM_AI_CONFIG.baseUrl || "").trim();
+    const customModel = (USER_CUSTOM_AI_CONFIG.model || "").trim();
+    const customType = USER_CUSTOM_AI_CONFIG.type || "";
+
+    // If they specified a custom URL, or the key is not a standard Gemini key, or type is explicitly openai
+    if (customBaseUrl || !customKey.startsWith("AIzaSy") || customType === "openai") {
       const customConfig = {
-        baseUrl: USER_CUSTOM_AI_CONFIG.baseUrl || "https://api.openai.com/v1",
-        model: USER_CUSTOM_AI_CONFIG.model || "gpt-3.5-turbo",
-        keys: [USER_CUSTOM_AI_CONFIG.key]
+        baseUrl: customBaseUrl || "https://api.openai.com/v1",
+        model: customModel || "gpt-3.5-turbo",
+        keys: [customKey]
       };
       const rCustom = await callDeepSeek(msg, systemPrompt, history, 0, customConfig, true);
       if (rCustom.ok && rCustom.reply) return rCustom;
     } else {
+      // Standard direct Gemini call using the official SDK
       const rCustomGemini = await callGeminiFallback(msg, systemPrompt, history, image, audio);
       if (rCustomGemini.ok && rCustomGemini.reply) return rCustomGemini;
     }
@@ -870,6 +894,18 @@ async function startServer() {
   };
 
   const saveAIConfigToCloud = async () => {
+    // Expand for maximum compatibility and user custom fields in Firestore/RTDB
+    const expandedConfig = {
+      ...USER_CUSTOM_AI_CONFIG,
+      key: USER_CUSTOM_AI_CONFIG?.key || "",
+      api_key: USER_CUSTOM_AI_CONFIG?.key || "",
+      baseUrl: USER_CUSTOM_AI_CONFIG?.baseUrl || "",
+      url: USER_CUSTOM_AI_CONFIG?.baseUrl || "",
+      model: USER_CUSTOM_AI_CONFIG?.model || "",
+      model_name: USER_CUSTOM_AI_CONFIG?.model || "",
+      type: USER_CUSTOM_AI_CONFIG?.type || "openai"
+    };
+
     try {
       // Save locally to disk first layout to ensure complete hosting durability
       fs.writeFileSync(aiConfigFilePath, JSON.stringify(USER_CUSTOM_AI_CONFIG, null, 2), "utf-8");
@@ -882,7 +918,7 @@ async function startServer() {
     try {
       await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_admin_ai_config?updateMask.fieldPaths=data`, {
         fields: {
-          data: { stringValue: JSON.stringify(USER_CUSTOM_AI_CONFIG) }
+          data: { stringValue: JSON.stringify(expandedConfig) }
         }
       }, { timeout: 4000 }).catch(() => null);
       console.log("Successfully back-saved AI configuration to Cloud Firestore master!");
@@ -892,7 +928,7 @@ async function startServer() {
 
     // Save to RTDB
     try {
-      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, USER_CUSTOM_AI_CONFIG, { timeout: 4000 }).catch(() => null);
+      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, expandedConfig, { timeout: 4000 }).catch(() => null);
       console.log("Successfully back-saved AI configuration to Cloud RTDB master!");
     } catch (e: any) {
       console.warn("Error background backup administrative AI config to RTDB:", e.message);
@@ -1470,10 +1506,13 @@ async function startServer() {
       const { url } = req.query;
       if (!url) return res.status(400).send("Missing URL parameter");
       
-      targetUrl = decodeURIComponent(url as string);
-      if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+      const rawUrl = decodeURIComponent(url as string);
+      if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
         return res.status(400).send("Invalid target URL");
       }
+
+      // Automatically rewrite the image URL to the active AlooyTV domain if it's an AlooyTV image
+      targetUrl = await getActiveAlooyTvUrl(rawUrl);
 
       // Extract the original host of the image to set as Referer if needed
       const hostVal = new URL(targetUrl).origin;
@@ -1502,13 +1541,9 @@ async function startServer() {
       
       response.data.pipe(res);
     } catch (error: any) {
-      console.warn("[Image Proxy Fallback Redirect] Image proxy error for URL:", req.query.url, error.message);
-      if (targetUrl) {
-        // Super-healing fallback: redirect the browser directly to the original target image URL!
-        // Client browser network might bypass hosting provider IP block/firewall blocks.
-        return res.redirect(targetUrl);
-      }
-      res.status(500).send("Failed to load image resource");
+      console.warn("[Image Proxy Fallback] Image proxy error for URL:", targetUrl, error.message);
+      // Fallback directly to the custom user-provided image if loading fails
+      return res.redirect("https://c.top4top.io/p_3837bp37c1.jpg");
     }
   });
 
@@ -2683,12 +2718,23 @@ async function startServer() {
   app.get("/api/v1/hakeem/status", async (req, res) => {
     try {
       await getDynamicAiConfig();
+
+      // Auto-initialize if empty to write configuration fields to Firestore/RTDB automatically
+      if (!USER_CUSTOM_AI_CONFIG || !USER_CUSTOM_AI_CONFIG.key || USER_CUSTOM_AI_CONFIG.key.trim().length === 0) {
+        console.log("[Hakeem Status] Auto-initializing Hakeem configuration in Firebase...");
+        USER_CUSTOM_AI_CONFIG = {
+          key: "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",
+          baseUrl: "https://openrouter.ai/api/v1",
+          model: "google/gemini-2.5-flash",
+          type: "openai"
+        };
+        await saveAIConfigToCloud();
+      }
+
       const isActivated = !!(
         USER_CUSTOM_AI_CONFIG &&
         USER_CUSTOM_AI_CONFIG.key &&
-        USER_CUSTOM_AI_CONFIG.key.startsWith("sk-") &&
-        !USER_CUSTOM_AI_CONFIG.key.startsWith("AQ.") &&
-        USER_CUSTOM_AI_CONFIG.key !== "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI" // check if not the expired key
+        USER_CUSTOM_AI_CONFIG.key.trim().length > 0
       );
 
       res.json({
@@ -2708,12 +2754,15 @@ async function startServer() {
 
   app.post("/api/v1/hakeem/activate", async (req, res) => {
     try {
+      const { key, baseUrl, url, model, model_name, type } = req.body || {};
+
       USER_CUSTOM_AI_CONFIG = {
-        key: "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",
-        baseUrl: "https://openrouter.ai/api/v1",
-        model: "google/gemini-2.5-flash",
-        type: "openai"
+        key: key || "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",
+        baseUrl: baseUrl || url || "https://openrouter.ai/api/v1",
+        model: model || model_name || "google/gemini-2.5-flash",
+        type: type || "openai"
       };
+
       await saveAIConfigToCloud();
       res.json({
         status: true,
