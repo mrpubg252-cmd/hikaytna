@@ -90,6 +90,23 @@ export default function CustomPlayer({
     setError(null);
   }, [videoUrl, activeServerUrl]);
 
+  // Listen for messages from proxy iframes (like Cloudflare block notifications)
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data === 'switch-server') {
+        const currentIndex = servers.findIndex(s => s.url === activeServerUrl);
+        if (currentIndex !== -1 && currentIndex < servers.length - 1) {
+          onSelectServer(servers[currentIndex + 1].url);
+        } else if (servers.length > 0) {
+          onSelectServer(servers[0].url);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [activeServerUrl, servers, onSelectServer]);
+
   const isDirectStream = !forceIframe && videoUrl && (
     videoUrl.includes('/api/proxy-hls') || 
     videoUrl.includes('.m3u8') || 

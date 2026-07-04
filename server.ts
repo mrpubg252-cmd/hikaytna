@@ -12,11 +12,23 @@ app.set('trust proxy', true);
 
 const SOURCE_URL = "https://3iskk.xyz";
 
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+  'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0'
+];
+
+function getRandomUA() {
+  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
+
 const axiosInstance = axios.create({
   timeout: 30000,
   httpsAgent: new https.Agent({ rejectUnauthorized: false }),
   headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'User-Agent': USER_AGENTS[0],
     'Referer': SOURCE_URL,
     'Origin': SOURCE_URL,
     'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
@@ -296,11 +308,22 @@ app.get("/api/proxy-embed", async (req, res) => {
   try {
     const response = await fetch(targetUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'User-Agent': getRandomUA(),
         'Referer': SOURCE_URL,
         'Origin': SOURCE_URL
       }
     });
+    
+    if (response.status === 403 || response.status === 1005) {
+      return res.status(403).send(`
+        <div style="background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;text-align:center;padding:20px;">
+          <h2 style="color:#b72424;">تم حظر الوصول (Cloudflare 1005)</h2>
+          <p>يبدو أن السيرفر محظور حالياً. يرجى تجربة "سيرفر 2" أو سيرفرات أخرى.</p>
+          <button onclick="window.parent.postMessage('switch-server', '*')" style="background:#b72424;border:none;color:#fff;padding:10px 20px;border-radius:5px;cursor:pointer;font-weight:bold;margin-top:10px;">تجربة سيرفر آخر</button>
+        </div>
+      `);
+    }
+
     const html = await response.text();
     
     const $ = cheerio.load(html);
@@ -358,11 +381,23 @@ app.get("/api/proxy-player", async (req, res) => {
   try {
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'User-Agent': getRandomUA(),
         'Referer': SOURCE_URL,
         'Origin': SOURCE_URL,
       }
     });
+
+    if (response.status === 403 || response.status === 1005) {
+      return res.status(403).send(`
+        <div style="background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;text-align:center;padding:20px;">
+          <h2 style="color:#b72424;">تم حظر المشغل (Access Denied)</h2>
+          <p>هذا السيرفر (miravd) يرفض الاتصال من السيرفر حالياً.</p>
+          <p style="font-size:12px;color:#666;">يرجى اختيار سيرفر آخر من القائمة بالأسفل.</p>
+          <button onclick="window.parent.postMessage('switch-server', '*')" style="background:#b72424;border:none;color:#fff;padding:10px 20px;border-radius:5px;cursor:pointer;font-weight:bold;margin-top:10px;">التبديل لسيرفر آخر</button>
+        </div>
+      `);
+    }
+
     let html = await response.text();
     const parsedUrl = new URL(url);
     const origin = parsedUrl.origin;
@@ -415,6 +450,11 @@ function getMyHost(req: express.Request) {
   return `${protocol}://${host}`;
 }
 
+axiosInstance.interceptors.request.use((config) => {
+  config.headers['User-Agent'] = getRandomUA();
+  return config;
+});
+
 // Dean Edwards unpacker
 function deobfuscateDeanEdwards(packedCode: string): string {
   // More flexible regex for Dean Edwards packing
@@ -450,7 +490,7 @@ async function resolveDirectVideo(nume: string, post: string, type: string): Pro
   try {
     const fetchOptions = {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'User-Agent': getRandomUA(),
         'Referer': SOURCE_URL,
         'Origin': SOURCE_URL
       }
@@ -458,6 +498,7 @@ async function resolveDirectVideo(nume: string, post: string, type: string): Pro
 
     // 1. Fetch the 3iskk embed wrapper page
     const embedRes = await fetch(targetUrl, fetchOptions);
+    if (!embedRes.ok) return null;
     const embedHtml = await embedRes.text();
     const $embed = cheerio.load(embedHtml);
     
