@@ -893,7 +893,12 @@ export default function WatchScreen() {
                           resultLower.includes('fitnur.com') || 
                           resultLower.includes('archive.org');
 
-    if ((isVideoFile || isAlooySource) && !result.startsWith('/api/v1/')) {
+    const isIframe = resultLower.includes('/embed/') || 
+                     resultLower.includes('/players/') || 
+                     resultLower.includes('play.php') || 
+                     resultLower.includes('iframe');
+
+    if ((isVideoFile || isAlooySource) && !isIframe && !result.startsWith('/api/v1/')) {
       const encrypted = encodeURIComponent(encryptValue(result));
       result = getApiUrl(`/api/v1/stream-proxy/${encrypted}`);
     }

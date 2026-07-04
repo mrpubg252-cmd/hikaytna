@@ -1386,6 +1386,106 @@ async function startServer() {
     }
   });
 
+  // Helper to extract direct streaming URLs from standard players and iframes to bypass domain lockouts
+  async function resolveDirectVideoFromPlayer(playerUrl: string): Promise<string> {
+    const urlLower = playerUrl.toLowerCase();
+    
+    // Already a direct video format
+    const isDirect = urlLower.includes('.mp4') || 
+                    urlLower.includes('.m3u8') || 
+                    urlLower.includes('.webm') || 
+                    urlLower.includes('.ogg');
+    if (isDirect) {
+      return playerUrl;
+    }
+
+    if (!urlLower.includes('alooytv') && !urlLower.includes('fitnur') && !urlLower.includes('play.php') && !urlLower.includes('player')) {
+      return playerUrl;
+    }
+
+    try {
+      console.log(`[Player Direct Resolver] Resolving direct video from: ${playerUrl}`);
+      const response = await axios.get(playerUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Referer': 'https://alooytv.com/',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+        },
+        timeout: 10000,
+        httpAgent: new http.Agent({ family: 4 }),
+        httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
+      });
+
+      const html = response.data;
+      const $ = cheerio.load(html);
+      
+      let resolvedUrl = "";
+
+      // 1. Try finding video/source tag
+      $('video source, source').each((i, el) => {
+        const src = $(el).attr('src');
+        if (src) {
+          const srcLower = src.toLowerCase();
+          if ((srcLower.includes('.mp4') || srcLower.includes('.m3u8') || srcLower.includes('.webm')) && !srcLower.includes('alooytv.com.mp4')) {
+            resolvedUrl = src;
+            return false;
+          }
+        }
+      });
+
+      if (resolvedUrl) {
+        console.log(`[Player Direct Resolver] Found source tag: ${resolvedUrl}`);
+        return resolvedUrl;
+      }
+
+      // 2. Try scripts (jwplayer, setup files)
+      $('script').each((i, el) => {
+        const text = $(el).text();
+        
+        const m3u8Match = text.match(/(https?:\/\/[^\s"'`]+\.m3u8[^\s"'`]*)/i);
+        if (m3u8Match) {
+          resolvedUrl = m3u8Match[1];
+          return false;
+        }
+
+        const mp4Match = text.match(/(https?:\/\/[^\s"'`]+\.mp4[^\s"'`]*)/i);
+        if (mp4Match) {
+          if (!mp4Match[1].includes('alooytv.com.mp4') && !mp4Match[1].includes('warning')) {
+            resolvedUrl = mp4Match[1];
+            return false;
+          }
+        }
+      });
+
+      if (resolvedUrl) {
+        console.log(`[Player Direct Resolver] Found script URL: ${resolvedUrl}`);
+        return resolvedUrl;
+      }
+
+      // 3. Nested iframe source
+      $('iframe').each((i, el) => {
+        const src = $(el).attr('src');
+        if (src) {
+          const srcLower = src.toLowerCase();
+          if (srcLower.includes('archive.org') || srcLower.includes('drive.google.com') || srcLower.includes('ok.ru') || srcLower.includes('youtube') || srcLower.includes('embed') || srcLower.includes('stream')) {
+            resolvedUrl = src;
+            return false;
+          }
+        }
+      });
+
+      if (resolvedUrl) {
+        console.log(`[Player Direct Resolver] Found nested iframe: ${resolvedUrl}`);
+        return resolvedUrl;
+      }
+
+    } catch (err: any) {
+      console.error(`[Player Direct Resolver Error] Scraper error:`, err.message);
+    }
+
+    return playerUrl;
+  }
+
   // 4. Play URL
   app.get("/api/v1/play", async (req, res) => {
     try {
@@ -1490,6 +1590,15 @@ async function startServer() {
       }
 
       if (responseData && responseData.player_url) {
+        try {
+          const directStreamUrl = await resolveDirectVideoFromPlayer(responseData.player_url);
+          if (directStreamUrl) {
+            console.log(`[Play API] Successfully resolved direct/bypassed streaming URL: ${directStreamUrl}`);
+            responseData.player_url = directStreamUrl;
+          }
+        } catch (resolveErr: any) {
+          console.error("Error resolving direct video from player page:", resolveErr.message);
+        }
         responseData.player_url = encryptValue(responseData.player_url);
       }
 
