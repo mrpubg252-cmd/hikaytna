@@ -1,6 +1,10 @@
 {
-  "name": "حكايتنا مسلسلات",
-  "description": "موقع حكايتنا مسلسلات هو منصة احترافية لمشاهدة أحدث المسلسلات التركية المترجمة والمدبلجة، يتميز بتصميم عصري وسرعة في جلب المحتوى.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "name": "3isk - قصة عشق",
+  "description": "تطبيق لمشاهدة المسلسلات التركية مترجمة ومدبلجة من موقع قصة عشق.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

@@ -2,977 +2,3075 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import axios from "axios";
-import * as cheerio from "cheerio";
+import OpenAI from "openai";
+import fs from "fs";
+import os from "os";
+import { execFile } from "child_process";
+import ffmpegPath from "ffmpeg-static";
 import https from "https";
+import http from "http";
+import * as cheerio from "cheerio";
+import { GoogleGenAI } from "@google/genai";
+import multer from "multer";
 
-const app = express();
-const PORT = 3000;
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 200 * 1024 * 1024 } // 200 MB for high-quality videos
+});
 
-app.set('trust proxy', true);
+// SIMPLE XOR ENCRYPTION FOR WIRE DATA
+const SECRET_SALT = "SERIES_APP_2024";
 
-const SOURCE_URL = "https://3iskk.xyz";
-
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
-  'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0'
-];
-
-function getRandomUA() {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+function encryptValue(text: string): string {
+  if (!text) return "";
+  const key = SECRET_SALT;
+  let result = Buffer.alloc(text.length);
+  for (let i = 0; i < text.length; i++) {
+    result[i] = text.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+  }
+  return result.toString("base64");
 }
 
-const axiosInstance = axios.create({
-  timeout: 30000,
-  httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-  headers: {
-    'User-Agent': USER_AGENTS[0],
-    'Referer': SOURCE_URL,
-    'Origin': SOURCE_URL,
-    'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
-    'Sec-Fetch-Dest': 'iframe',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'same-origin',
-    'Upgrade-Insecure-Requests': '1',
-    'Connection': 'keep-alive'
-  }
-});
-
-// Helper to clean slugs
-const cleanSlug = (link: string, type: 'episodes' | 'tvshows') => {
-  if (!link) return "";
-  const parts = link.split(`/${type}/`);
-  return parts.length > 1 ? parts[1].replace(/\/$/, "") : "";
-};
-
-// Helper to clean branding
-const cleanBranding = (text: string) => {
-  if (!text) return "";
-  return text
-    .replace(/قصة عشق/g, "حكايتنا")
-    .replace(/موقع قصة عشق/g, "موقع حكايتنا")
-    .replace(/Qissat Ishq/g, "Hikaytna")
-    .replace(/3isk/g, "حكايتنا")
-    .replace(/موقع قصة عشق الاصلي/g, "موقع حكايتنا الأصلي");
-};
-
-app.use(express.json());
-
-// API Routes
-app.get("/api/latest-episodes", async (req, res) => {
+function decryptValue(encoded: string): string {
+  if (!encoded) return "";
   try {
-    const { data } = await axiosInstance.get(SOURCE_URL);
-    const $ = cheerio.load(data);
-    const episodes: any[] = [];
-
-    $(".items-latest-eps .type_item_box, .items-latest-updated .type_item_box, .home-items-container .type_item_box, .latest-episodes .type_item_box").each((_, el) => {
-      const title = cleanBranding($(el).find(".item_title").text().trim());
-      const link = $(el).find("a").attr("href") || "";
-      const img = $(el).find(".item_img").attr("data-image") || $(el).find(".item_img").attr("src") || "";
-      const episodeNum = $(el).find(".item_overlap span").text().trim() || 
-                        $(el).find(".item_overlap").text().trim().replace("حلقة", "").trim() ||
-                        title.match(/الحلقة (\d+)/)?.[1] || "";
-      const slug = cleanSlug(link, 'episodes');
-
-      if (slug && !episodes.find(e => e.slug === slug)) {
-        episodes.push({ title, slug, img, episodeNum });
-      }
-    });
-
-    res.json(episodes);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch episodes" });
+    const buf = Buffer.from(encoded, "base64");
+    const key = SECRET_SALT;
+    let result = "";
+    for (let i = 0; i < buf.length; i++) {
+      result += String.fromCharCode(buf[i] ^ key.charCodeAt(i % key.length));
+    }
+    // Only return the decrypted value if it looks like a valid absolute URL
+    if (result.startsWith("http")) {
+       return result;
+    }
+    return encoded;
+  } catch (e) {
+    return encoded;
   }
-});
+}
 
-app.get("/api/featured", async (req, res) => {
-  try {
-    const { data } = await axiosInstance.get(SOURCE_URL);
-    const $ = cheerio.load(data);
-    const featured: any[] = [];
+// ============ DeepSeek Speed Configuration ============
+const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
+const MODEL = "gemini-3.5-flash";
 
-    $(".items-featured-genres .type_item_wide_box").each((_, el) => {
-      const title = cleanBranding($(el).find(".item_title").text().trim());
-      const link = $(el).find("a").attr("href") || "";
-      const img = $(el).find(".item_img").attr("data-image") || $(el).find(".item_img").attr("src") || "";
-      const slug = cleanSlug(link, 'tvshows');
+let USER_CUSTOM_AI_CONFIG: {
+  key: string;
+  baseUrl: string;
+  model: string;
+  type: 'gemini' | 'openai';
+} | null = null;
 
-      if (slug) featured.push({ title, slug, img });
-    });
-
-    res.json(featured);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch featured" });
+function findFirebaseProjectId(): string {
+  // 1. Try environment variable
+  if (process.env.FIREBASE_PROJECT_ID) {
+    return process.env.FIREBASE_PROJECT_ID;
   }
-});
-
-app.get("/api/series/:slug", async (req, res) => {
-  const { slug } = req.params;
+  // 2. Try firebase-applet-config.json (AI Studio dynamic configuration)
   try {
-    const { data } = await axiosInstance.get(`${SOURCE_URL}/watch/tvshows/${slug}/`);
-    const $ = cheerio.load(data);
-
-    const title = cleanBranding($(".title").first().text().trim());
-    const description = cleanBranding($(".description").first().text().trim());
-    const img = $(".poster img").attr("src") || "";
-    const backdropStyle = $(".backdrop_big").attr("style") || "";
-    const backdropMatch = backdropStyle.match(/url\(['"]?([^'"]+)['"]?\)/);
-    const backdrop = backdropMatch ? backdropMatch[1] : "";
-
-    const seasons: any[] = [];
-    $(".seasons-selection ul li").each((_, el) => {
-      seasons.push({
-        num: $(el).attr("data-value"),
-        title: cleanBranding($(el).find("b").text().trim())
-      });
-    });
-
-    // Improved season/episode scraping
-    const episodes: any[] = [];
-    
-    // Try multiple selectors as the site structure might vary
-    const epSelectors = [
-      ".season-eps a.ep-num",
-      ".episodes-list a.ep-num",
-      ".items_list.season-eps a"
-    ];
-
-    let epElements: any = null;
-    for (const selector of epSelectors) {
-      const found = $(selector);
-      if (found.length > 0) {
-        epElements = found;
-        break;
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (config && config.projectId) {
+        return config.projectId;
       }
     }
-
-    if (epElements) {
-      epElements.each((_, el) => {
-        const epLink = $(el).attr("href") || "";
-        const epNumStr = $(el).find("b").text().trim() || $(el).attr("data-ep-num") || "";
-        const epTitle = cleanBranding($(el).attr("title") || "");
-        const epSlug = cleanSlug(epLink, 'episodes');
-        if (epSlug) {
-          episodes.push({ 
-            epNum: parseInt(epNumStr) || 0, 
-            epSlug, 
-            title: epTitle.replace("مسلسل ", "").split(" الحلقة")[0] || epTitle 
-          });
-        }
-      });
-    }
-
-    // Sort episodes ascending (1, 2, 3...)
-    episodes.sort((a, b) => a.epNum - b.epNum);
-
-    res.json({ title, description, img, backdrop, seasons, episodes });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch series details" });
+  } catch (e) {
+    console.warn("Failed to parse firebase-applet-config.json:", e);
   }
-});
-
-app.get("/api/episode/:slug", async (req, res) => {
-  const { slug } = req.params;
+  // 3. Try src/services/firebase.ts parsing to be fully portable
   try {
-    // 1. Fetch main landing page
-    const landingUrl = `${SOURCE_URL}/watch/episodes/${slug}/`;
-    const landingRes = await axiosInstance.get(landingUrl);
-    const $landing = cheerio.load(landingRes.data);
-
-    const title = cleanBranding($landing(".title").first().text().trim() || $landing("title").text().trim());
-
-    const seriesLink = $landing(".single-serie-btn").attr("href") || $landing(".breadcrumb a").last().attr("href") || $landing(".series-title a").attr("href");
-    let seriesSlug = seriesLink ? cleanSlug(seriesLink, 'tvshows') : "";
-
-    // Fallback: extract series slug from episode slug (e.g., 'series-name-episode-1' -> 'series-name')
-    if (!seriesSlug && slug.includes("-الحلقة-")) {
-      seriesSlug = slug.split("-الحلقة-")[0];
-    } else if (!seriesSlug && slug.includes("-episode-")) {
-      seriesSlug = slug.split("-episode-")[0];
+    const fbServicePath = path.join(process.cwd(), 'src/services/firebase.ts');
+    if (fs.existsSync(fbServicePath)) {
+      const content = fs.readFileSync(fbServicePath, 'utf-8');
+      const match = content.match(/projectId\s*:\s*["']([^"']+)["']/);
+      if (match && match[1]) {
+        return match[1];
+      }
     }
+  } catch (e) {
+    console.warn("Failed to parse src/services/firebase.ts:", e);
+  }
+  // 4. Default fallback
+  return "mo-play-b0cb7";
+}
 
-    const servers: any[] = [];
-    let iframeSrc = "";
+function findFirebaseDatabaseId(): string {
+  try {
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (config && config.firestoreDatabaseId) {
+        return config.firestoreDatabaseId;
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to parse firebase-applet-config.json for databaseId:", e);
+  }
+  return "(default)";
+}
 
-    // 2. Try the two-post flow to get the player page
-    try {
-      const form = $landing("div.single_buttons form").first();
-      const actionUrl1 = form.attr('action');
-      const newsValue1 = form.find("input[name='news']").val();
-      const uValue1 = form.find("input[name='u']").val();
-
-      if (actionUrl1 && newsValue1) {
-        const params1 = new URLSearchParams();
-        params1.append('news', String(newsValue1));
-        params1.append('u', String(uValue1 || ''));
-        params1.append('submit', 'submit');
-
-        const res1 = await axiosInstance.post(actionUrl1, params1, {
-          headers: {
-            'Referer': landingUrl,
-            'Origin': SOURCE_URL,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Upgrade-Insecure-Requests': '1',
-          }
-        });
-
-        const $res1 = cheerio.load(res1.data);
-
-        let myUrl = null;
-        let myInputValue = null;
-
-        $res1("script").each((_, el) => {
-          const text = $res1(el).html() || "";
-          if (text.includes("myUrl") && text.includes("myInput.value")) {
-            const urlMatch = text.match(/myUrl\s*=\s*"([^"]+)"/);
-            if (urlMatch) myUrl = urlMatch[1];
-
-            const valMatch = text.match(/myInput\.value\s*=\s*"([^"]+)"/);
-            if (valMatch) myInputValue = valMatch[1];
-          }
-        });
-
-        if (myUrl && myInputValue) {
-          const params2 = new URLSearchParams();
-          params2.append('news', myInputValue);
-          params2.append('u', '');
-          params2.append('submit', 'submit');
-
-          const res2 = await axiosInstance.post(myUrl, params2, {
-            headers: {
-              'Referer': actionUrl1,
-              'Origin': SOURCE_URL,
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Upgrade-Insecure-Requests': '1',
+async function getDynamicAiConfig() {
+  const firebaseProjectId = findFirebaseProjectId();
+  const firebaseDatabaseId = findFirebaseDatabaseId();
+  try {
+    const res = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, { timeout: 3000 });
+    if (res.data) {
+      const data = res.data;
+      const keyVal = data.api_key || data.key || "";
+      if (keyVal) {
+        USER_CUSTOM_AI_CONFIG = {
+          key: keyVal,
+          baseUrl: data.url || data.baseUrl || "",
+          model: data.model_name || data.model || "",
+          type: data.type || (keyVal.startsWith('AIzaSy') ? 'gemini' : 'openai')
+        };
+        if (USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
+          USER_CUSTOM_AI_CONFIG.type = 'openai';
+          if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
+            USER_CUSTOM_AI_CONFIG.baseUrl = USER_CUSTOM_AI_CONFIG.baseUrl || 'https://openrouter.ai/api/v1';
+            if (!USER_CUSTOM_AI_CONFIG.model || !USER_CUSTOM_AI_CONFIG.model.includes('/')) {
+              USER_CUSTOM_AI_CONFIG.model = 'google/gemini-2.5-flash';
             }
-          });
-
-          const $res2 = cheerio.load(res2.data);
-
-          $res2("#player_servers li").each((_, el) => {
-            const name = $res2(el).find(".server_name").text().trim();
-            const type = $res2(el).attr("data-type");
-            const post = $res2(el).attr("data-post");
-            const nume = $res2(el).attr("data-nume");
-
-            servers.push({
-              name,
-              url: `/api/proxy-embed?nume=${nume}&post=${post}&type=${type}`
-            });
-          });
-
-          const defaultIframe = $res2("iframe").first().attr("src");
-          if (defaultIframe) {
-            iframeSrc = defaultIframe;
+          } else {
+            if (!USER_CUSTOM_AI_CONFIG.baseUrl || USER_CUSTOM_AI_CONFIG.baseUrl.includes('openrouter.ai')) {
+              USER_CUSTOM_AI_CONFIG.baseUrl = USER_CUSTOM_AI_CONFIG.baseUrl || 'https://api.openai-proxy.org/v1';
+            }
+            if (!USER_CUSTOM_AI_CONFIG.model) {
+              USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
+            }
           }
         }
+        return USER_CUSTOM_AI_CONFIG;
       }
-    } catch (postFlowError) {
-      console.error("Two-post flow failed, falling back to direct landing page scraping:", postFlowError);
     }
-
-    // Fallback: if two-post flow returned no servers, try to scrape directly from landing page (just in case they change it back)
-    if (servers.length === 0) {
-      $landing("#player_servers li").each((_, el) => {
-        const name = $landing(el).find(".server_name").text().trim();
-        const type = $landing(el).attr("data-type");
-        const post = $landing(el).attr("data-post");
-        const nume = $landing(el).attr("data-nume");
-
-        servers.push({
-          name,
-          url: `/api/proxy-embed?nume=${nume}&post=${post}&type=${type}`
-        });
-      });
-    }
-
-    if (!iframeSrc && servers.length > 0) {
-      iframeSrc = servers[0].url;
-    }
-
-    res.json({ title, iframeSrc, servers, seriesSlug });
-  } catch (error) {
-    console.error("Failed to fetch episode details:", error);
-    res.status(500).json({ error: "Failed to fetch episode details" });
+  } catch (err: any) {
+    // silent fallback
   }
-});
 
-// Proxy for Embeds to handle Referer/CORS and spoof origin
-app.get("/api/proxy-embed", async (req, res) => {
-  const { nume, post, type } = req.query;
-  const mappedType = type === "tv" ? "2" : "1";
-  const targetUrl = `${SOURCE_URL}/embed/${nume}/${post}/${mappedType}/`;
+  try {
+    const res = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_admin_ai_config`, { timeout: 3000 });
+    if (res.data && res.data.fields && res.data.fields.data && res.data.fields.data.stringValue) {
+      const parsed = JSON.parse(res.data.fields.data.stringValue);
+      if (parsed) {
+        const keyVal = parsed.api_key || parsed.key || "";
+        if (keyVal) {
+          USER_CUSTOM_AI_CONFIG = {
+            key: keyVal,
+            baseUrl: parsed.url || parsed.baseUrl || "",
+            model: parsed.model_name || parsed.model || "",
+            type: parsed.type || (keyVal.startsWith('AIzaSy') ? 'gemini' : 'openai')
+          };
+          if (USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
+            USER_CUSTOM_AI_CONFIG.type = 'openai';
+            if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
+              USER_CUSTOM_AI_CONFIG.baseUrl = USER_CUSTOM_AI_CONFIG.baseUrl || 'https://openrouter.ai/api/v1';
+              if (!USER_CUSTOM_AI_CONFIG.model || !USER_CUSTOM_AI_CONFIG.model.includes('/')) {
+                USER_CUSTOM_AI_CONFIG.model = 'google/gemini-2.5-flash';
+              }
+            } else {
+              if (!USER_CUSTOM_AI_CONFIG.baseUrl || USER_CUSTOM_AI_CONFIG.baseUrl.includes('openrouter.ai')) {
+                USER_CUSTOM_AI_CONFIG.baseUrl = USER_CUSTOM_AI_CONFIG.baseUrl || 'https://api.openai-proxy.org/v1';
+              }
+              if (!USER_CUSTOM_AI_CONFIG.model) {
+                USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
+              }
+            }
+          }
+          return USER_CUSTOM_AI_CONFIG;
+        }
+      }
+    }
+  } catch (err: any) {
+    // silent fallback
+  }
+
+  return USER_CUSTOM_AI_CONFIG;
+}
+
+// ============ Remote GitHub Chatbot Controller ============
+let lastFetchedConfigTime = 0;
+let cachedRemoteConfig: any = null;
+
+async function getRemoteConfig() {
+  return null;
+}
+
+// Start with bootstrap keys as fallback (Stable Working Token)
+let API_KEYS: string[] = [
+  "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",
+  "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI",
+  "AQ.Ab8RN6LuoIRrBX0LERCLIBIk1OXcz52VfoxJj4gszphbrbEoog",
+  "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY"
+];
+const WORKING_KEY_CACHE = new Map<number, number>();
+const KEY_COOLDOWNS = new Map<string, number>();
+const HAKEEM_LOGS: string[] = [];
+
+// Dynamically resolve configuration parameters from GitHub config (or fallbacks)
+function getActiveAIConfig(remoteConfig?: any) {
+  return { baseUrl: BASE_URL, model: MODEL, keys: API_KEYS };
+}
+
+// Ultra-fast API caller with optimized speed and dynamic options
+async function callDeepSeek(msg: string, systemPrompt: string, history: any[], keyIdx: number, config: { baseUrl: string, model: string, keys: string[] }, ignoreCooldown = false) {
+  if (keyIdx >= config.keys.length) return { ok: false, error: "No key found at index" };
+  const key = config.keys[keyIdx];
+  if (!ignoreCooldown && KEY_COOLDOWNS.has(key) && Date.now() < KEY_COOLDOWNS.get(key)!) {
+    return { ok: false, error: "Key is currently on cooldown (rate-limited or invalid)" };
+  }
   
   try {
-    const response = await fetch(targetUrl, {
-      headers: {
-        'User-Agent': getRandomUA(),
-        'Referer': SOURCE_URL,
-        'Origin': SOURCE_URL
+    let cleanBaseUrl = config.baseUrl.trim().replace(/\/$/, "");
+    let cleanModel = config.model;
+
+    if (key === "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") {
+      cleanBaseUrl = "https://openrouter.ai/api/v1";
+      if (!cleanModel || !cleanModel.includes("/")) {
+        cleanModel = "google/gemini-2.5-flash";
       }
-    });
-    
-    if (response.status === 403 || response.status === 1005) {
-      return res.status(403).send(`
-        <div style="background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;text-align:center;padding:20px;">
-          <h2 style="color:#b72424;">تم حظر الوصول (Cloudflare 1005)</h2>
-          <p>يبدو أن السيرفر محظور حالياً. يرجى تجربة "سيرفر 2" أو سيرفرات أخرى.</p>
-          <button onclick="window.parent.postMessage('switch-server', '*')" style="background:#b72424;border:none;color:#fff;padding:10px 20px;border-radius:5px;cursor:pointer;font-weight:bold;margin-top:10px;">تجربة سيرفر آخر</button>
-        </div>
-      `);
+    } else if (key === "sk-jRKZyJZ2kFTr9uDRdCJaoDo6tlBRoiIIXCV3unyfsvMSznwI") {
+      cleanBaseUrl = "https://aiapiv2.pekpik.com/v1";
+      cleanModel = "deepseek-chat";
+    } else if (key.startsWith("sk-or-")) {
+      cleanBaseUrl = "https://openrouter.ai/api/v1";
+      if (!cleanModel || !cleanModel.includes("/")) {
+        cleanModel = "google/gemini-2.5-flash";
+      }
     }
 
-    const html = await response.text();
+    const isOpenAiKey = key.startsWith("sk-");
+    const isResponsesModel = cleanModel === "gpt-5.4-mini";
+    const isResponsesEndpoint = cleanBaseUrl.endsWith("/responses") || cleanBaseUrl.includes("/responses") || isResponsesModel;
+
+    // Support OpenAI's responses endpoint if requested or when using gpt-5.4-mini
+    if (isOpenAiKey && isResponsesEndpoint) {
+      try {
+        let targetEndpoint = cleanBaseUrl;
+        if (!targetEndpoint.endsWith("/responses") && !targetEndpoint.includes("/responses")) {
+          targetEndpoint = targetEndpoint.replace(/\/chat\/completions$/, "") + "/responses";
+        }
+        if (!targetEndpoint.startsWith("http")) {
+          targetEndpoint = "https://api.openai.com/v1/responses";
+        }
+
+        const payload = {
+          model: cleanModel || "gpt-5.4-mini",
+          input: `${systemPrompt}\n\n${history.map((m: any) => `${m.role === 'user' ? 'المستخدم' : 'حكيم'}: ${m.text}`).join('\n')}\n\nالمستخدم: ${msg}`,
+          store: true
+        };
+
+        const res = await axios.post(targetEndpoint, payload, {
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${key}`
+          },
+          timeout: 30000
+        });
+
+        let reply = "";
+        if (res.data) {
+          if (res.data.output) {
+            reply = res.data.output;
+          } else if (res.data.response && res.data.response.output) {
+            if (Array.isArray(res.data.response.output)) {
+              reply = res.data.response.output.map((o: any) => o.text || "").join("");
+            } else {
+              reply = res.data.response.output;
+            }
+          } else if (res.data.choices && res.data.choices[0] && res.data.choices[0].message) {
+            reply = res.data.choices[0].message.content;
+          } else if (typeof res.data === "string") {
+            reply = res.data;
+          }
+        }
+
+        if (reply) {
+          return { ok: true, reply };
+        }
+      } catch (err: any) {
+        console.warn("[Responses API Fallback to Chat Completions] error:", err.message);
+        // Fallback to standard chat/completions if the responses API errored or is not available
+      }
+    }
+
+    const chatMessages: any[] = [];
+    if (history && history.length > 0) {
+      for (const m of history) {
+        if (!m.text || !m.text.trim()) continue;
+        const role = m.role === 'user' ? 'user' : 'assistant';
+        if (chatMessages.length === 0 && role === 'assistant') {
+          continue; // skip leading assistant messages
+        }
+        chatMessages.push({ role, content: m.text });
+      }
+    }
+
+    const messages = [
+      { role: "system", content: systemPrompt || "أجب بإيجاز وسرعة فائقة. لا تقدم مقدمات. ادخل في صلب الموضوع فوراً." },
+      ...chatMessages,
+      { role: "user", content: msg }
+    ];
+
+    const isDefaultPool = (config.keys === API_KEYS);
+    const isToken = key.startsWith("AQ.");
+    const requestTimeout = (isDefaultPool && !isToken) ? 2200 : 15000;
+
+    const isGoogleKey = key.startsWith("AIzaSy");
+    const isGoogleDomain = config.baseUrl.includes("generativelanguage.googleapis.com");
+
+    const reqHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Accept": "application/json",
+      "Accept-Language": "ar,en-US;q=0.9,en;q=0.8",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache"
+    };
+
+    if (isToken) {
+      reqHeaders["Authorization"] = `Bearer ${key}`;
+    } else if (isGoogleKey) {
+      reqHeaders["x-goog-api-key"] = key;
+      if (config.baseUrl.includes("/openai")) {
+        reqHeaders["Authorization"] = `Bearer ${key}`;
+      }
+    } else {
+      reqHeaders["Authorization"] = `Bearer ${key}`;
+    }
+
+    if (key.startsWith("sk-or-") || cleanBaseUrl.includes("openrouter.ai")) {
+      reqHeaders["HTTP-Referer"] = "https://hakeem-ai-drama.com";
+      reqHeaders["X-Title"] = "Hakeem AI";
+    }
+
+    // Auto-fix Google OpenAI endpoint path ONLY if completely missing
+    if (isGoogleDomain && !cleanBaseUrl.includes("/openai")) {
+        if (!cleanBaseUrl.includes("/v1beta") && !cleanBaseUrl.includes("/v1")) {
+            cleanBaseUrl += "/v1beta/openai";
+        } else {
+            cleanBaseUrl += "/openai";
+        }
+    }
+    // Google OpenAI endpoint handles model names without 'models/' prefix
+    if (isGoogleDomain && cleanModel.startsWith("models/")) {
+      cleanModel = cleanModel.replace("models/", "");
+    }
+
+    let requestUrl = `${cleanBaseUrl}/chat/completions`;
+    if (!requestUrl.startsWith("http")) {
+      requestUrl = `https://api.openai.com/v1/chat/completions`;
+    }
+
+    const urlsToTry = [requestUrl];
+    if (requestUrl.includes("api.openai.com")) {
+      urlsToTry.push("https://api.openai-proxy.org/v1/chat/completions");
+      urlsToTry.push("https://api.openai-proxy.com/v1/chat/completions");
+      urlsToTry.push("https://api.chatanywhere.tech/v1/chat/completions");
+      urlsToTry.push("https://api.openai-sb.com/v1/chat/completions");
+    }
+
+    let lastError: any = null;
+    let successRes: any = null;
+
+    for (const url of urlsToTry) {
+      try {
+        console.log(`[Hakeem AI] Trying OpenAI endpoint: ${url}`);
+        const res = await axios.post(url, {
+          model: cleanModel || "gpt-4o-mini",
+          messages,
+          temperature: 0.7,
+          max_tokens: 800,
+          stream: false
+        }, {
+          headers: reqHeaders,
+          timeout: 15000
+        });
+
+        if (res.data && res.data.choices && res.data.choices[0]) {
+          successRes = res;
+          break;
+        }
+      } catch (err: any) {
+        lastError = err;
+        const errMsg = err.response?.data?.error?.message || err.message;
+        console.warn(`[Hakeem AI] Endpoint failed: ${url}. Error: ${errMsg}`);
+      }
+    }
+
+    if (successRes) {
+      return { ok: true, reply: successRes.data.choices[0].message.content };
+    }
     
-    const $ = cheerio.load(html);
-    const myHost = getMyHost(req);
+    const errorMsg = lastError?.response?.data?.error?.message || lastError?.message || "Invalid AI response format";
+    console.error(`AI Error [${keyIdx}]:`, errorMsg);
     
-    let playerIframeSrc = $("iframe").first().attr("src");
+    if (lastError?.response?.status === 429) {
+      KEY_COOLDOWNS.set(key, Date.now() + 5 * 60 * 1000);
+    }
     
-    if (playerIframeSrc) {
-      if (playerIframeSrc.startsWith("//")) {
-        playerIframeSrc = `https:${playerIframeSrc}`;
-      } else if (playerIframeSrc.startsWith("/")) {
-        playerIframeSrc = `${SOURCE_URL}${playerIframeSrc}`;
-      } else if (!playerIframeSrc.startsWith("http")) {
-        playerIframeSrc = `${SOURCE_URL}/${playerIframeSrc}`;
+    return { ok: false, error: errorMsg };
+  } catch (outerErr: any) {
+    console.error("Outer callDeepSeek error:", outerErr);
+    return { ok: false, error: outerErr.message || "Outer callDeepSeek error" };
+  }
+}
+
+let geminiClientInstance: any = null;
+
+function getGeminiClient(customKey?: string) {
+  // Respect user custom config first if it is set to gemini
+  let key = "";
+  if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.type === 'gemini') {
+    key = USER_CUSTOM_AI_CONFIG.key;
+  }
+  
+  key = key || customKey || process.env.GEMINI_API_KEY || "";
+  
+  // If no key is set yet, check fallback keys from config
+  if (!key) {
+    try {
+      const config = getActiveAIConfig();
+      const fallbackKey = (config.keys || []).find(k => k.startsWith("AIzaSy"));
+      if (fallbackKey) {
+        key = fallbackKey;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // Final absolute fallback to mock key so initialization doesn't throw if empty
+  if (!key) {
+    key = "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY";
+  }
+  
+  // Re-initialize only if key changed or instance is missing
+  if (!geminiClientInstance || (geminiClientInstance as any)._key !== key) {
+    const customBaseUrl = (USER_CUSTOM_AI_CONFIG?.type === 'gemini') ? USER_CUSTOM_AI_CONFIG.baseUrl : process.env.GEMINI_BASE_URL;
+    
+    let client;
+    if (customBaseUrl) {
+      client = new GoogleGenAI({
+        apiKey: key,
+        // @ts-ignore
+        baseUrl: customBaseUrl.replace(/\/$/, ''),
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build'
+          }
+        }
+      });
+    } else {
+      client = new GoogleGenAI({ 
+        apiKey: key,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build'
+          }
+        }
+      });
+    }
+    
+    (client as any)._key = key;
+
+    // Don't overwrite the global singleton if we're using a temporary key from pool
+    if (!customKey) {
+      geminiClientInstance = client;
+    }
+    return client;
+  }
+  return geminiClientInstance;
+}
+
+async function callGeminiFallback(msg: string, systemPrompt: string, history: any[], image?: any, audio?: any) {
+  try {
+    if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.type === 'openai') {
+      return { ok: false, error: "using_custom_openai" };
+    }
+
+    let key = "";
+    if (USER_CUSTOM_AI_CONFIG && (USER_CUSTOM_AI_CONFIG.type === 'gemini' || USER_CUSTOM_AI_CONFIG.key?.startsWith('AIzaSy'))) {
+      key = USER_CUSTOM_AI_CONFIG.key;
+    }
+    key = key || process.env.GEMINI_API_KEY || "";
+
+    if (!key) {
+      try {
+        const config = getActiveAIConfig();
+        const fallbackKey = (config.keys || []).find(k => k.startsWith("AIzaSy"));
+        if (fallbackKey) {
+          key = fallbackKey;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    if (!key) {
+      key = "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY";
+    }
+
+    // Direct routing for AQ. OAuth/Bearer keys because standard SDK cannot parse or sign them
+    if (key.startsWith("AQ.")) {
+      const config = {
+        baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+        model: "gemini-2.0-flash",
+        keys: [key]
+      };
+      const res = await callDeepSeek(msg, systemPrompt, history, 0, config, true);
+      if (res.ok && res.reply) {
+        return res;
+      }
+      return { ok: false, error: res.error || "AQ token call failed" };
+    }
+
+    let client = getGeminiClient(key);
+    if (!client) {
+      return { ok: false, error: "no_gemini_key", reply: "عذراً، نظام الذكاء الاصطناعي قيد التحديث. يرجى المحاولة لاحقاً." };
+    }
+
+    // Convert standard chat history formats to Gemini content parts
+    const contents: any[] = [];
+    if (history && history.length > 0) {
+      for (const h of history) {
+        if (!h.text || !h.text.trim()) continue;
+        const role = (h.role === 'user' || h.role === 'client') ? 'user' : 'model';
+        
+        // Gemini contents array must start with 'user' role
+        if (contents.length === 0 && role === 'model') {
+          continue; // Skip initial assistant messages
+        }
+
+        // Avoid consecutive roles of the same type by squashing or filtering
+        if (contents.length > 0 && contents[contents.length - 1].role === role) {
+          contents[contents.length - 1].parts[0].text += "\n" + h.text;
+        } else {
+          contents.push({
+            role: role,
+            parts: [{ text: h.text }]
+          });
+        }
+      }
+    }
+
+    // Append the current user message with image/audio support
+    const userParts: any[] = [{ text: msg }];
+    
+    if (image && image.data && image.mimeType) {
+      userParts.push({
+        inlineData: {
+          mimeType: image.mimeType,
+          data: image.data
+        }
+      });
+    }
+
+    if (audio && audio.data && audio.mimeType) {
+      userParts.push({
+        inlineData: {
+          mimeType: audio.mimeType,
+          data: audio.data
+        }
+      });
+    }
+
+    if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+      contents[contents.length - 1].parts[0].text += "\n" + msg;
+      if (userParts.length > 1) {
+        contents[contents.length - 1].parts.push(...userParts.slice(1));
+      }
+    } else {
+      contents.push({
+        role: 'user',
+        parts: userParts
+      });
+    }
+
+    // Robust sequential models trial to guarantee complete compatibility on all hosting API keys
+    const modelsToTry: string[] = [];
+    if (USER_CUSTOM_AI_CONFIG?.type === 'gemini' && USER_CUSTOM_AI_CONFIG.model) {
+      modelsToTry.push(USER_CUSTOM_AI_CONFIG.model);
+    }
+    // Universal stable standard models first
+    modelsToTry.push("gemini-2.5-flash");
+    modelsToTry.push("gemini-1.5-flash");
+    // Studio-specific preview models later
+    modelsToTry.push("gemini-3.5-flash");
+    modelsToTry.push("gemini-3.1-pro-preview");
+
+    let lastError: any = null;
+    let reply = "";
+
+    for (const modelName of modelsToTry) {
+      try {
+        const response = await client.models.generateContent({
+          model: modelName,
+          contents: contents,
+          config: {
+            systemInstruction: systemPrompt || "أنت حكيم، خبير مسلسلات ذكي وودود جداً. أجب بذكاء واختصار باسم 'حكيم'."
+          }
+        });
+        if (response && response.text && response.text.trim()) {
+          reply = response.text;
+          break; // Succeeded!
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[Hakeem AI] Try with model ${modelName} failed, attempting next:`, err.message || err);
+      }
+    }
+
+    if (reply && reply.trim()) {
+      return { ok: true, reply };
+    }
+    throw lastError || new Error("Failed to generate content with any model");
+  } catch (error: any) {
+    const errorMsg = error.message || "Unknown error";
+    // Silently log Gemini failure
+    HAKEEM_LOGS.push(`[${new Date().toISOString()}] ❌ Gemini fallback failed: ${errorMsg}`);
+    if (HAKEEM_LOGS.length > 50) HAKEEM_LOGS.shift();
+    return { ok: false, error: errorMsg };
+  }
+}
+
+// Unified Robust AI Caller for Hakeem (Direct Priority)
+async function smartChat(msg: string, systemPrompt: string, history: any[], image?: any, audio?: any) {
+  // 1. Priority: Custom Overrides (Set by Admin)
+  if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key) {
+    const customKey = USER_CUSTOM_AI_CONFIG.key.trim();
+    const customBaseUrl = (USER_CUSTOM_AI_CONFIG.baseUrl || "").trim();
+    const customModel = (USER_CUSTOM_AI_CONFIG.model || "").trim();
+    const customType = USER_CUSTOM_AI_CONFIG.type || "";
+
+    // If they specified a custom URL, or the key is not a standard Gemini key, or type is explicitly openai
+    if (customBaseUrl || !customKey.startsWith("AIzaSy") || customType === "openai") {
+      const customConfig = {
+        baseUrl: customBaseUrl || "https://api.openai.com/v1",
+        model: customModel || "gpt-3.5-turbo",
+        keys: [customKey]
+      };
+      const rCustom = await callDeepSeek(msg, systemPrompt, history, 0, customConfig, true);
+      if (rCustom.ok && rCustom.reply) return rCustom;
+    } else {
+      // Standard direct Gemini call using the official SDK
+      const rCustomGemini = await callGeminiFallback(msg, systemPrompt, history, image, audio);
+      if (rCustomGemini.ok && rCustomGemini.reply) return rCustomGemini;
+    }
+  }
+
+  // 2. Priority: Stable Platform Google Gemini Key (Highly reliable, provided by AI Studio environment)
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY") {
+    const rPlatform = await callGeminiFallback(msg, systemPrompt, history, image, audio);
+    if (rPlatform.ok && rPlatform.reply) {
+      return rPlatform;
+    }
+  }
+
+  // 3. Last Resort Fallback: Hardcoded Fallback Pool (Using callDeepSeek with API_KEYS)
+  const config = getActiveAIConfig();
+  if (config && config.keys && config.keys.length > 0) {
+    // Try up to 2 attempts for the primary pool keys
+    for (let i = 0; i < 2; i++) {
+      const rPool = await callDeepSeek(msg, systemPrompt, history, 0, config, i === 1);
+      if (rPool.ok && rPool.reply) {
+        return rPool;
+      }
+    }
+  }
+
+  // 4. Absolute Final Backstop
+  const gemiResult = await callGeminiFallback(msg, systemPrompt, history, image, audio);
+  if (gemiResult.ok && gemiResult.reply) {
+    return { ok: true, reply: gemiResult.reply };
+  }
+
+  // Active helpful guidance instead of a dry, generic connection error when no api key exists
+  const isFallbackKeyUsed = !process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "AIzaSyCWgG7PyYpMjsewEov9E1ofu_EtqdXGpZY";
+  const isCustomKeyEmpty = !USER_CUSTOM_AI_CONFIG || !USER_CUSTOM_AI_CONFIG.key;
+  
+  const currentKey = (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.key) || process.env.GEMINI_API_KEY || "";
+  const isTempAQTokenUsed = currentKey.startsWith("AQ.");
+
+  if (isTempAQTokenUsed) {
+    return {
+      ok: true,
+      reply: `مرحباً بك! 👋 نلاحظ أنك قمت بضبط المفتاح \`GEMINI_API_KEY\` على استضافة **Railway** باستخدام المفتاح المؤقت الذي يبدأ بـ (\`AQ.\`).\n\n` +
+             `⚠️ **سبب توقف المساعد حكيم:** مفاتيح الوصول التي تبدأ بـ (\`AQ.\`) هي عبارة عن "رموز وصول مؤقتة" وتنتهي صلاحيتها تلقائياً بعد مرور **ساعة واحدة فقط** لحماية خصوصية الحسابات. هذا هو السبب في توقف حكيم وظهور مشكلة في الاتصال بالأعلى!\n\n` +
+             `💡 **الحل السهل والنهائي (يعمل مدى الحياة دون انقطاع):**\n` +
+             `يرجى الذهاب إلى موقع **Google AI Studio** مجاناً تماماً واستخراج مفتاح API دائم يبدأ بالحروف \`AIzaSy\`:\n\n` +
+             `1️⃣ **الخطوات لاستخراج مفتاح دائم مجاناً:**\n` +
+             `• افتح موقع الـ AI Studio من هنا: [https://aistudio.google.com](https://aistudio.google.com) 🌐.\n` +
+             `• اضغط على زر **Get API Key** ثم **Create API Key**.\n` +
+             `• انسخ الكود المتولد (مثال: \`AIzaSyD-xxxxxxxxxxxxxxxxxxxxxxxx\`).\n\n` +
+             `2️⃣ **طريقة إضافته للتطبيق في ثانية واحدة (دون الذهاب لـ Railway):**\n` +
+             `• في نافذة الدردشة مع حكيم 💬، اضغط على **أيقونة الترس ⚙️** في الأعلى.\n` +
+             `• اكتب كلمة مرور الإدارة: \`bewCew,iDYgC@K6\`.\n` +
+             `• ألصق المفتاح الجديد (\`AIzaSy...\`) واضغط على **حفظ الإعدادات**.\n\n` +
+             `سيقوم السيرفر فوراً بتطبيق المفتاح الجديد ومزاوجته وحفظه سحابياً في قواعد بياناتك الخاصة (Firestore و RTDB) لكي يعمل حكيم بذكائه وسرعته الجبارة مدى الحياة ودون الحاجة لتغييره مجدداً! 🚀✨`
+    };
+  }
+
+  if (isFallbackKeyUsed && isCustomKeyEmpty) {
+    return { 
+      ok: true, 
+      reply: `مرحباً بك! 👋 المساعد الذكي "حكيم" جاهز للعمل على البيئة التطويرية للذكاء الاصطناعي بنجاح، ولكن لتفعيله بشكل كامل واحترافي على استضافة **Railway**، يرجى اتباع إحدى الطريقتين البسيطتين والسريعتين:\n\n` +
+             `1️⃣ **الخيار الأول (الأسهل والأسرع - من التطبيق مباشرة):**\n` +
+             `• افتح نافذة الدردشة مع حكيم 💬.\n` +
+             `• اضغط على **أيقونة الترس ⚙️** الموجودة بالأعلى لفتح إعدادات المساعد.\n` +
+             `• اكتب كلمة المرور المخصصة للأدمن: \`bewCew,iDYgC@K6\`.\n` +
+             `• أدخل مفتاحك الخاص (Gemini API Key) المستخرج من Google AI Studio.\n` +
+             `• اضغط على **حفظ الإعدادات**. سيقوم سيرفر المنصة بحفظه وتشفيره والمزامنة تلقائياً مع قواعد البيانات السحابية (Firestore و RTDB) ليعمل السيرفر فوراً دون انقطاع حتى بعد إعادة تشغيل سيرفر Railway!\n\n` +
+             `2️⃣ **الخيار الثاني (بيئة عمل Railway):**\n` +
+             `• توجه إلى لوحة تحكم مشروعك في **Railway.com** 🚀.\n` +
+             `• اذهب إلى تبويب **Variables** التابع للخدمة.\n` +
+             `• قم بإضافة متغير بيئة جديد كالتالي:\n` +
+             `  - الاسم: \`GEMINI_API_KEY\`\n` +
+             `  - القيمة: (مفتاح الـ Gemini API Key دائم الخاص بك من Google AI Studio ويبدأ بـ \`AIzaSy\`)\n\n` +
+             `بعد الضغط على إضافة، سيتم إعادة بناء السيرفر تلقائياً وتفعيل البوت "حكيم" بذكاء خارق وسرعة فائقة لخدمة زوار منصتك وتوليد روابط المسلسلات بذكاء مذهل! 🎭✨`
+    };
+  }
+
+  return { ok: false, reply: "عذراً! يبدو أن هناك مشكلة مؤقتة في الاتصال بخوادم الذكاء الاصطناعي. يرجى تكرار المحاولة." };
+}
+
+async function startServer() {
+  const app = express();
+  const PORT = parseInt(process.env.PORT || "3000", 10);
+
+  app.use(express.json({ limit: "200mb" }));
+  app.use(express.urlencoded({ limit: "200mb", extended: true }));
+
+  // Pins Memory Persistence Init
+  let pinsMemory: Record<string, any> = {};
+  const pinsFilePath = path.join(process.cwd(), "data", "pins.json");
+
+  // Slider Selections Memory Persistence Init
+  let sliderMemory: Record<string, any> = {};
+  const sliderFilePath = path.join(process.cwd(), "data", "slider.json");
+
+  // AI Configuration Local Disk Persistence
+  const aiConfigFilePath = path.join(process.cwd(), "data", "ai_config.json");
+
+  // Load local fallbacks
+  try {
+    if (!fs.existsSync(path.join(process.cwd(), "data"))) {
+      fs.mkdirSync(path.join(process.cwd(), "data"), { recursive: true });
+    }
+    if (fs.existsSync(pinsFilePath)) {
+      pinsMemory = JSON.parse(fs.readFileSync(pinsFilePath, "utf-8") || "{}");
+    }
+    if (fs.existsSync(sliderFilePath)) {
+      sliderMemory = JSON.parse(fs.readFileSync(sliderFilePath, "utf-8") || "{}");
+    }
+    if (fs.existsSync(aiConfigFilePath)) {
+      USER_CUSTOM_AI_CONFIG = JSON.parse(fs.readFileSync(aiConfigFilePath, "utf-8") || "{}");
+      console.log("Successfully loaded USER_CUSTOM_AI_CONFIG from local disk backup!");
+    }
+  } catch (e) {
+    console.warn("Could not load database JSONs", e);
+  }
+
+  // ============== SYSTEM-WIDE PERSISTENT CLOUD SELF-HEALING SYSTEM (FIRESTORE & RTDB) ==============
+  // Fetches master backups from Firestore and Realtime Database raw REST APIs
+  // This guarantees complete survival across restarts, rebuilds, and ephemeral disk wipes!
+  const firebaseProjectId = findFirebaseProjectId();
+  const firebaseDatabaseId = findFirebaseDatabaseId();
+
+  // --- 1. AI Configuration Self-Healing ---
+  try {
+    const aiConfigRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_admin_ai_config`, { timeout: 4000 }).catch(() => null);
+    if (aiConfigRes && aiConfigRes.data && aiConfigRes.data.fields && aiConfigRes.data.fields.data) {
+      const dataStr = aiConfigRes.data.fields.data.stringValue;
+      if (dataStr) {
+        const loadedConfig = JSON.parse(dataStr);
+        if (loadedConfig && loadedConfig.key) {
+          USER_CUSTOM_AI_CONFIG = loadedConfig;
+          console.log("Successfully self-healed USER_CUSTOM_AI_CONFIG from Firestore! Key prefix:", loadedConfig.key.substring(0, 8));
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal AI config from Firestore on startup:", err.message);
+  }
+
+  try {
+    const aiConfigRTDB = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, { timeout: 4000 }).catch(() => null);
+    if (aiConfigRTDB && aiConfigRTDB.data && aiConfigRTDB.data.key) {
+      USER_CUSTOM_AI_CONFIG = aiConfigRTDB.data;
+      console.log("Successfully self-healed USER_CUSTOM_AI_CONFIG from RTDB! Key prefix:", USER_CUSTOM_AI_CONFIG.key.substring(0, 8));
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal AI config from RTDB on startup:", err.message);
+  }
+
+  // --- 2. Pins Memory Self-Healing ---
+  try {
+    const pinsRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_category_pins`, { timeout: 4000 }).catch(() => null);
+    if (pinsRes && pinsRes.data && pinsRes.data.fields && pinsRes.data.fields.data) {
+      const dataStr = pinsRes.data.fields.data.stringValue;
+      if (dataStr) {
+        const cloudPins = JSON.parse(dataStr) || {};
+        pinsMemory = { ...pinsMemory, ...cloudPins };
+        console.log("Successfully self-healed Pins memory from Firestore! Loaded count:", Object.keys(cloudPins).length);
+      }
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal Category Pins from Firestore on startup:", err.message);
+  }
+
+  try {
+    const pinsRTDB = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/category_pins.json`, { timeout: 4000 }).catch(() => null);
+    if (pinsRTDB && pinsRTDB.data) {
+      pinsMemory = { ...pinsMemory, ...pinsRTDB.data };
+      console.log("Successfully self-healed Pins memory from RTDB! Loaded count:", Object.keys(pinsRTDB.data).length);
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal Category Pins from RTDB on startup:", err.message);
+  }
+
+  // --- 3. Slider Selections Self-Healing ---
+  try {
+    const sliderRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_slider_selections`, { timeout: 4000 }).catch(() => null);
+    if (sliderRes && sliderRes.data && sliderRes.data.fields && sliderRes.data.fields.data) {
+      const dataStr = sliderRes.data.fields.data.stringValue;
+      if (dataStr) {
+        const cloudSlider = JSON.parse(dataStr) || {};
+        sliderMemory = { ...sliderMemory, ...cloudSlider };
+        console.log("Successfully self-healed Sliders memory from Firestore! Loaded count:", Object.keys(cloudSlider).length);
+      }
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal Sliders from Firestore on startup:", err.message);
+  }
+
+  try {
+    const sliderRTDB = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/slider_selections.json`, { timeout: 4000 }).catch(() => null);
+    if (sliderRTDB && sliderRTDB.data) {
+      sliderMemory = { ...sliderMemory, ...sliderRTDB.data };
+      console.log("Successfully self-healed Sliders memory from RTDB! Loaded count:", Object.keys(sliderRTDB.data).length);
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal Sliders from RTDB on startup:", err.message);
+  }
+
+  // Cloud backup write helper functions (Dual-Save to Firestore AND RTDB for maximum resilience)
+  const savePinsToCloud = async () => {
+    // Save to Firestore
+    try {
+      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_category_pins?updateMask.fieldPaths=data`, {
+        fields: {
+          data: { stringValue: JSON.stringify(pinsMemory) }
+        }
+      }, { timeout: 4000 }).catch(() => null);
+    } catch (e: any) {
+      console.warn("Error background backup category pins to Firestore:", e.message);
+    }
+    // Save to RTDB
+    try {
+      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/category_pins.json`, pinsMemory, { timeout: 4000 }).catch(() => null);
+    } catch (e: any) {
+      console.warn("Error background backup category pins to RTDB:", e.message);
+    }
+  };
+
+  const saveSliderToCloud = async () => {
+    // Save to Firestore
+    try {
+      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_slider_selections?updateMask.fieldPaths=data`, {
+        fields: {
+          data: { stringValue: JSON.stringify(sliderMemory) }
+        }
+      }, { timeout: 4000 }).catch(() => null);
+    } catch (e: any) {
+      console.warn("Error background backup slider selections to Firestore:", e.message);
+    }
+    // Save to RTDB
+    try {
+      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/slider_selections.json`, sliderMemory, { timeout: 4000 }).catch(() => null);
+    } catch (e: any) {
+      console.warn("Error background backup slider selections to RTDB:", e.message);
+    }
+  };
+
+  const saveAIConfigToCloud = async () => {
+    // Expand for maximum compatibility and user custom fields in Firestore/RTDB
+    const expandedConfig = {
+      ...USER_CUSTOM_AI_CONFIG,
+      key: USER_CUSTOM_AI_CONFIG?.key || "",
+      api_key: USER_CUSTOM_AI_CONFIG?.key || "",
+      baseUrl: USER_CUSTOM_AI_CONFIG?.baseUrl || "",
+      url: USER_CUSTOM_AI_CONFIG?.baseUrl || "",
+      model: USER_CUSTOM_AI_CONFIG?.model || "",
+      model_name: USER_CUSTOM_AI_CONFIG?.model || "",
+      type: USER_CUSTOM_AI_CONFIG?.type || "openai"
+    };
+
+    try {
+      // Save locally to disk first layout to ensure complete hosting durability
+      fs.writeFileSync(aiConfigFilePath, JSON.stringify(USER_CUSTOM_AI_CONFIG, null, 2), "utf-8");
+      console.log("Locally saved AI configuration to disk backup successfully!");
+    } catch (err: any) {
+      console.warn("Failed to write manual AI configuration to disk:", err.message);
+    }
+
+    // Save to Firestore
+    try {
+      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_admin_ai_config?updateMask.fieldPaths=data`, {
+        fields: {
+          data: { stringValue: JSON.stringify(expandedConfig) }
+        }
+      }, { timeout: 4000 }).catch(() => null);
+      console.log("Successfully back-saved AI configuration to Cloud Firestore master!");
+    } catch (e: any) {
+      console.warn("Error background backup administrative AI config to Firestore:", e.message);
+    }
+
+    // Save to RTDB
+    try {
+      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, expandedConfig, { timeout: 4000 }).catch(() => null);
+      console.log("Successfully back-saved AI configuration to Cloud RTDB master!");
+    } catch (e: any) {
+      console.warn("Error background backup administrative AI config to RTDB:", e.message);
+    }
+  };
+
+  const savePinsToFile = () => {
+    try {
+      fs.writeFileSync(pinsFilePath, JSON.stringify(pinsMemory, null, 2), "utf-8");
+      savePinsToCloud(); // Double backup to cloud
+    } catch (e) {
+      console.warn("Could not save pins.json", e);
+    }
+  };
+
+  const saveSliderToFile = () => {
+    try {
+      fs.writeFileSync(sliderFilePath, JSON.stringify(sliderMemory, null, 2), "utf-8");
+      saveSliderToCloud(); // Double backup to cloud
+    } catch (e) {
+      console.warn("Could not save slider.json", e);
+    }
+  };
+
+  // Seeding and automatic configuration writing removed to ensure that Hakeem AI credentials only appear in Firebase Firestore and RTDB after the user clicks 'Activate' in the frontend.
+
+  // Prevent generic CORS "Failed to fetch" blocks in complex iframe previews
+  app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Content-Length, X-Requested-With");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
+  // Resilient Axios helper for backend stability
+  async function axiosFetch(url: string, retries = 1) {
+    for (let i = 0; i <= retries; i++) {
+        try {
+            return await axios.get(url, { 
+                timeout: 12000, 
+                httpAgent: new http.Agent({ family: 4 }),
+                httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 }),
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                    'Accept': 'application/json, text/plain, */*'
+                }
+            });
+        } catch (err: any) {
+            const isLast = i === retries;
+            const status = err.response?.status;
+            const isRetryable = !status || status >= 500 || status === 429;
+            
+            if (isLast || !isRetryable) throw err;
+            console.log(`[Proxy Retry] ${i + 1}/${retries} for ${url}`);
+            const delay = 500 * (i + 1);
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+    throw new Error("Axios fetch failed");
+  }
+
+  // ============== In-Memory Caching System ==============
+  const apiCache = new Map<string, { data: any; expiresAt: number }>();
+
+  function getCachedData(key: string): any | null {
+    const cached = apiCache.get(key);
+    if (cached) {
+      if (Date.now() < cached.expiresAt) {
+        return cached.data;
+      }
+      apiCache.delete(key);
+    }
+    return null;
+  }
+
+  function setCachedData(key: string, data: any, durationMs: number) {
+    if (apiCache.size > 800) {
+      const firstKey = apiCache.keys().next().value;
+      if (firstKey) apiCache.delete(firstKey);
+    }
+    apiCache.set(key, {
+      data,
+      expiresAt: Date.now() + durationMs
+    });
+  }
+  // =======================================================
+
+  // API Proxy Routes
+  // 1. Categories
+  app.get("/api/v1/categories", async (req, res) => {
+    try {
+      const categories = [
+        { name: 'جميع المسلسلات', url: 'https://3iskk.xyz/w-series/', pages: ['https://3iskk.xyz/w-series/', 'https://3iskk.xyz/w-series/page/2/'] },
+        { name: 'جميع الحلقات', url: 'https://3iskk.xyz/halaqat/', pages: ['https://3iskk.xyz/halaqat/', 'https://3iskk.xyz/halaqat/page/2/'] },
+        { name: 'جميع الأفلام', url: 'https://3iskk.xyz/w-movies/', pages: ['https://3iskk.xyz/w-movies/', 'https://3iskk.xyz/w-movies/page/2/'] },
+        { name: 'مسلسلات مدبلجة', url: 'https://3iskk.xyz/genre/series-mudablij-121/', pages: ['https://3iskk.xyz/genre/series-mudablij-121/', 'https://3iskk.xyz/genre/series-mudablij-121/page/2/'] }
+      ];
+      res.json({ status: true, data: categories });
+    } catch (error: any) {
+      console.error("DEBUG CATEGORIES ERROR:", error.message);
+      res.status(500).json({ status: false, message: "Server Error" });
+    }
+  });
+
+  // 2. Series by Category
+  app.get("/api/v1/series", async (req, res) => {
+    try {
+      const { url } = req.query;
+      if (!url) return res.status(400).json({ status: false });
+      
+      const realUrl = url as string;
+      const cacheKey = `series_3isk:${realUrl}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
+      const response = await axios.get(realUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        timeout: 10000
+      });
+      const $ = cheerio.load(response.data);
+      const data: any[] = [];
+
+      $('.type_item_box a.type_item, .type_item_wide_box a.type_item_wide').each((i, el) => {
+        const itemUrl = $(el).attr('href');
+        let title = $(el).attr('title') || $(el).find('.item_title').text().trim();
+        const img = $(el).find('img.item_img').attr('data-image') || $(el).find('img.item_img').attr('src');
+        
+        // Remove trailing "مترجم" or "مدبلج" from title for cleaner display
+        title = title.replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '').trim();
+
+        if (itemUrl && title) {
+          data.push({
+            title,
+            url: itemUrl,
+            image: img || '',
+            img: img || ''
+          });
+        }
+      });
+
+      const responseData = { status: true, data };
+      if (data.length > 0) {
+        setCachedData(cacheKey, responseData, 4 * 60 * 60 * 1000);
+      }
+      res.json(responseData);
+    } catch (error) {
+      res.status(500).json({ status: false });
+    }
+  });
+
+  // 3. Episodes
+  app.get("/api/v1/episodes", async (req, res) => {
+    try {
+      const { url } = req.query;
+      if (!url) return res.status(400).json({ status: false });
+      
+      const realUrl = url as string;
+      const cacheKey = `episodes_3isk:${realUrl}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
+      const response = await axios.get(realUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        timeout: 10000
+      });
+      const $ = cheerio.load(response.data);
+      const data: any[] = [];
+
+      $('.season-eps a.ep-num').each((i, el) => {
+        const epUrl = $(el).attr('href');
+        let epTitle = $(el).attr('title') || $(el).find('.cl_srt').text().trim() || $(el).text().trim();
+        
+        if (epUrl) {
+          data.push({
+            name: epTitle,
+            url: encryptValue(epUrl)
+          });
+        }
+      });
+
+      const responseData = { status: true, data };
+      if (data.length > 0) {
+        setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000);
+      }
+      res.json(responseData);
+    } catch (error) {
+      res.status(500).json({ status: false });
+    }
+  });
+
+  // Helper to convert relative URLs to absolute
+  function makeAbsoluteUrl(url: string, baseUrl: string): string {
+    if (!url) return url;
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    if (url.startsWith('//')) {
+      return 'https:' + url;
+    }
+    try {
+      return new URL(url, baseUrl).toString();
+    } catch (e) {
+      return url;
+    }
+  }
+
+  // 4. Play URL
+  app.get("/api/v1/play", async (req, res) => {
+    try {
+      const { url } = req.query;
+      if (!url) return res.status(400).json({ status: false });
+      
+      const decryptedUrl = decryptValue(url as string) || (url as string);
+      let realUrl = decryptedUrl;
+      // Append /see/ if it's not present, because that's the page containing the player iframe
+      if (!realUrl.endsWith('/see/') && !realUrl.endsWith('/see')) {
+        if (!realUrl.endsWith('/')) realUrl += '/';
+        realUrl += 'see/';
+      }
+
+      const cacheKey = `play_3isk:${realUrl}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
+      const response = await axios.get(realUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        timeout: 10000
+      });
+      const $ = cheerio.load(response.data);
+
+      let iframeSrc = $('#iframe_player').attr('src') || $('.frame-container iframe').attr('src');
+
+      if (!iframeSrc) {
+         // Also check for embedded players in other containers
+         $('iframe').each((i, el) => {
+            const src = $(el).attr('src');
+            if (src && (src.includes('embed') || src.includes('player'))) {
+                iframeSrc = src;
+                return false;
+            }
+         });
+      }
+
+      if (iframeSrc) {
+         if (iframeSrc.startsWith('//')) {
+             iframeSrc = 'https:' + iframeSrc;
+         } else if (iframeSrc.startsWith('/')) {
+             const parsed = new URL(realUrl);
+             iframeSrc = parsed.origin + iframeSrc;
+         }
+
+         // Wrap it in our new 3isk proxy to defeat frame-busters
+         const encryptedTarget = encryptValue(iframeSrc);
+         const proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
+         
+         const responseData = { status: true, player_url: proxyUrl };
+         setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000);
+         return res.json(responseData);
+      }
+
+      res.status(404).json({ status: false, message: "Video resource not found" });
+    } catch (error) {
+      res.status(500).json({ status: false });
+    }
+  });
+
+  // 4.1. Secure Iframe Proxy / Bypass for 3iskk.xyz
+  app.get("/api/v1/3isk-player", async (req, res) => {
+    try {
+      const { url } = req.query;
+      if (!url) {
+        return res.status(400).send("Missing player URL");
+      }
+
+      const decryptedUrl = decryptValue(url as string) || (url as string);
+      if (!decryptedUrl.startsWith("http")) {
+        return res.status(400).send("Invalid player URL");
+      }
+
+      console.log(`[3isk Player Proxy] Fetching original player page: ${decryptedUrl}`);
+      
+      const response = await axios.get(decryptedUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Referer': 'https://3iskk.xyz/',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
+        },
+        timeout: 12000,
+        httpAgent: new http.Agent({ family: 4 }),
+        httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
+      });
+
+      let html = response.data;
+      if (typeof html !== 'string') {
+        return res.status(500).send("Invalid player response structure.");
+      }
+
+      const $ = cheerio.load(html);
+      const parsedUrl = new URL(decryptedUrl);
+      const originalOrigin = parsedUrl.origin;
+
+      // 1. Inject <base> tag to force the browser to resolve relative resources to the original host
+      const baseTagExists = $('base').length > 0;
+      if (!baseTagExists) {
+        $('head').prepend(`<base href="${originalOrigin}/">`);
+      } else {
+        $('base').attr('href', `${originalOrigin}/`);
+      }
+
+      // 2. Inject our elite window.top / window.parent spoofing script
+      const spoofScript = `
+        <script id="bypass-script">
+          (function() {
+            try {
+              // Block top level navigation changes & domain checks
+              Object.defineProperty(window, 'parent', { get: function() { return window; } });
+              Object.defineProperty(window, 'top', { get: function() { return window; } });
+              Object.defineProperty(document, 'referrer', { get: function() { return 'https://3iskk.xyz/'; } });
+              
+              // Prevent setting window.location.href or calling replace
+              const originalReplace = window.location.replace;
+              window.location.replace = function(url) {
+                console.warn('[Proxy Player] Blocked frame redirect:', url);
+                return;
+              };
+              
+              // Safeguard window.location setter
+              const loc = window.location;
+              const originalAssign = loc.assign;
+              loc.assign = function(url) {
+                console.warn('[Proxy Player] Blocked loc.assign redirect:', url);
+                return;
+              };
+            } catch(e) {
+              console.error('[Proxy Player] Spoof error:', e);
+            }
+          })();
+        </script>
+      `;
+      $('head').prepend(spoofScript);
+
+      // 3. Make all relative src/href attributes absolute just in case
+      $('[src]').each((i, el) => {
+        const src = $(el).attr('src');
+        if (src && !src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('//') && !src.startsWith('javascript:')) {
+          $(el).attr('src', makeAbsoluteUrl(src, decryptedUrl));
+        }
+      });
+
+      $('[href]').each((i, el) => {
+        const href = $(el).attr('href');
+        if (href && !href.startsWith('http') && !href.startsWith('javascript:') && !href.startsWith('#') && !href.startsWith('//')) {
+          $(el).attr('href', makeAbsoluteUrl(href, decryptedUrl));
+        }
+      });
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Frame-Options', 'ALLOWALL');
+      res.setHeader('Content-Security-Policy', "frame-ancestors *");
+      res.send($.html());
+
+    } catch (error: any) {
+      console.error("[3isk Player Proxy Error] Failed proxying player page:", error.message);
+      res.status(500).send(`Error loading secure player wrapper: ${error.message}`);
+    }
+  });
+
+  // 4.2. Image Proxy to bypass hotlink and domain protections on API images
+  app.get("/api/v1/image-proxy", async (req, res) => {
+    let targetUrl = "";
+    let rawUrl = "";
+    try {
+      const { url } = req.query;
+      if (!url) return res.status(400).send("Missing URL parameter");
+      
+      rawUrl = decodeURIComponent(url as string);
+      if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
+        return res.status(400).send("Invalid target URL");
+      }
+
+      targetUrl = rawUrl;
+
+      // Helper function to fetch stream with manual redirect tracking to preserve headers!
+      const fetchImageStream = async (urlToFetch: string) => {
+        let currentUrl = urlToFetch;
+        let redirectCount = 0;
+        let response;
+
+        while (redirectCount < 10) {
+          const parsedCurrent = new URL(currentUrl);
+          const hostVal = parsedCurrent.origin;
+          let referer = hostVal + '/';
+          
+          if (currentUrl.includes('3iskk.xyz')) {
+            referer = 'https://3iskk.xyz/';
+          }
+
+          response = await axios({
+            method: 'get',
+            url: currentUrl,
+            responseType: 'stream',
+            maxRedirects: 0, // Handle redirects manually
+            validateStatus: (status) => status >= 200 && status < 400,
+            httpAgent: new http.Agent({ family: 4 }),
+            httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 }),
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+              'Referer': referer,
+              'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+            },
+            timeout: 8000
+          });
+
+          if (response.status >= 300 && response.status < 400 && response.headers.location) {
+            let nextUrl = response.headers.location;
+            if (!nextUrl.startsWith('http')) {
+              nextUrl = new URL(nextUrl, currentUrl).toString();
+            }
+            currentUrl = nextUrl;
+            redirectCount++;
+          } else {
+            break;
+          }
+        }
+        return response;
+      };
+
+      let response;
+      try {
+        response = await fetchImageStream(targetUrl);
+      } catch (err: any) {
+        console.warn(`[Image Proxy First Try Failed] url: ${targetUrl}, trying fallback to original rawUrl...`);
+        // If targetUrl was rewritten and failed, try the original rawUrl
+        if (targetUrl !== rawUrl) {
+          response = await fetchImageStream(rawUrl);
+        } else {
+          throw err;
+        }
+      }
+
+      const contentType = response.headers['content-type'];
+      if (typeof contentType === 'string') {
+        res.setHeader('Content-Type', contentType);
       }
       
-      const proxiedSrc = `${myHost}/api/proxy-player?url=${encodeURIComponent(playerIframeSrc)}`;
+      // Highly-scalable browser & CDN cache control (24 hours)
+      res.setHeader('Cache-Control', 'public, max-age=86400');
       
-      const cleanHtml = `
+      response.data.pipe(res);
+    } catch (error: any) {
+      console.warn("[Image Proxy Fallback] Image proxy error for URL:", targetUrl, error.message);
+      // Fallback directly to the custom user-provided image if loading fails
+      return res.redirect("https://c.top4top.io/p_3837bp37c1.jpg");
+    }
+  });
+
+  // 4.5. High-End Custom Player (Titanic Specific & Secure Wrappers)
+  app.get("/api/v1/titanic-player", (req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('X-Frame-Options', 'ALLOWALL'); 
+    res.send(`
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Player Proxy</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="referrer" content="origin">
+  <title>Player</title>
   <style>
-    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
-    iframe { border: none; width: 100%; height: 100%; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0b0b; font-family: system-ui, sans-serif; }
+    #player-wrapper { position: relative; width: 100%; height: 100%; background: #000; }
+    #pf { width: 100%; height: 100%; border: 0; display: block; background: #111; }
+    .status-badge { position: fixed; bottom: 20px; left: 20px; color: rgba(255,255,255,0.2); font-size: 12px; letter-spacing: 0.3px; pointer-events: none; z-index: 10; background: rgba(0,0,0,0.4); padding: 6px 14px; border-radius: 40px; backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.05); }
+    .hide-cursor, .hide-cursor * { cursor: none !important; }
+    iframe { transition: opacity 0.2s ease; }
   </style>
 </head>
 <body>
-  <iframe src="${proxiedSrc}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+  <div id="player-wrapper">
+    <iframe id="pf" src="https://nextgencloudfabric.com/embed/movie/tt0120338" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen referrerpolicy="origin"></iframe>
+  </div>
+  <div class="status-badge" id="statusBadge">● loaded</div>
+  <script>
+    (function(){
+      if (window !== window.top) {
+        var die = function(){ document.documentElement.innerHTML = ''; document.write('<!DOCTYPE html><html><head></head><body style="margin:0;background:#000"></body></html>'); document.close(); };
+        var s = false;
+        try { if (window.origin === 'null' || !window.origin) s = true; } catch(e){ s = true; }
+        if (s) { die(); throw ''; }
+      }
+      var f = document.getElementById('pf');
+      window.addEventListener('message', function(e) {
+        if (e.source !== f.contentWindow) return;
+        var d = e.data;
+        if (!d || typeof d !== 'object') return;
+        if (d.type === 'CURSOR_HIDE') { document.body.classList.add('hide-cursor'); document.documentElement.classList.add('hide-cursor'); f.style.cursor = 'none'; }
+        if (d.type === 'CURSOR_SHOW') { document.body.classList.remove('hide-cursor'); document.documentElement.classList.remove('hide-cursor'); f.style.cursor = ''; }
+      });
+      var badge = document.getElementById('statusBadge');
+      if (badge) {
+        setTimeout(function() { if (badge) badge.style.opacity = '0.6'; }, 4000);
+        setTimeout(function() { if (badge) { badge.style.transition = 'opacity 0.8s ease'; badge.style.opacity = '0'; } }, 8000);
+      }
+    })();
+  </script>
 </body>
 </html>
-      `;
-      
-      return res.send(cleanHtml);
-    }
-    
-    // Fallback if no iframe found (unlikely, but just in case)
-    res.send(html);
-  } catch (error) {
-    console.error("Proxy error:", error);
-    res.status(500).send("Player proxy error");
-  }
-});
+    `);
+  });
 
-// New Proxy endpoint for actual player iframes (like miravd.com)
-app.get("/api/proxy-player", async (req, res) => {
-  const { url } = req.query;
-  if (!url || typeof url !== "string") {
-    return res.status(400).send("Missing player URL");
-  }
+  // 4.6. Secure Stream Proxy (Absolute Protection against sniffers)
+  app.get("/api/v1/stream-proxy/:encryptedUrl", async (req, res) => {
+    try {
+      const encrypted = req.params.encryptedUrl;
+      const url = decryptValue(decodeURIComponent(encrypted));
+      if (!url || !url.startsWith("http")) return res.status(400).send("Invalid stream source.");
 
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': getRandomUA(),
-        'Referer': SOURCE_URL,
-        'Origin': SOURCE_URL,
-      }
-    });
+      let currentUrl = url;
+      let redirectCount = 0;
+      let axiosResponse: any;
 
-    if (response.status === 403 || response.status === 1005) {
-      return res.status(403).send(`
-        <div style="background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;text-align:center;padding:20px;">
-          <h2 style="color:#b72424;">تم حظر المشغل (Access Denied)</h2>
-          <p>هذا السيرفر (miravd) يرفض الاتصال من السيرفر حالياً.</p>
-          <p style="font-size:12px;color:#666;">يرجى اختيار سيرفر آخر من القائمة بالأسفل.</p>
-          <button onclick="window.parent.postMessage('switch-server', '*')" style="background:#b72424;border:none;color:#fff;padding:10px 20px;border-radius:5px;cursor:pointer;font-weight:bold;margin-top:10px;">التبديل لسيرفر آخر</button>
-        </div>
-      `);
-    }
+      while (redirectCount < 10) {
+        const parsedCurrent = new URL(currentUrl);
+        const headersOptions: any = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Accept': '*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        };
 
-    let html = await response.text();
-    const parsedUrl = new URL(url);
-    const origin = parsedUrl.origin;
-
-    const $ = cheerio.load(html);
-    const myHost = getMyHost(req);
-
-    // Rewrite any nested iframes recursively
-    $("iframe").each((_, el) => {
-      const src = $(el).attr("src");
-      if (src) {
-        let resolvedSrc = src;
-        if (src.startsWith("//")) {
-          resolvedSrc = `https:${src}`;
-        } else if (src.startsWith("/")) {
-          resolvedSrc = `${origin}${src}`;
-        } else if (!src.startsWith("http")) {
-          resolvedSrc = `${origin}/${src}`;
+        // Match known AlooyTV servers and archive.org video hosts
+        const hostMatch = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive/i);
+        if (hostMatch) {
+           headersOptions['Referer'] = 'https://3iskk.xyz/';
+           headersOptions['Origin'] = 'https://3iskk.xyz';
+           headersOptions['Sec-Fetch-Dest'] = 'video';
+           headersOptions['Sec-Fetch-Mode'] = 'no-cors';
+           headersOptions['Sec-Fetch-Site'] = 'cross-site';
+        } else {
+           headersOptions['Referer'] = parsedCurrent.origin + '/';
+           headersOptions['Origin'] = parsedCurrent.origin;
         }
-        $(el).attr("src", `${myHost}/api/proxy-player?url=${encodeURIComponent(resolvedSrc)}`);
-      }
-    });
 
-    // Make sure we have a base tag so relative files like JS/CSS load from their origin
-    if ($("head").length > 0) {
-      $("head").prepend(`<base href="${origin}/">`);
-      $("head").prepend(`<meta name="referrer" content="no-referrer">`);
-    } else {
-      $("html").prepend(`<head><base href="${origin}/"><meta name="referrer" content="no-referrer"></head>`);
-    }
-
-    res.send($.html());
-  } catch (error) {
-    console.error("Player proxy error:", error);
-    res.status(500).send("Failed to proxy player");
-  }
-});
-
-function getMyHost(req: express.Request) {
-  let protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
-  if (protocol.includes(',')) protocol = protocol.split(',')[0].trim();
-  
-  const host = req.get('x-forwarded-host') || req.get('host') || '';
-  
-  // Force https for known production domains to avoid mixed content issues in iframes
-  if (host.includes('railway.app') || host.includes('run.app') || host.includes('vercel.app') || protocol === 'https') {
-    protocol = 'https';
-  }
-  
-  return `${protocol}://${host}`;
-}
-
-axiosInstance.interceptors.request.use((config) => {
-  config.headers['User-Agent'] = getRandomUA();
-  return config;
-});
-
-// Dean Edwards unpacker
-function deobfuscateDeanEdwards(packedCode: string): string {
-  // More flexible regex for Dean Edwards packing
-  const regex = /return\s*p\s*\}\s*\(\s*['"](.*?)['"]\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*['"](.*?)['"]\s*\.split\s*\(\s*['"]\|['"]\s*\)/;
-  let match = packedCode.match(regex);
-  
-  if (!match) {
-    // Try another variation
-    const altRegex = /eval\s*\(\s*function\s*\(p,a,c,k,e,d\).*?\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)/;
-    match = packedCode.match(altRegex);
-  }
-
-  if (!match) return "";
-
-  let [_, p, aStr, cStr, kStr] = match;
-  let a = parseInt(aStr, 10);
-  let c = parseInt(cStr, 10);
-  let k = kStr.split('|');
-
-  while (c--) {
-    if (k[c]) {
-      p = p.replace(new RegExp('\\b' + c.toString(a) + '\\b', 'g'), k[c]);
-    }
-  }
-
-  return p;
-}
-
-async function resolveDirectVideo(nume: string, post: string, type: string): Promise<{ videoUrl: string | null; type: string; playerIframeSrc?: string } | null> {
-  const mappedType = type === "tv" ? "2" : "1";
-  const targetUrl = `${SOURCE_URL}/embed/${nume}/${post}/${mappedType}/`;
-  
-  try {
-    const fetchOptions = {
-      headers: {
-        'User-Agent': getRandomUA(),
-        'Referer': SOURCE_URL,
-        'Origin': SOURCE_URL
-      }
-    };
-
-    // 1. Fetch the 3iskk embed wrapper page
-    const embedRes = await fetch(targetUrl, fetchOptions);
-    if (!embedRes.ok) return null;
-    const embedHtml = await embedRes.text();
-    const $embed = cheerio.load(embedHtml);
-    
-    // Find the actual player iframe source
-    const playerIframeSrc = $embed("iframe").first().attr("src");
-    if (!playerIframeSrc) return null;
-
-    let absolutePlayerIframeSrc = playerIframeSrc;
-    if (playerIframeSrc.startsWith("//")) {
-      absolutePlayerIframeSrc = `https:${playerIframeSrc}`;
-    } else if (playerIframeSrc.startsWith("/")) {
-      absolutePlayerIframeSrc = `${SOURCE_URL}${playerIframeSrc}`;
-    } else if (!playerIframeSrc.startsWith("http")) {
-      absolutePlayerIframeSrc = `${SOURCE_URL}/${playerIframeSrc}`;
-    }
-
-    // 2. Fetch the player page with correct Referer/Origin spoofing
-    const playerRes = await fetch(absolutePlayerIframeSrc, fetchOptions);
-    
-    const playerHtml = await playerRes.text();
-    const $player = cheerio.load(playerHtml);
-    
-    // Try to find a direct video tag or source tag first
-    let directVideoSrc = $player("video source").first().attr("src") || $player("video").first().attr("src");
-    if (directVideoSrc) {
-      const playerParsed = new URL(absolutePlayerIframeSrc);
-      if (directVideoSrc.startsWith("//")) {
-        directVideoSrc = `${playerParsed.protocol}${directVideoSrc}`;
-      } else if (directVideoSrc.startsWith("/")) {
-        directVideoSrc = `${playerParsed.origin}${directVideoSrc}`;
-      } else if (!directVideoSrc.startsWith("http")) {
-        const parent = absolutePlayerIframeSrc.substring(0, absolutePlayerIframeSrc.lastIndexOf("/") + 1);
-        directVideoSrc = `${parent}${directVideoSrc}`;
-      }
-      return {
-        videoUrl: directVideoSrc,
-        type: directVideoSrc.includes(".m3u8") ? "application/x-mpegURL" : "video/mp4",
-        playerIframeSrc: absolutePlayerIframeSrc
-      };
-    }
-
-    // Look through all script tags or the entire HTML content for video URLs
-    let matchedUrl: string | null = null;
-    
-    const searchInText = (text: string) => {
-      // 1. Quoted string match
-      const quotedRegex = /(["'])([^"'\s]+?\.(?:m3u8|mp4|webm|urlset)(?:\?[^"']*)?)\1/gi;
-      let match;
-      while ((match = quotedRegex.exec(text)) !== null) {
-        let url = match[2];
-        if (url.includes("google") && !url.includes("googleapis")) continue; 
-        
-        // Handle relative URLs
-        if (url.startsWith("//")) url = "https:" + url;
-        if (!url.startsWith("http")) continue;
-
-        matchedUrl = url;
-        break;
-      }
-
-      if (!matchedUrl) {
-        // Look for common JS variables
-        const jsVarRegex = /(?:file|src|url|source|link|m3u8)\s*[:=]\s*["']([^"']+\.(?:m3u8|mp4|urlset|webm)[^"']*)["']/gi;
-        const varMatch = jsVarRegex.exec(text);
-        if (varMatch) matchedUrl = varMatch[1];
-      }
-
-      if (!matchedUrl && text.includes('eval(')) {
-        // Try deobfuscating and searching again
-        const deobfuscated = deobfuscateDeanEdwards(text);
-        if (deobfuscated) {
-          const innerMatch = quotedRegex.exec(deobfuscated);
-          if (innerMatch) matchedUrl = innerMatch[2];
+        if (req.headers.range) {
+          headersOptions.range = req.headers.range;
         }
-      }
-      if (matchedUrl) {
-        return matchedUrl.replace(/\\/g, "");
-      }
-      
-      // 2. Fallback to unquoted absolute url regex
-      const absMatch = text.match(/(https?:\/\/[^"'\s]+?\.(?:m3u8|mp4|webm|urlset)[^"'\s]*)/i);
-      if (absMatch) {
-        return absMatch[1].replace(/\\/g, "");
-      }
-      return null;
-    };
 
-    $player("script").each((_, el) => {
-      if (matchedUrl) return;
-      const text = $player(el).html() || "";
-      
-      // If packed, deobfuscate first
-      if (text.includes("eval(function(p,a,c,k,e,d)")) {
-        const unpacked = deobfuscateDeanEdwards(text);
-        if (unpacked) {
-          const found = searchInText(unpacked);
-          if (found) matchedUrl = found;
-        }
-      } else {
-        const found = searchInText(text);
-        if (found) matchedUrl = found;
-      }
-    });
-
-    if (!matchedUrl) {
-      matchedUrl = searchInText(playerHtml);
-    }
-
-    if (matchedUrl) {
-      // Clean up potential escaping in the matched URL (e.g. \/ to /)
-      matchedUrl = matchedUrl.replace(/\\/g, '');
-      const playerParsed = new URL(absolutePlayerIframeSrc);
-      if (matchedUrl.startsWith("//")) {
-        matchedUrl = `${playerParsed.protocol}${matchedUrl}`;
-      } else if (matchedUrl.startsWith("/")) {
-        matchedUrl = `${playerParsed.origin}${matchedUrl}`;
-      } else if (!matchedUrl.startsWith("http")) {
-        const parent = absolutePlayerIframeSrc.substring(0, absolutePlayerIframeSrc.lastIndexOf("/") + 1);
-        matchedUrl = `${parent}${matchedUrl}`;
-      }
-
-      return {
-        videoUrl: matchedUrl,
-        type: matchedUrl.includes(".m3u8") ? "application/x-mpegURL" : "video/mp4",
-        playerIframeSrc: absolutePlayerIframeSrc
-      };
-    }
-    
-    return null;
-  } catch (error) {
-    console.error("Error in resolveDirectVideo:", error);
-    return null;
-  }
-}
-
-app.get("/api/resolve-video", async (req, res) => {
-  const { url } = req.query;
-  if (!url || typeof url !== "string") {
-    return res.status(400).json({ error: "Missing parameters" });
-  }
-
-  try {
-    // URL looks like: /api/proxy-embed?nume=1&post=247570&type=2
-    // We can parse the parameters
-    const parsed = new URL(url, "http://localhost");
-    const nume = parsed.searchParams.get("nume");
-    const post = parsed.searchParams.get("post");
-    const type = parsed.searchParams.get("type");
-
-    if (nume && post && type) {
-      const resolved = await resolveDirectVideo(nume, post, type);
-      if (resolved && resolved.videoUrl) {
-        // Point to our proxy-hls endpoint!
-        const proxiedUrl = `/api/proxy-hls?url=${encodeURIComponent(resolved.videoUrl)}` +
-          (resolved.playerIframeSrc ? `&referer=${encodeURIComponent(resolved.playerIframeSrc)}` : '');
-        return res.json({
-          videoUrl: proxiedUrl,
-          type: resolved.type
+        axiosResponse = await axios({
+          method: 'GET',
+          url: currentUrl,
+          responseType: 'stream',
+          headers: headersOptions,
+          maxRedirects: 0, // Handle redirects manually to preserve Referer/Origin headers
+          validateStatus: (status) => status >= 200 && status < 400,
+          httpAgent: new http.Agent({ keepAlive: true, family: 4 }),
+          httpsAgent: new https.Agent({ keepAlive: true, rejectUnauthorized: false, family: 4 }),
+          timeout: 45000 // Higher timeout for slow video providers
         });
-      }
-    }
-    
-    return res.json({ videoUrl: null });
-  } catch (error) {
-    console.error("Resolve video error:", error);
-    res.status(500).json({ error: "Failed to resolve video" });
-  }
-});
 
-// Advanced HLS proxy that rewrites .m3u8 playlists and proxies .ts segments with custom headers
-app.get("/api/proxy-hls", async (req, res) => {
-  const { url, referer } = req.query;
-  if (!url || typeof url !== "string") {
-    return res.status(400).send("Missing HLS URL");
-  }
-
-  try {
-    const parsedUrl = new URL(url);
-    const parentUrl = url.substring(0, url.lastIndexOf("/") + 1);
-
-    const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-      'Accept': '*/*',
-      'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
-    };
-
-    if (referer && typeof referer === 'string') {
-      headers['Referer'] = referer;
-      try {
-        headers['Origin'] = new URL(referer).origin;
-      } catch {
-        headers['Origin'] = SOURCE_URL;
-      }
-    } else {
-      headers['Referer'] = SOURCE_URL;
-      headers['Origin'] = SOURCE_URL;
-    }
-
-    // Check if it's an m3u8 playlist by looking at the URL path/extension
-    const isM3U8 = url.includes('.m3u8') || url.includes('m3u8');
-
-    const response = await fetch(url, { headers });
-
-    if (response.status === 403 || response.status === 1005) {
-      console.warn(`HLS Proxy blocked (Status: ${response.status}) for URL: ${url}`);
-      return res.status(403).send("Streaming server blocked access (Cloudflare 1005/403). Please try another server.");
-    }
-
-    if (isM3U8) {
-      const text = await response.text();
-      // Robust splitting for different line endings
-      const lines = text.split(/\r?\n/);
-      
-      const refererParam = referer ? String(referer) : '';
-      const rewrittenLines = lines.map((line) => {
-        const trimmed = line.trim();
-        if (!trimmed) return line;
-
-        // Skip comments unless they are tags with URI attributes (e.g. key decryption)
-        if (trimmed.startsWith('#')) {
-          return trimmed.replace(/(URI\s*=\s*")([^"]+)(")/gi, (match, p1, p2, p3) => {
-            let resolvedUrl = p2;
-            if (!p2.startsWith('http')) {
-              if (p2.startsWith('/')) {
-                resolvedUrl = `${parsedUrl.origin}${p2}`;
-              } else {
-                resolvedUrl = `${parentUrl}${p2}`;
-              }
-            }
-            const proxyUrl = `/api/proxy-hls?url=${encodeURIComponent(resolvedUrl)}${refererParam ? `&referer=${encodeURIComponent(refererParam)}` : ''}`;
-            return `${p1}${proxyUrl}${p3}`;
-          });
-        }
-
-        // URI line (either absolute or relative path to segment/sub-playlist)
-        let resolvedUrl = trimmed;
-        if (!trimmed.startsWith('http')) {
-          if (trimmed.startsWith('/')) {
-            resolvedUrl = `${parsedUrl.origin}${trimmed}`;
-          } else {
-            resolvedUrl = `${parentUrl}${trimmed}`;
+        if (axiosResponse.status >= 300 && axiosResponse.status < 400 && axiosResponse.headers.location) {
+          let nextUrl = axiosResponse.headers.location;
+          if (!nextUrl.startsWith('http')) {
+            nextUrl = new URL(nextUrl, currentUrl).toString();
           }
+          console.log(`[Stream Proxy Redirect] ${currentUrl} -> ${nextUrl}`);
+          currentUrl = nextUrl;
+          redirectCount++;
+        } else {
+          break;
         }
+      }
 
-        return `/api/proxy-hls?url=${encodeURIComponent(resolvedUrl)}${refererParam ? `&referer=${encodeURIComponent(refererParam)}` : ''}`;
+      const proxyRes = axiosResponse.data;
+      const contentType = axiosResponse.headers['content-type'] || '';
+      const isM3u8 = url.includes('.m3u8') || String(contentType).includes('mpegurl');
+
+      if (isM3u8) {
+         let body = '';
+         proxyRes.on('data', (chunk: Buffer) => body += chunk.toString('utf-8'));
+         proxyRes.on('end', () => {
+            const lines = body.split('\n');
+            const rewritten = lines.map(line => {
+               let s = line.trim();
+               if (!s || s.startsWith('#')) return line; // comments / tags
+               try {
+                   let chunkUrl = s;
+                   // Resolve relative paths securely using the final URL in case of redirects
+                   const finalUrl = (axiosResponse.request && axiosResponse.request.res && axiosResponse.request.res.responseUrl) ? axiosResponse.request.res.responseUrl : url;
+                   if (!chunkUrl.startsWith('http')) {
+                      chunkUrl = new URL(chunkUrl, finalUrl).toString();
+                   }
+                   
+                   // CRITICAL EGRESS & RESOURCE OPTIMIZATION:
+                   // Only proxy nested sub-playlists (.m3u8) or decryption keys (.key) to bypass CORS blocks.
+                   // The extremely heavy media/video segments (.ts, .mp4, .m4s, .aac) are streamed directly from the hosting CDNs
+                   // to the browser, bypassing the server entirely. This slashes server Egress by 99.9%, lowers CPU/Memory,
+                   // and provides buttery-smooth streaming without server-side choke-points.
+                   const lowerChunk = chunkUrl.toLowerCase();
+                   const isPlaylistOrKey = lowerChunk.includes('.m3u8') || lowerChunk.includes('.key') || lowerChunk.includes('key.php');
+                   
+                   if (isPlaylistOrKey) {
+                       const enc = encodeURIComponent(encryptValue(chunkUrl));
+                       return `/api/v1/stream-proxy/${enc}`;
+                   } else {
+                       // Stream the heavy media chunk directly from the CDN
+                       return chunkUrl;
+                   }
+               } catch {
+                   return line;
+               }
+            }).join('\n');
+            
+            res.status(axiosResponse.status || 200);
+            res.setHeader('Content-Type', String(contentType) || 'application/vnd.apple.mpegurl');
+            if (axiosResponse.headers['cache-control']) res.setHeader('Cache-Control', axiosResponse.headers['cache-control'] as string);
+            res.send(rewritten);
+         });
+      } else {
+         res.status(axiosResponse.status || 200);
+         res.setHeader('Access-Control-Allow-Origin', '*');
+         ['accept-ranges', 'content-length', 'content-range'].forEach(h => {
+            if (axiosResponse.headers[h]) res.setHeader(h, axiosResponse.headers[h] as string);
+         });
+         Object.keys(axiosResponse.headers).forEach(key => {
+           const keyLower = key.toLowerCase();
+           if (['accept-ranges', 'content-length', 'content-range'].includes(keyLower)) return;
+           // Forward safe headers
+           if (keyLower !== 'host' && keyLower !== 'connection' && keyLower !== 'content-disposition' && keyLower !== 'transfer-encoding') {
+              let val = axiosResponse.headers[key] as string;
+              if (keyLower === 'content-type' && (val === 'application/octet-stream' || val.includes('image/') || !val)) {
+                 if (url.toLowerCase().includes('.m3u8')) {
+                    val = 'application/vnd.apple.mpegurl';
+                 } else {
+                    val = 'video/mp4';
+                 }
+              }
+              res.setHeader(key, val);
+           }
+         });
+         res.setHeader('Content-Disposition', 'inline');
+         proxyRes.pipe(res);
+      }
+
+      proxyRes.on('error', (e: any) => {
+        if (!res.headersSent) res.status(500).send("Stream proxy failed");
+      });
+      req.on('close', () => {
+         if (proxyRes && typeof proxyRes.destroy === 'function') {
+           proxyRes.destroy();
+         }
+      });
+    } catch (e: any) {
+      if (!res.headersSent) res.status(500).send("Stream proxy error: " + e.message);
+    }
+  });
+
+  // 4.7. Absolute VAST XML Resolver to Bypass CORS and secure earnings
+  app.get("/api/v1/resolve-vast", async (req, res) => {
+    try {
+      const { url } = req.query;
+      if (!url) return res.status(400).json({ error: "Missing URL parameter" });
+
+      const targetUrl = url as string;
+      console.log("⚡ [VAST Resolver] Resolving:", targetUrl);
+
+      const response = await axios.get(targetUrl, {
+        httpAgent: new http.Agent({ family: 4 }),
+        httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 }),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+          'Accept': 'text/xml,application/xml,application/xhtml+xml,text/html;q=0.9,*/*;q=0.8'
+        },
+        timeout: 3500
       });
 
-      res.setHeader('Content-Type', 'application/x-mpegURL');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', '*');
-      // Ensure we join with a single newline and no trailing carriage returns
-      res.send(rewrittenLines.join('\n'));
-    } else {
-      // It's a .ts segment or binary file, stream it directly to prevent high memory usage and timeout
-      const response = await fetch(url, { headers });
-
-      if (response.status === 403 || response.status === 1005) {
-        return res.status(403).send("Segment blocked");
+      const xmlText = response.data;
+      if (typeof xmlText !== 'string') {
+        return res.json({ status: false, message: "Response is not a string", originalUrl: targetUrl });
       }
 
-      const contentTypeRaw = response.headers.get('content-type');
-      const contentType = typeof contentTypeRaw === 'string' ? contentTypeRaw : '';
-
-      res.setHeader('Content-Type', contentType || 'video/MP2T');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', '*');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      
-      if (response.headers.get('content-length')) {
-        res.setHeader('Content-Length', String(response.headers.get('content-length')));
+      // Check if it's actually XML/VAST
+      const cleanText = xmlText.trim();
+      const isXml = cleanText.startsWith('<') || cleanText.includes('<VAST');
+      if (!isXml) {
+        return res.json({ 
+          status: false, 
+          message: "Response is not VAST XML", 
+          clickThrough: targetUrl, 
+          impressionUrls: [], 
+          trackingUrls: [] 
+        });
       }
 
-      const buffer = await response.arrayBuffer();
-      res.send(Buffer.from(buffer));
+      // 1. Extract ClickThrough
+      const clickThroughRegex = /<ClickThrough>([\s\S]*?)<\/ClickThrough>/i;
+      const clickThroughMatch = xmlText.match(clickThroughRegex);
+      let clickThrough = clickThroughMatch ? clickThroughMatch[1].trim() : targetUrl;
+
+      // Clean CDATA wrapping if any
+      if (clickThrough.includes('<![CDATA[')) {
+        const cdataMatch = clickThrough.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+        if (cdataMatch) {
+          clickThrough = cdataMatch[1].trim();
+        }
+      }
+
+      // 2. Extract Impression URLs
+      const impressionUrls: string[] = [];
+      const impressionRegex = /<Impression>([\s\S]*?)<\/Impression>/gi;
+      let match;
+      while ((match = impressionRegex.exec(xmlText)) !== null) {
+        let impUrl = match[1].trim();
+        if (impUrl.includes('<![CDATA[')) {
+          const cdataM = impUrl.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+          if (cdataM) {
+            impUrl = cdataM[1].trim();
+          }
+        }
+        if (impUrl && !impressionUrls.includes(impUrl)) {
+          impressionUrls.push(impUrl);
+        }
+      }
+
+      // 3. Extract Tracking URLs
+      const trackingUrls: string[] = [];
+      const trackingRegex = /<Tracking[^>]*>([\s\S]*?)<\/Tracking>/gi;
+      while ((match = trackingRegex.exec(xmlText)) !== null) {
+        let trackUrl = match[1].trim();
+        if (trackUrl.includes('<![CDATA[')) {
+          const cdataM = trackUrl.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+          if (cdataM) {
+            trackUrl = cdataM[1].trim();
+          }
+        }
+        if (trackUrl && !trackingUrls.includes(trackUrl)) {
+          trackingUrls.push(trackUrl);
+        }
+      }
+
+      // 4. Extract MediaFiles if present
+      const mediaFiles: string[] = [];
+      const mediaFileRegex = /<MediaFile[^>]*>([\s\S]*?)<\/MediaFile>/gi;
+      while ((match = mediaFileRegex.exec(xmlText)) !== null) {
+        let mediaUrl = match[1].trim();
+        if (mediaUrl.includes('<![CDATA[')) {
+          const cdataM = mediaUrl.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+          if (cdataM) {
+            mediaUrl = cdataM[1].trim();
+          }
+        }
+        if (mediaUrl && !mediaFiles.includes(mediaUrl)) {
+          mediaFiles.push(mediaUrl);
+        }
+      }
+
+      return res.json({
+        status: true,
+        clickThrough: clickThrough || targetUrl,
+        impressionUrls,
+        trackingUrls,
+        mediaFiles,
+        originalUrl: targetUrl
+      });
+    } catch (e: any) {
+      console.warn("⚠️ [VAST Resolver Graceful Fallback]:", e.message);
+      return res.json({
+        status: false,
+        message: e.message,
+        clickThrough: req.query.url as string || "https://tiny-ambition.com",
+        impressionUrls: [],
+        trackingUrls: []
+      });
     }
-  } catch (error) {
-    console.error("HLS proxy error:", error);
-    res.status(500).send("Failed to proxy HLS");
+  });
+
+  // ============ Professional Real-User Referral tracking system ============
+  const REFERRALS_FILE = path.join(process.cwd(), "referrals_db.json");
+
+  // Helper to load referrals database
+  function loadReferrals() {
+    try {
+      if (fs.existsSync(REFERRALS_FILE)) {
+        const data = fs.readFileSync(REFERRALS_FILE, "utf-8");
+        const parsed = JSON.parse(data);
+        parsed.visitedIPs = parsed.visitedIPs || [];
+        parsed.referrers = parsed.referrers || {};
+        parsed.users = parsed.users || {};
+        parsed.creatorIPs = parsed.creatorIPs || {};
+        parsed.adFreeExpiry = parsed.adFreeExpiry || {};
+        parsed.alerts = parsed.alerts || {};
+        return parsed;
+      }
+    } catch (e) {
+      console.error("Error reading referrals file:", e);
+    }
+    return { visitedIPs: [], referrers: {}, users: {}, creatorIPs: {}, adFreeExpiry: {}, alerts: {} };
   }
-});
 
+  // Helper to save referrals database
+  function saveReferrals(data: any) {
+    try {
+      data.visitedIPs = data.visitedIPs || [];
+      data.referrers = data.referrers || {};
+      data.users = data.users || {};
+      data.creatorIPs = data.creatorIPs || {};
+      data.adFreeExpiry = data.adFreeExpiry || {};
+      data.alerts = data.alerts || {};
+      fs.writeFileSync(REFERRALS_FILE, JSON.stringify(data, null, 2), "utf-8");
+    } catch (e) {
+      console.error("Error writing referrals file:", e);
+    }
+  }
 
-app.get("/api/search", async (req, res) => {
-  const { s } = req.query;
-  try {
-    const { data } = await axiosInstance.get(`${SOURCE_URL}/?s=${s}`);
-    const $ = cheerio.load(data);
-    const results: any[] = [];
+  // Endpoint to register referrer mapping to username
+  app.post("/api/v1/referral/register-user", (req, res) => {
+    try {
+      const { referrerId, username } = req.body;
+      if (!referrerId || !username) {
+        return res.status(400).json({ status: false, message: "Missing params" });
+      }
+      const db = loadReferrals();
+      db.users[referrerId.trim()] = username.trim();
+      saveReferrals(db);
+      return res.json({ status: true, message: "Referrer profile mapped successfully." });
+    } catch (e) {
+      console.error("Error in register-user:", e);
+      return res.status(500).json({ status: false });
+    }
+  });
 
-    $(".type_item_box").each((_, el) => {
-      const title = cleanBranding($(el).find(".item_title").text().trim());
-      const link = $(el).find("a").attr("href") || "";
-      const img = $(el).find(".item_img").attr("data-image") || $(el).find(".item_img").attr("src") || "";
-      
-      let slug = "";
-      let type = "episode";
-      
-      if (link.includes("/tvshows/")) {
-        slug = cleanSlug(link, 'tvshows');
-        type = "series";
-      } else if (link.includes("/episodes/")) {
-        slug = cleanSlug(link, 'episodes');
-        type = "episode";
+  // Endpoint to lookup referrer username
+  app.get("/api/v1/referral/lookup", (req, res) => {
+    try {
+      const { id } = req.query;
+      if (!id || typeof id !== "string") {
+        return res.status(400).json({ status: false, message: "Missing id" });
+      }
+      const db = loadReferrals();
+      const username = db.users[id.trim()] || null;
+      return res.json({ status: true, username });
+    } catch (e) {
+      console.error("Error in lookup:", e);
+      return res.status(500).json({ status: false });
+    }
+  });
+
+  // Endpoint to record a valid real-person referral click
+  app.post("/api/v1/referral/register", (req, res) => {
+    try {
+      const { referrerId } = req.body;
+      if (!referrerId || typeof referrerId !== "string" || !referrerId.trim()) {
+        return res.status(400).json({ status: false, message: "كود الإحالة مفقود" });
       }
 
-      if (slug) results.push({ title, slug, img, type });
-    });
+      // 1. User Agent Bot detection to guarantee only real people
+      const userAgent = req.headers["user-agent"] || "";
+      const isBot = /bot|spider|crawl|lighthouse|chrome-lighthouse|googlebot|yahoo|bing|baidu|msnbot/i.test(userAgent);
+      if (isBot) {
+        return res.status(400).json({ status: false, message: "غير مسموح بحركات المرور الوهمية أو الروبوتات." });
+      }
 
-    res.json(results);
-  } catch (error) {
-    res.status(500).json({ error: "Search failed" });
+      // 2. Real Client IP extraction
+      let clientIp = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "").split(",")[0].trim();
+      
+      const db = loadReferrals();
+
+      if (!Array.isArray(db.visitedIPs)) {
+        db.visitedIPs = [];
+      }
+      if (!db.referrers) {
+        db.referrers = {};
+      }
+
+      const cleanedRefId = referrerId.trim();
+
+      // Check if IP matches the creator of this referrer ID (Self-referral cheating prevention)
+      const creatorIp = db.creatorIPs?.[cleanedRefId];
+      if (creatorIp && creatorIp === clientIp) {
+        console.warn(`[Self Referral Attempted] IP: ${clientIp} tried to self-refer to ID: ${cleanedRefId}`);
+        return res.json({ 
+          status: false, 
+          selfReferral: true, 
+          message: "إذا قمت بدخول نفس رابط الإحالة الخاص بك قد يتم حظرك من مشاهدة المسلسلات، لذا قم بمشاركة رابط إحالتك إلى أشخاص حقيقيين فقط!" 
+        });
+      }
+
+      // Check if this visitor's IP has already clicked a referral before to avoid spamming
+      const isLocalhost = clientIp === "127.0.0.1" || clientIp === "::1" || clientIp === "::ffff:127.0.0.1" || !clientIp;
+      
+      if (!isLocalhost && db.visitedIPs.includes(clientIp)) {
+        console.log(`[Referral Denied] Duplicate IP ${clientIp} for ${referrerId}`);
+        return res.json({ 
+          status: false, 
+          message: "عذراً! تم احتساب إحالتك من هذا الجهاز مسبقاً لمنع التلاعب بالنظام.", 
+          points: db.referrers[cleanedRefId] || 0 
+        });
+      }
+
+      // Save visited IP to prevent self-fraud/multiple entries from same user
+      if (!isLocalhost) {
+        db.visitedIPs.push(clientIp);
+      }
+
+      // Increment points
+      const currentPoints = db.referrers[cleanedRefId] || 0;
+      const newPoints = currentPoints + 1;
+      db.referrers[cleanedRefId] = newPoints;
+
+      // Add individual notification (limit to top 30 elements for absolute high performance and zero lag)
+      db.alerts = db.alerts || {};
+      if (!db.alerts[cleanedRefId]) {
+        db.alerts[cleanedRefId] = [];
+      }
+      
+      const newAlert = {
+        id: "alert_" + Math.random().toString(36).substring(2, 9),
+        text: `بشرى سارة! 🎉 انضم زائر جديد لمنصتنا عبر رابط الإحالة الفريد الخاص بك! تم زيادة رصيدك بمقدار (+1 نقطة ذهبية) لتصبح نقاطك الإجمالية: ${newPoints} نقطة. 🌟🎁`,
+        timestamp: Date.now(),
+        type: "success"
+      };
+
+      db.alerts[cleanedRefId].unshift(newAlert);
+      
+      // Ensure we keep only the latest 30 alerts so the Notifications Box stays light and zero lag!
+      if (db.alerts[cleanedRefId].length > 30) {
+        db.alerts[cleanedRefId] = db.alerts[cleanedRefId].slice(0, 30);
+      }
+
+      saveReferrals(db);
+
+      console.log(`[Referral Recorded with Alert] Code: ${referrerId}, Client IP: ${clientIp}, Points: ${newPoints}`);
+      return res.json({ 
+        status: true, 
+        message: "شكراً لك! تم احتساب إحالتك بنجاح وكسبت نقطة جديدة! 🎉🎁", 
+        points: newPoints 
+      });
+    } catch (err) {
+      console.error("Error in register referral:", err);
+      res.status(500).json({ status: false, message: "Internal server error" });
+    }
+  });
+
+  // Endpoint to obtain point totals and ad-free status for a given referrer ID
+  app.get("/api/v1/referral/points", (req, res) => {
+    try {
+      const { id } = req.query;
+      if (!id || typeof id !== "string") {
+        return res.status(400).json({ status: false, message: "معرف المستخدم مفقود" });
+      }
+      
+      const db = loadReferrals();
+      const cleanedId = id.trim();
+      const points = db.referrers?.[cleanedId] || 0;
+      const adFreeExpiry = db.adFreeExpiry?.[cleanedId] || 0;
+
+      // Associate IP with this referral ID creator
+      let clientIp = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "").split(",")[0].trim();
+      if (clientIp) {
+        db.creatorIPs = db.creatorIPs || {};
+        db.creatorIPs[cleanedId] = clientIp;
+        saveReferrals(db);
+      }
+      
+      return res.json({ status: true, points, adFreeExpiry });
+    } catch (err) {
+      console.error("Error reading points:", err);
+      res.status(500).json({ status: false, message: "Internal server error" });
+    }
+  });
+
+  // Endpoint to obtain personal referral alerts for a given referrer ID
+  app.get("/api/v1/referral/alerts", (req, res) => {
+    try {
+      const { id } = req.query;
+      if (!id || typeof id !== "string") {
+        return res.status(400).json({ status: false, message: "معرف المستخدم مفقود" });
+      }
+      const db = loadReferrals();
+      const userAlerts = db.alerts?.[id.trim()] || [];
+      return res.json({ status: true, alerts: userAlerts });
+    } catch (err) {
+      console.error("Error reading alerts:", err);
+      res.status(500).json({ status: false, message: "Internal server error" });
+    }
+  });
+
+  // Endpoint to redeem points for ad-free weeks
+  app.post("/api/v1/referral/redeem", (req, res) => {
+    try {
+      const { id } = req.body;
+      if (!id || !id.trim()) {
+        return res.status(400).json({ status: false, message: "معرّف الإحالة مفقود" });
+      }
+
+      const db = loadReferrals();
+      const cleanedId = id.trim();
+      const currentPoints = db.referrers?.[cleanedId] || 0;
+
+      if (currentPoints < 5) {
+        return res.status(400).json({ status: false, message: "النقاط غير كافية لمقايضتها!" });
+      }
+
+      // Deduct 5 points
+      const newPoints = currentPoints - 5;
+      db.referrers[cleanedId] = newPoints;
+
+      // Extend expiration by 1 week (7 days)
+      const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+      let currentExpiry = db.adFreeExpiry?.[cleanedId] || 0;
+      if (currentExpiry < Date.now()) {
+        currentExpiry = Date.now();
+      }
+      const newExpiry = currentExpiry + ONE_WEEK_MS;
+      db.adFreeExpiry[cleanedId] = newExpiry;
+
+      saveReferrals(db);
+
+      console.log(`[Referral Redeem] Code ${cleanedId} spent 5 points. Remaining: ${newPoints}. Expiry extended to: ${new Date(newExpiry).toISOString()}`);
+      return res.json({ 
+        status: true, 
+        message: "تم تفعيل الإزالة الفورية وثق بمشاهدة أسبوع كامل خالية من أي إعلانات فاصلة بنجاح! 👑", 
+        points: newPoints, 
+        adFreeExpiry: newExpiry 
+      });
+    } catch (err) {
+      console.error("Error in redeem point:", err);
+      res.status(500).json({ status: false, message: "Internal server error" });
+    }
+  });
+
+  // Diagnostic endpoint to inspect Hakeem connection and rate-limit issues
+  app.get("/api/v1/ai/logs", (req, res) => {
+    res.json({ status: true, logs: HAKEEM_LOGS });
+  });
+
+  // Slider Selections Read API
+  app.get("/api/v1/slider-selections", async (req, res) => {
+    res.json(sliderMemory);
+  });
+
+  // Slider Selections Update API (Admin Action)
+  app.post("/api/v1/slider-selections/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const selectData = req.body; // Expecting { selected: boolean, seriesId: string, title: string, category: string, selectedAt: number }
+      
+      if (selectData && selectData.selected) {
+        sliderMemory[id] = selectData;
+      } else {
+        delete sliderMemory[id];
+      }
+      
+      saveSliderToFile();
+      res.json({ success: true, selections: sliderMemory });
+    } catch (err: any) {
+      console.error("Error updating slider selections:", err.message);
+      res.status(500).json({ status: false, error: err.message });
+    }
+  });
+
+  // Category Pins Read API
+  app.get("/api/v1/pins", async (req, res) => {
+    res.json(pinsMemory);
+  });
+
+  app.post("/api/v1/admin/gemini-key", (req, res) => {
+    const { password, key, baseUrl, model, type = 'gemini' } = req.body;
+    if (password !== "bewCew,iDYgC@K6") {
+      return res.status(401).json({ error: "كلمة المرور غير صحيحة" });
+    }
+    
+    if (!key || key.trim() === "") {
+        USER_CUSTOM_AI_CONFIG = null;
+    } else {
+        USER_CUSTOM_AI_CONFIG = {
+            key: key.trim(),
+            baseUrl: (baseUrl || "").trim(),
+            model: (model || "").trim(),
+            type: (type === 'openai' ? 'openai' : 'gemini')
+        };
+    }
+    // Clear instance to force re-initialization with new key
+    geminiClientInstance = null;
+    KEY_COOLDOWNS.clear(); // Clear all cooldowns so the new key can be tested immediately
+    console.log(`AI Configuration updated via admin endpoint. Type: ${type}`);
+    
+    // Save backup permanently to cloud (Firestore + RTDB)
+    saveAIConfigToCloud();
+    
+    res.json({ status: true, message: `تم تحديث مفتاح الربط (${type === 'gemini' ? 'Gemini' : 'OpenAI/Other'}) بنجاح! 🚀` });
+  });
+
+  // Category Pins Update API (Admin Action)
+  app.post("/api/v1/pins/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const pinData = req.body; // Expecting { pinned: boolean, seriesId: string, title: string, category: string, pinnedAt: number }
+      
+      if (pinData && pinData.pinned) {
+        pinsMemory[id] = pinData;
+      } else {
+        delete pinsMemory[id];
+      }
+      
+      savePinsToFile();
+
+      // The backend saves pins securely to server memory and pins.json. The admin's browser client securely uploads new pins directly to RTDB.
+      res.json({ success: true, pins: pinsMemory });
+    } catch (err: any) {
+      console.error("Error updating category pins:", err.message);
+      res.status(500).json({ status: false, error: err.message });
+    }
+  });
+
+  // Secure Image & Media Uploader Proxy Endpoint
+  app.post("/api/v1/upload-image", async (req, res) => {
+    try {
+      const { image, file: fileKey } = req.body;
+      const originalPayload = image || fileKey;
+      if (!originalPayload || typeof originalPayload !== "string") {
+        return res.status(400).json({ success: false, error: "لم يتم استلام ملف الميديا بشكل صحيح." });
+      }
+
+      const mimeMatch = originalPayload.match(/^data:([^;]+);base64,/);
+      const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+      const base64Data = originalPayload.replace(/^data:[^;]+;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+
+      if (buffer.length > 35 * 1024 * 1024) {
+        return res.status(400).json({ success: false, error: "حجم الملف كبير جداً. الحد الأقصى هو 35 ميجابايت." });
+      }
+
+      let extension = "jpg";
+      if (mimeType.includes("png")) extension = "png";
+      else if (mimeType.includes("gif")) extension = "gif";
+      else if (mimeType.includes("webp")) extension = "webp";
+      else if (mimeType.includes("mp4")) extension = "mp4";
+      else if (mimeType.includes("mov")) extension = "mov";
+      else if (mimeType.includes("mpeg") || mimeType.includes("mp3")) extension = "mp3";
+      else if (mimeType.includes("wav")) extension = "wav";
+      else if (mimeType.includes("ogg") || mimeType.includes("opus")) extension = "ogg";
+      else if (mimeType.includes("webm")) extension = "webm";
+      else {
+        const parts = mimeType.split("/");
+        if (parts.length > 1) extension = parts[1].replace(/[^a-zA-Z0-9]/g, "");
+      }
+
+      const isImage = mimeType.startsWith("image/");
+      const fileName = `media_${Date.now()}.${extension}`;
+      console.log(`[UPLOADER] Received media (${buffer.length} bytes, type: ${mimeType}, ext: ${extension})`);
+
+      // 1. TOP4TOP.IO (Primary Priority for ALL Media Types)
+      try {
+        console.log("[UPLOADER] Attempting Top4toP.io upload...");
+        // 1a. Grab cookies & optionally session tokens
+        const getRes = await axios.get("https://top4top.io/", {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+          timeout: 6000
+        });
+
+        const setCookies = getRes.headers['set-cookie'] || [];
+        const cookieStr = setCookies.map((c: string) => c.split(';')[0]).join('; ');
+
+        const formData = new (globalThis as any).FormData();
+        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
+        formData.append("file_0_", blob, fileName);
+        formData.append("submitr", "[ رفع الملفات ]");
+
+        // 1b. Submit form
+        const uploadRes = await fetch("https://top4top.io/index.php", {
+          method: "POST",
+          body: formData,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://top4top.io/",
+            "Cookie": cookieStr
+          },
+          signal: AbortSignal.timeout(300000)
+        });
+
+        const uploadHtml = await uploadRes.text();
+        
+        // 1c. Parse response looking for the direct link (.mp4, .png, etc)
+        const rx = /https?:\/\/[a-zA-Z0-9-]+\.top4top\.(io|net)\/[a-zA-Z0-9_/.-]+\.(png|jpg|jpeg|gif|webp|mov|mp4|avi|mp3|wav|ogg|m4a|aac|webm)/gi;
+        const matches = (uploadHtml.match(rx) || []).filter((link: string) => {
+          const l = link.toLowerCase();
+          return !l.includes('s.top4top') && !l.includes('/styles/') && !l.includes('/images/') && !l.includes('favicon.ico');
+        });
+
+        if (matches.length > 0) {
+          const finalUrl = matches[0].replace(/&amp;/g, "&");
+          console.log("[UPLOADER] Top4toP Success: ", finalUrl);
+          return res.json({ success: true, url: finalUrl });
+        }
+        console.warn("[UPLOADER] Top4toP response did not match direct media URL patterns.");
+      } catch (err: any) {
+        console.warn("[UPLOADER] Top4toP failed:", err.message);
+      }
+
+      // 2. FREEIMAGE.HOST (For Images Only - Extremely Fast Fallback)
+      if (isImage) {
+        try {
+          console.log("[UPLOADER] Attempting Freeimage.host API...");
+          const formData = new (globalThis as any).FormData();
+          formData.append("key", "6d207e02198a847aa98d0a2a901485a5");
+          formData.append("action", "upload");
+          formData.append("source", base64Data);
+
+          const imgbbRes = await axios.post("https://freeimage.host/api/1/upload", formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+            timeout: 10000
+          });
+
+          if (imgbbRes.data && imgbbRes.data.image && imgbbRes.data.image.url) {
+            return res.json({ success: true, url: imgbbRes.data.image.url });
+          }
+        } catch (err: any) {
+          console.warn("[UPLOADER] freeimage failed:", err.message);
+        }
+      }
+
+      // 2. CATBOX (For Video, Audio, and Fallback for Images)
+      try {
+        console.log("[UPLOADER] Attempting Catbox.moe API...");
+        const formData = new (globalThis as any).FormData();
+        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
+        formData.append("reqtype", "fileupload");
+        formData.append("fileToUpload", blob, fileName);
+
+        const catboxRes = await fetch("https://catbox.moe/user/api.php", {
+          method: "POST",
+          body: formData,
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
+        });
+
+        if (catboxRes.ok) {
+          const textUrl = (await catboxRes.text()).trim();
+          if (textUrl.startsWith("http")) {
+            return res.json({ success: true, url: textUrl });
+          }
+        }
+      } catch (err: any) {
+        console.warn("[UPLOADER] Catbox failed:", err.message);
+      }
+
+      // 3. POMF.LAIN.LA (Secondary Fallback for Videos/Audios)
+      try {
+        console.log("[UPLOADER] Attempting Pomf.lain.la API...");
+        const formData = new (globalThis as any).FormData();
+        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
+        formData.append("files[]", blob, fileName);
+
+        const pomfRes = await fetch("https://pomf.lain.la/upload.php", {
+          method: "POST",
+          body: formData,
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
+        });
+
+        if (pomfRes.ok) {
+          const jsonRes = await pomfRes.json();
+          if (jsonRes.success && jsonRes.files && jsonRes.files.length > 0) {
+            return res.json({ success: true, url: jsonRes.files[0].url });
+          }
+        }
+      } catch (err: any) {
+        console.warn("[UPLOADER] Pomf failed:", err.message);
+      }
+
+      res.status(500).json({ success: false, error: "عذراً، فشلت جميع الخوادم المتاحة في رفع هذا الملف." });
+    } catch (globalErr: any) {
+      console.error("[UPLOADER] Critical Global Error:", globalErr);
+      res.status(500).json({ success: false, error: globalErr.message });
+    }
+  });
+
+  app.get("/api/v1/download-proxy", async (req, res) => {
+    let tempInPath = "";
+    let tempOutPath = "";
+    let tempLogoPath = "";
+    let fallbackToRaw = false;
+    let urlString = "";
+
+    try {
+      const { url, filename } = req.query;
+      if (!url) return res.status(400).send("Missing URL");
+      
+      const targetUrl = decodeURIComponent(url as string);
+      urlString = targetUrl;
+      const downloadName = filename ? decodeURIComponent(filename as string) : `Hekayatna_${Date.now()}.mp4`;
+
+      // Set download headers upfront
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(downloadName)}`);
+
+      // 1. Download video file to local temporary workspace
+      const tempDir = os.tmpdir();
+      const randId = Math.random().toString(36).substring(2, 10);
+      tempInPath = path.join(tempDir, `input_${randId}.mp4`);
+      tempOutPath = path.join(tempDir, `output_${randId}.mp4`);
+      tempLogoPath = path.join(tempDir, `logo_${randId}.png`);
+
+      console.log(`[DOWNLOAD-PROXY] Watermark active. Fetching: ${targetUrl}`);
+      
+      const writer = fs.createWriteStream(tempInPath);
+      const response = await axios({
+        url: targetUrl,
+        method: 'GET',
+        responseType: 'stream',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Referer': new URL(targetUrl).origin + '/'
+        },
+        timeout: 90000 // 90 seconds timeout
+      });
+
+      response.data.pipe(writer);
+
+      await new Promise<void>((resolve, reject) => {
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+      });
+
+      console.log(`[DOWNLOAD-PROXY] Download done. Temp path size: ${fs.statSync(tempInPath).size} bytes`);
+
+      // 2. Fetch the top-tier custom watermark image from the requested URL
+      const watermarkUrl = "https://f.top4top.io/p_3824vcsjo1.png";
+      let hasWatermark = false;
+      
+      console.log(`[DOWNLOAD-PROXY] Downloading watermark image from: ${watermarkUrl}`);
+      try {
+        const logoResponse = await axios({
+          url: watermarkUrl,
+          method: 'GET',
+          responseType: 'arraybuffer',
+          timeout: 15000
+        });
+        fs.writeFileSync(tempLogoPath, logoResponse.data);
+        hasWatermark = true;
+        console.log(`[DOWNLOAD-PROXY] Custom watermark downloaded successfully: ${fs.statSync(tempLogoPath).size} bytes`);
+      } catch (logoErr: any) {
+        console.warn("[DOWNLOAD-PROXY] Custom top4top logo download issue, fallback to fallback local public logo:", logoErr.message);
+        // Fallback check
+        let localWatermark = path.join(process.cwd(), 'public', 'logo.png');
+        if (!fs.existsSync(localWatermark)) {
+          localWatermark = path.join(process.cwd(), 'public', 'logo.jpg');
+        }
+        if (fs.existsSync(localWatermark)) {
+          fs.copyFileSync(localWatermark, tempLogoPath);
+          hasWatermark = true;
+        }
+      }
+
+      const hasFfmpeg = !!ffmpegPath;
+
+      if (hasWatermark && hasFfmpeg) {
+        console.log(`[DOWNLOAD-PROXY] Executing static FFmpeg with customized bouncing watermark`);
+        
+        // TikTok / Instagram style bouncing watermark!
+        // Moves from top-right to bottom-left every 5 seconds. Scaled to a sleek width of 110 pixels.
+        const filter = `[1:v]scale=110:-1[watermark]; [0:v][watermark]overlay='if(lt(mod(t,10),5), W-w-24, 24)':'if(lt(mod(t,10),5), 24, H-h-24)'`;
+        
+        const args = [
+          '-y',
+          '-i', tempInPath,
+          '-i', tempLogoPath,
+          '-filter_complex', filter,
+          '-c:v', 'libx264',
+          '-preset', 'superfast',
+          '-crf', '24',
+          '-c:a', 'aac',
+          '-strict', 'experimental',
+          tempOutPath
+        ];
+
+        await new Promise<void>((resolve, reject) => {
+          const ffmpegProcess = execFile(ffmpegPath!, args, (error, stdout, stderr) => {
+            if (error) {
+              console.error("[DOWNLOAD-PROXY] FFmpeg error details:", stderr);
+              reject(error);
+            } else {
+              console.log("[DOWNLOAD-PROXY] Watermark merge complete!");
+              resolve();
+            }
+          });
+
+          // Timeout limits encoding time to 60 seconds
+          setTimeout(() => {
+            try {
+              ffmpegProcess.kill('SIGKILL');
+            } catch (err) {}
+            reject(new Error("FFmpeg timeout limit reached"));
+          }, 60000);
+        });
+
+        if (fs.existsSync(tempOutPath) && fs.statSync(tempOutPath).size > 0) {
+          const readStream = fs.createReadStream(tempOutPath);
+          readStream.pipe(res);
+          
+          readStream.on('end', () => {
+            cleanupTempFiles(tempInPath, tempOutPath, tempLogoPath);
+          });
+          return;
+        }
+      }
+      
+      fallbackToRaw = true;
+    } catch (err: any) {
+      console.warn("[DOWNLOAD-PROXY] Watermarking issue, fallback to raw direct stream:", err.message);
+      fallbackToRaw = true;
+    }
+
+    if (fallbackToRaw) {
+      cleanupTempFiles(tempInPath, tempOutPath, tempLogoPath);
+      try {
+        if (urlString) {
+          const response = await axios({
+            url: urlString,
+            method: 'GET',
+            responseType: 'stream',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+              'Referer': new URL(urlString).origin + '/'
+            },
+            timeout: 60000
+          });
+          response.data.pipe(res);
+        } else {
+          res.status(500).send("Failed to build raw fallback");
+        }
+      } catch (fallbackErr: any) {
+        console.error("[DOWNLOAD-PROXY] Raw direct fallback pipeline failed:", fallbackErr.message);
+        if (!res.headersSent) {
+          res.status(500).send("خطأ في تحميل الفيديو.");
+        }
+      }
+    }
+  });
+
+  function cleanupTempFiles(inP: string, outP: string, logoP?: string) {
+    try {
+      if (inP && fs.existsSync(inP)) fs.unlinkSync(inP);
+    } catch (e) {}
+    try {
+      if (outP && fs.existsSync(outP)) fs.unlinkSync(outP);
+    } catch (e) {}
+    try {
+      if (logoP && fs.existsSync(logoP)) fs.unlinkSync(logoP);
+    } catch (e) {}
   }
-});
 
-// Ad landing page with 6 seconds countdown and redirection
-app.get("/ad", (req, res) => {
-  const redirectUrl = req.query.redirectUrl || "";
-  const seriesId = req.query.seriesId || "";
+  // Secure Native File Uploader (Supports Large Video/Audio uploads properly without base64 overhead)
+  app.post("/api/v1/upload-media", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: "لم يتم استلام أي ملف." });
+      }
 
-  const html = `<!DOCTYPE html>
+      const buffer = req.file.buffer;
+      const mimeType = req.file.mimetype || "application/octet-stream";
+      let extension = "mp4"; // default
+      if (req.file.originalname && req.file.originalname.includes(".")) {
+        extension = req.file.originalname.split(".").pop() || "mp4";
+      }
+
+      const fileName = `media_${Date.now()}.${extension}`;
+      console.log(`[UPLOADER NATIVE] Received media (${buffer.length} bytes, type: ${mimeType}, ext: ${extension})`);
+
+      // 1. TOP4TOP.IO (Primary Priority for ALL Media Types)
+      try {
+        console.log("[UPLOADER NATIVE] Attempting Top4toP.io upload...");
+        const getRes = await axios.get("https://top4top.io/", {
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+          timeout: 6000
+        });
+
+        const setCookies = getRes.headers['set-cookie'] || [];
+        const cookieStr = setCookies.map((c: string) => c.split(';')[0]).join('; ');
+
+        const formData = new (globalThis as any).FormData();
+        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
+        formData.append("file_0_", blob, fileName);
+        formData.append("submitr", "[ رفع الملفات ]");
+
+        const uploadRes = await fetch("https://top4top.io/index.php", {
+          method: "POST",
+          body: formData,
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://top4top.io/",
+            "Cookie": cookieStr
+          },
+          signal: AbortSignal.timeout(300000)
+        });
+
+        const uploadHtml = await uploadRes.text();
+        
+        const rx = /https?:\/\/[a-zA-Z0-9-]+\.top4top\.(io|net)\/[a-zA-Z0-9_/.-]+\.(png|jpg|jpeg|gif|webp|mov|mp4|avi|mp3|wav|ogg|m4a|aac|webm)/gi;
+        const matches = (uploadHtml.match(rx) || []).filter((link: string) => {
+          const l = link.toLowerCase();
+          return !l.includes('s.top4top') && !l.includes('/styles/') && !l.includes('/images/') && !l.includes('favicon.ico');
+        });
+
+        if (matches.length > 0) {
+          const finalUrl = matches[0].replace(/&amp;/g, "&");
+          console.log("[UPLOADER NATIVE] Top4toP Success: ", finalUrl);
+          return res.json({ success: true, url: finalUrl });
+        }
+      } catch (err: any) {
+        console.warn("[UPLOADER NATIVE] Top4toP failed:", err.message);
+      }
+
+      // 2. CATBOX FALLBACK FOR MEDIA
+      try {
+        console.log("[UPLOADER NATIVE] Attempting Catbox.moe API...");
+        const formData = new (globalThis as any).FormData();
+        const blob = new (globalThis as any).Blob([buffer], { type: mimeType });
+        formData.append("reqtype", "fileupload");
+        formData.append("fileToUpload", blob, fileName);
+
+        const catboxRes = await fetch("https://catbox.moe/user/api.php", {
+          method: "POST",
+          body: formData,
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+          signal: AbortSignal.timeout(300000)
+        });
+
+        if (catboxRes.ok) {
+          const textUrl = (await catboxRes.text()).trim();
+          if (textUrl.startsWith("http")) {
+            return res.json({ success: true, url: textUrl });
+          }
+        }
+      } catch (err: any) {
+        console.warn("[UPLOADER NATIVE] Catbox failed:", err.message);
+      }
+
+      res.status(500).json({ success: false, error: "عذراً، فشلت جميع الخوادم المتاحة في رفع هذا الملف." });
+    } catch (globalErr: any) {
+      console.error("[UPLOADER NATIVE] Critical Global Error:", globalErr);
+      res.status(500).json({ success: false, error: globalErr.message });
+    }
+  });
+
+  // Secure TMDB Query Proxy Endpoint to avoid CORS/Fetch Blocks
+  app.get("/api/v1/tmdb/proxy", async (req, res) => {
+    const { url } = req.query;
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "Missing TMDB query URL parameter" });
+    }
+
+    // Security Guard: restrict proxying strictly to api.themoviedb.org
+    if (!url.startsWith("https://api.themoviedb.org/") && !url.startsWith("http://api.themoviedb.org/")) {
+      return res.status(403).json({ error: "Only official TMDB endpoints are proxyable" });
+    }
+
+    try {
+      const response = await axios.get(url, {
+        timeout: 10000,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36"
+        }
+      });
+      res.json(response.data);
+    } catch (err: any) {
+      console.error("TMDB Proxy Axios Error:", err.message);
+      const status = err.response?.status || 500;
+      const msg = err.response?.data || err.message;
+      res.status(status).json({ error: msg });
+    }
+  });
+
+  // Range Request Proxy to stream chat videos / audio files flawlessly on iOS Safari
+  app.get("/api/v1/stream-range-proxy", async (req, res) => {
+    const targetUrl = req.query.url;
+    if (!targetUrl || typeof targetUrl !== "string") {
+      return res.status(400).send("Missing target URL parameter");
+    }
+
+    try {
+      const decodedUrl = decodeURIComponent(targetUrl);
+      
+      const clientHeaders: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      };
+      
+      // If client requested specific Byte Range, forward it to the asset host
+      if (req.headers.range) {
+        clientHeaders['Range'] = req.headers.range;
+      }
+
+      try {
+        const parsedUrl = new URL(decodedUrl);
+        clientHeaders['Referer'] = parsedUrl.origin + '/';
+      } catch (ex) {}
+
+      const axiosResponse = await axios({
+        method: "get",
+        url: decodedUrl,
+        headers: clientHeaders,
+        responseType: "stream",
+        timeout: 90000,
+      });
+
+      // Stream matching headers back to iOS
+      const headersToForward = [
+        'content-type',
+        'content-length',
+        'content-range',
+        'accept-ranges',
+        'cache-control',
+      ];
+
+      headersToForward.forEach(header => {
+        const val = axiosResponse.headers[header];
+        if (val !== undefined) {
+          res.setHeader(header, val);
+        }
+      });
+
+      res.status(axiosResponse.status);
+      axiosResponse.data.pipe(res);
+
+      axiosResponse.data.on('error', (err: any) => {
+        console.error("[Stream Range Proxy] Streaming error:", err.message);
+        if (!res.headersSent) res.status(500).send("Error streaming media");
+      });
+    } catch (err: any) {
+      console.error("[Stream Range Proxy] Connection error:", err.message);
+      if (!res.headersSent) {
+        res.status(500).send("Stream range proxy error: " + err.message);
+      }
+    }
+  });
+
+  // Hakeem AI Activation & Status Management with dynamic synchronization
+  app.get("/api/v1/hakeem/status", async (req, res) => {
+    try {
+      await getDynamicAiConfig();
+
+      const isActivated = !!(
+        USER_CUSTOM_AI_CONFIG &&
+        USER_CUSTOM_AI_CONFIG.key &&
+        USER_CUSTOM_AI_CONFIG.key.trim().length > 0
+      );
+
+      res.json({
+        status: true,
+        isActivated,
+        config: USER_CUSTOM_AI_CONFIG && isActivated ? {
+          type: USER_CUSTOM_AI_CONFIG.type || "openai",
+          model: USER_CUSTOM_AI_CONFIG.model || "google/gemini-2.5-flash",
+          baseUrl: USER_CUSTOM_AI_CONFIG.baseUrl || "https://openrouter.ai/api/v1",
+          keyObfuscated: USER_CUSTOM_AI_CONFIG.key ? (USER_CUSTOM_AI_CONFIG.key.slice(0, 15) + "..." + USER_CUSTOM_AI_CONFIG.key.slice(-5)) : "غير نشط"
+        } : null
+      });
+    } catch (error: any) {
+      res.status(500).json({ status: false, error: error.message });
+    }
+  });
+
+  app.post("/api/v1/hakeem/activate", async (req, res) => {
+    try {
+      const { key, baseUrl, url, model, model_name, type } = req.body || {};
+
+      USER_CUSTOM_AI_CONFIG = {
+        key: key || "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",
+        baseUrl: baseUrl || url || "https://openrouter.ai/api/v1",
+        model: model || model_name || "google/gemini-2.5-flash",
+        type: type || "openai"
+      };
+
+      await saveAIConfigToCloud();
+      res.json({
+        status: true,
+        isActivated: true,
+        message: "تم تفعيل حكيم وحفظ مفتاح الـ API ومزامنته تلقائياً في Firebase!"
+      });
+    } catch (error: any) {
+      res.status(500).json({ status: false, error: "فشل التفعيل والمزامنة: " + error.message });
+    }
+  });
+
+  // 5. Smart AI Assistant Chat with protection
+  app.post("/api/v1/ai/chat", async (req, res) => {
+    // Simple basic rate limiting per IP (very loose)
+    const clientIp = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "").split(",")[0].trim();
+    const now = Date.now();
+    
+    // Check for spammers in a dedicated small cache
+    const lastRequest = apiCache.get(`ratelimit:${clientIp}`)?.expiresAt || 0;
+    if (now < lastRequest) {
+      return res.status(429).json({ status: false, error: "تم تجاوز حد الطلبات السريعة. خذ نفساً عميقاً وجرب مجدداً! 🌬️" });
+    }
+    // Set 2s cooldown
+    apiCache.set(`ratelimit:${clientIp}`, { data: true, expiresAt: now + 2000 });
+
+    try {
+      const { message, history = [], seriesList = [], image, audio } = req.body;
+      if (!message) return res.status(400).json({ status: false, error: "المحتوى فارغ" });
+
+      // Fetch latest AI configuration dynamically from Firebase (RTDB/Firestore)
+      // This enables live key updates without rebuilding or restarting the server!
+      await getDynamicAiConfig();
+
+      // Fetch remote configuration dynamically from GitHub raw JSON
+      const remoteConfig = await getRemoteConfig();
+
+      // Check if disabled remotely entirely
+      if (remoteConfig && remoteConfig.enabled === false) {
+        return res.json({
+          status: true,
+          text: remoteConfig.disabledMessage || "عذراً، خدمة المساعد الذكي (حكيم) متوقفة مؤقتاً لمزيد من التحسينات والترقية 🛠️⚙️"
+        });
+      }
+
+      // Normal or Custom AI Mode
+      // Prepare context about available series
+      const seriesContext = seriesList.length > 0
+        ? `المسلسلات والأفلام المتوفرة لدينا حالياً على منصة "حكايتنا" هي:\n` + 
+          seriesList.map((s: any, idx: number) => `${idx + 1}. الاسم: "${s.title}"، التصنيف أو القسم: "${s.category || 'غير محدد'}"، المعرف (ID) الخاص به للتنقل المباشر: "${s.id}"`).join('\n')
+        : "لا توجد مسلسلات متوفرة حالياً بالمنصة.";
+
+      // If remote custom prompt is specified, use it (and append the list context for direct deep-linking)
+      const systemInstruction = (remoteConfig && remoteConfig.systemInstruction) 
+        ? `${remoteConfig.systemInstruction}\n\nإليك قائمة المسلسلات المتوفرة على منصة حكايتنا لتطابقها بذكاء مع أوصاف وتفاصيل المستخدمين:\n${seriesContext}`
+        : `أنت "حكيم" (Hakeem)، ومساعد الذكاء الاصطناعي وخبير الدراما ومستشار المشاهد العربي على منصة "حكايتنا" لمشاهدة المسلسلات والأفلام (التركية، العربية، الآسيوية، الكرتون وغيرها).
+أنت لست مجرد بوت تقليدي، بل تتحدث وتتفاعل كإنسان حقيقي وعاشق مخلص ومتابع للمسلسلات! تسولف وتدردش مع المتابعين كأنك صديق مقرب يشاركهم شغف المشاهدة في نفس الغرفة وتعرف كل تفاصيل الأبطال واللقطات الشيّقة.
+
+القواعد والمشاعر الذهبية للرد الفوري:
+1. لا تسلك الردود الرسمية ولا تجب كآلة عديمة الروح. تحدث بتلقائية كاملة وشغف وحماس شديد مثل البشر وصديق مخلص (لا تتحدث برسمية جافة أبداً!).
+2. إذا نسي المستخدم اسم أي مسلسل أو كرتون أو فيلم، وبدأ يصف لك تفاصيل عنه (مثل: "مسلسل عن واحد فقير واكتشف أنه ولد غني من عائلة غنية وانخطف وهو صغير" أو "بطل اسمه يمان وانخطف من عائلته" أو "مسلسل تركي فيه عائلتان متصارعتان" أو أي وصف عشوائي):
+   - حلل الوصف بذكاء وبصيرة خارقة لتعرف فوراً ما هو المسلسل المقصود بناءً على القصة أو أسماء الأبطال أو التفاصيل التي ذكرها المتابع.
+   - إذا كان هذا المسلسل متوفراً لدينا في المنصة (عبر مطابقة القصة مع قائمتنا المرفقة، مثلاً "المتوحش" لقصة يمان المخطوف، أو "طائر الرفراف" لعائلة كورهان، إلخ):
+     * أبهره فوراً بذكائك الفائق وقل له بحماس شديد: "يا سلام عليك! هذا وربي مسلسل {اسم المسلسل}! القصة تشد الأنفاس وأحداثها أسطورية..."
+     * ضع له فوراً رابط الانتقال السحري المباشر لمشاهدته بالتطبيق كالتالي: [شاهد مسلسل {اسم المسلسل} من هنا](navigate:{id})
+   - إذا كان المسلسل المقصود مشهوراً جداً عالمياً ولكنه ليس في قائمتنا المرفقة حالياً:
+     * قل له اسم المسلسل الحقيقي وتفاصيله وقصته بسعادة لتثبت له أنك تفهمه وتعرف كل شيء.
+     * اقترح عليه بأناقة مسلسلات مشابهة له تماماً ومتوفرة في قائمتنا، وشجعه على مشاهدتها بدلاً من ذلك مع وضع رابط الانتقال السحري لها.
+3. تفاعل بقوة مع الكلمات والرموز العاطفية والمواقف واللقطات (مثال: إذا كتب المستخدم "حماس" أو "أسطوري" رد بحماس فائق: "يا ربااااه! الحلقة ذي نار وربي تشد الأعصاب من أول دقيقة! 🔥😱" وإذا عبّر عن حزن "😭💔" قل: "وربي اللقطة ذي تصيح وتقطع القلب، دمعت عيوني معهم! 😭💔" وإذا كتب "بطل" قل: "يستاااهل اللقب وربي أدائه أسطوري ويفوز! 👑😍").
+4. استخدم باقة واسعة من الإيموجيات المعبّرة بالردود لتبدو شخصاً حقيقياً يدردش بحيوية (مثل: 🔥, 😂, 😍, 😭, 💔, 😱, 🙌, 👑).
+5. استخدم لغة ممتعة، خفيفة وبسيطة وسهلة، وودية جداً تشعر المستخدم بالألفة الكاملة والأخوّة.
+6. عندما يسألك عن قصة مسلسل أو أبطاله، أو تلمح فرصة، شجعه على مشاهدته فوراً بالتطبيق بوضع رابط الانتقال السحري المباشر كالتالي:
+   [شاهد مسلسل {اسم المسلسل} من هنا](navigate:{id})
+   مثل: [شاهد مسلسل المتوحش من هنا](navigate:al_mutawahish).
+7. إذا طلب الانتقال أو التشغيل, اخبره بأناقة: "سأنتقل معك الآن فوراً! 🚀💨" وعليك تضمين صيغة الانتقال (navigate:{id}) في متن أو نهاية الرد.
+8. لا ترشح أبداً أي مسلسل خارج قائمتنا الحالية للتشغيل الفوري، ومطابقة ذكية للمسميات العامية.
+9. ممنوع منعاً باتاً كتابة أو توليد أي روابط إنترنت خارجية أو مواقع إلكترونية (مثل الروابط التي تبدأ بـ http أو https) في ردك نهائياً؛ تذكّر أنك لا تملك صلاحية تصفح الويب أو توجيه المستخدم لمواقع أخرى. التوجيه يتم حصرياً للأعمال المتوفرة لدينا بصيغة الانتقال [شاهد مسلسل {اسم العمل} من هنا](navigate:{id}).
+10. إذا سألك المتابع أو اشتكى من مشكلة: "المسلسلات المثبتة تظهر لي فقط ولا تظهر للمستخدمين الآخرين" أو "المستخدمين الآخرين لا تظهر لهم المسلسلات المثبتة، تظهر فقط للشخص الذي قام بتثبيتها" أو "مشكلة أنه يظهر عندي اللي ثبته ما يظهر للمستخدمين":
+    - قل له بابتسامة وفخر وحماس: "يا عسيل! يوسفني جداً هذا الخلل البسيط اللي كان صاير، بس أبشرك الحين مشكلة التثبيت والـ Pins انحلت بالكامل وجذرياً! 🔧🚀 صارت المزامنة الحين تعمل بلحظتها بشكل حي ومبعد بين الكل وFirebase، وأي مسلسل يثبّته الأدمن بيظهر فوراً وبنفس الترتيب الراقي لكل المستخدمين والزوار في نفس اللحظة! جرب تسجل دخول أو تفتح التطبيق من جهاز ثاني وبتشوف عيونك كيف المسلسلات المثبتة مترتبة للجميع يا عسل! 😉💖"
+
+إليك قائمة المسلسلات المتوفرة على منصة حكايتنا لتطابقها بذكاء مع أوصاف وتفاصيل المستخدمين:
+${seriesContext}`;
+
+      const result = await smartChat(message, systemInstruction, history, image, audio);
+
+      res.json({
+        status: true,
+        text: result.reply || "عذراً، لم أستطع توليد رد في الوقت الحالي."
+      });
+    } catch (error: any) {
+      console.error("AI Chat Route Error:", error);
+      res.status(500).json({ status: false, error: error.message || "حدث خطأ بالاتصال بالذكاء الاصطناعي" });
+    }
+  });
+
+  // ============ LIVE SPORTS MATCH SCRAPER ENDPOINTS ============
+  let cachedMatches: any[] = [];
+  let lastFetchedMatchesTime = 0;
+
+  app.get("/api/v1/matches/scrape", async (req, res) => {
+    const now = Date.now();
+    // Cache for 45 seconds to keep it blazingly fast and avoid triggering 429 rate limit or IP bans
+    if (now - lastFetchedMatchesTime < 45000 && cachedMatches.length > 0) {
+      return res.json({ status: true, cached: true, matches: cachedMatches });
+    }
+
+    try {
+      const SITE = "https://yalla-live.top";
+      const response = await axios.get(SITE, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+          "Accept-Language": "ar,en-US;q=0.7,en;q=0.3"
+        },
+        timeout: 10000
+      });
+
+      const html = response.data;
+      const $ = cheerio.load(html);
+      const matches: any[] = [];
+
+      // Seek matches inside standard selectors
+      let containers = $("#matches-container");
+      let matchDivs = containers.find(".match-container");
+      if (matchDivs.length === 0) {
+        matchDivs = $(".match-container");
+      }
+      if (matchDivs.length === 0) {
+        matchDivs = $(".match-card, .match-box, [class*='match-']");
+      }
+
+      matchDivs.each((idx, el) => {
+        try {
+          const anchor = $(el).find("a").first();
+          let matchPageUrl = anchor.attr("href") || "";
+          if (matchPageUrl && !matchPageUrl.startsWith("http")) {
+            matchPageUrl = SITE + (matchPageUrl.startsWith("/") ? "" : "/") + matchPageUrl;
+          }
+
+          if (!matchPageUrl) return;
+
+          // Team Names
+          let team1 = $(el).find(".right-team .team-name, .team-right .team-name, .team1 .name, .right-team").first().text().trim();
+          let team2 = $(el).find(".left-team .team-name, .team-left .team-name, .team2 .name, .left-team").first().text().trim();
+
+          // Logos
+          let logo1 = $(el).find(".right-team .team-logo img, .team-right img, .team1 img").first().attr("data-src") || 
+                      $(el).find(".right-team .team-logo img, .team-right img, .team1 img").first().attr("src") || "";
+          let logo2 = $(el).find(".left-team .team-logo img, .team-left img, .team2 img").first().attr("data-src") || 
+                      $(el).find(".left-team .team-logo img, .team-left img, .team2 img").first().attr("src") || "";
+
+          if (logo1 && !logo1.startsWith("http")) logo1 = SITE + (logo1.startsWith("/") ? "" : "/") + logo1;
+          if (logo2 && !logo2.startsWith("http")) logo2 = SITE + (logo2.startsWith("/") ? "" : "/") + logo2;
+
+          // Match timing details inside match-center
+          let time = "";
+          let result = "";
+          let statusText = "";
+
+          const matchTiming = $(el).find(".match-center .match-timing");
+          if (matchTiming.length > 0) {
+            const divs = matchTiming.find("div");
+            if (divs.length > 0) {
+              const firstDiv = $(divs[0]);
+              if (firstDiv.hasClass("result")) {
+                result = firstDiv.text().trim();
+              } else {
+                time = firstDiv.text().trim();
+              }
+            }
+            if (divs.length > 1) {
+              statusText = $(divs[1]).text().trim();
+            }
+          }
+
+          // Match info spans (channel, commentator, league)
+          const infoSpans = $(el).find(".match-info ul li span, .match-info li span, .match-details span");
+          let channel = "";
+          let commentator = "";
+          let league = "";
+
+          if (infoSpans.length > 0) channel = $(infoSpans[0]).text().trim();
+          if (infoSpans.length > 1) commentator = $(infoSpans[1]).text().trim();
+          if (infoSpans.length > 2) league = $(infoSpans[2]).text().trim();
+
+          if (!channel) channel = $(el).find(".channel, .channel-name").first().text().trim();
+          if (!league) league = $(el).find(".league, .league-name").first().text().trim();
+
+          // Robust Live and Ended status detection logic
+          let live = false;
+          let ended = false;
+
+          const hasLiveClass = $(el).hasClass("live") || $(el).find(".live, .live-badge, .date.live").length > 0;
+          const hasSoonClass = $(el).hasClass("soon") || $(el).find(".soon, .date.soon").length > 0;
+
+          if (
+            hasLiveClass ||
+            statusText.includes("مباشر") ||
+            statusText.includes("جارية") ||
+            statusText.includes("الان") ||
+            statusText.includes("الآن")
+          ) {
+            live = true;
+          }
+
+          if (
+            statusText.includes("انتهت") ||
+            statusText.includes("انتهت المباراة") ||
+            $(el).find(".date.end").text().includes("انتهت") ||
+            (result && !live && !hasSoonClass)
+          ) {
+            ended = true;
+            live = false;
+          }
+
+          // If it ended, ensure statusText indicates that
+          if (ended && !statusText.includes("انتهت")) {
+            statusText = "انتهت المباراة";
+          }
+
+          if (team1 && team2) {
+            const id = Buffer.from(matchPageUrl).toString("base64").replace(/[^a-zA-Z0-9]/g, "").substring(0, 16);
+            matches.push({
+              id,
+              team1,
+              team2,
+              logo1,
+              logo2,
+              matchPageUrl,
+              channel: channel || "بث مباشر",
+              commentator: commentator || "غير معروف",
+              time: time || "مستمر",
+              result: result || "",
+              statusText: statusText || "بانتظار البداية",
+              league: league || "بطولة اليوم",
+              live,
+              ended
+            });
+          }
+        } catch (e) {
+          // ignore parsing error for single element
+        }
+      });
+
+      if (matches.length > 0) {
+        cachedMatches = matches;
+        lastFetchedMatchesTime = now;
+      }
+
+      res.json({ status: true, cached: false, matches });
+    } catch (error: any) {
+      console.error("Match scraper API route error:", error.message);
+      res.json({ status: false, error: error.message, matches: cachedMatches });
+    }
+  });
+
+  app.get("/api/v1/matches/stream", async (req, res) => {
+    const { url } = req.query;
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "Missing match page URL" });
+    }
+
+    try {
+      const response = await axios.get(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Referer": "https://yalla-live.top/"
+        },
+        timeout: 10000
+      });
+
+      const html = response.data;
+      
+      // Look for var iframeUrl = "..."
+      const match = html.match(/var\s+iframeUrl\s*=\s*["']([^"']+)["']/);
+      let iframeUrl = match ? match[1] : null;
+
+      if (iframeUrl && iframeUrl.trim() !== "" && iframeUrl !== "null" && iframeUrl !== "undefined" && iframeUrl.startsWith("http")) {
+         return res.json({ status: true, iframeUrl });
+      }
+
+      res.status(404).json({ status: false, error: "لا يوجد بث حي متوفر لهذه المباراة حالياً." });
+    } catch (error: any) {
+      console.error("Error retrieving stream URL:", error.message);
+      res.status(500).json({ status: false, error: "حدث خطأ أثناء محاولة جلب البث المباشر." });
+    }
+  });
+
+  // Firebase Config with obfuscation
+  app.get("/api/v1/config/firebase", (req, res) => {
+    const config = {
+      apiKey: process.env.FIREBASE_API_KEY || "AIzaSyAnYkOnP2XWfaKrXXvTO3Euq7s-pl9QGKg",
+      authDomain: process.env.FIREBASE_AUTH_DOMAIN || "chat-516a8.firebaseapp.com",
+      databaseURL: process.env.FIREBASE_DATABASE_URL || "https://chat-516a8-default-rtdb.firebaseio.com",
+      projectId: process.env.FIREBASE_PROJECT_ID || "chat-516a8",
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "chat-516a8.firebasestorage.app",
+      messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "276393305302",
+      appId: process.env.FIREBASE_APP_ID || "1:276393305302:web:12f90a55d7c13a4c57d577"
+    };
+
+    // Encrypt each value
+    const securedConfig = Object.fromEntries(
+      Object.entries(config).map(([key, val]) => [key, encryptValue(val)])
+    );
+
+    res.json({ status: true, data: securedConfig });
+  });
+
+  // Health check
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok" });
+  });
+
+  // Isolated HTML ad serving page
+  app.get("/gateway", (req, res) => {
+    const seriesId = String(req.query.id || "");
+    const redirectUrl = String(req.query.redirect || "");
+    const html = `<!DOCTYPE html>
 <html lang="ar">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>جاري تهيئة البث المباشر...</title>
-    
-    <!-- 11033994 -->
-    <script>
-    (function(s){
-        s.dataset.zone='11033994';
-        s.src='https://n6wxm.com/vignette.min.js';
-        s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
-        document.head.appendChild(s);
-    })(document.createElement('script'));
-    </script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>تهيئة البث المباشر</title>
 
-    <!-- 11033969 -->
-    <script>
-    (function(s){
-        s.dataset.zone='11033969';
-        s.src='https://n6wxm.com/vignette.min.js';
-        s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
-        document.head.appendChild(s);
-    })(document.createElement('script'));
-    </script>
+<style>
+body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    color: #111827;
+    font-family: system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    box-sizing: border-box;
+}
+.container {
+    text-align: center;
+    max-width: 420px;
+    padding: 40px 24px;
+    box-sizing: border-box;
+}
+h2 {
+    font-size: 24px;
+    font-weight: 900;
+    color: #111827;
+    margin-bottom: 12px;
+    line-height: 1.4;
+}
+p {
+    font-size: 14px;
+    color: #4b5563;
+    line-height: 1.6;
+    margin-bottom: 40px;
+}
+.counter {
+    font-size: 80px;
+    font-weight: 950;
+    color: #dc2626;
+    margin: 30px 0;
+    font-family: monospace, sans-serif;
+}
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 18px 24px;
+    background: #dc2626;
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 900;
+    border: none;
+    border-radius: 16px;
+    text-decoration: none;
+    cursor: pointer;
+    box-shadow: 0 10px 30px rgba(220, 38, 38, 0.4);
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+}
+.btn:hover {
+    background: #b91c1c;
+    transform: translateY(-1px);
+}
+.btn:active {
+    transform: translateY(1px);
+}
+.btn-disabled {
+    background: #f3f4f6 !important;
+    color: #9ca3af !important;
+    box-shadow: none !important;
+    cursor: not-allowed !important;
+    font-weight: 800;
+}
+.footer-text {
+    font-size: 10px;
+    color: #9ca3af;
+    font-weight: 600;
+    margin-top: 50px;
+}
+</style>
 
-    <!-- 10995706 -->
-    <script>
-    (function(s){
-        s.dataset.zone='10995706';
-        s.src='https://nap5k.com/tag.min.js';
-        s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
-        document.head.appendChild(s);
-    })(document.createElement('script'));
-    </script>
-
-    <!-- 10943622 -->
-    <script>
-    (function(s){
-        s.dataset.zone='10943622';
-        s.src='https://al5sm.com/tag.min.js';
-        s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
-        document.head.appendChild(s);
-    })(document.createElement('script'));
-    </script>
-
-    <!-- 234781 -->
-    <script>
-    var s = document.createElement('script');
-    s.src = 'https://quge5.com/88/tag.min.js';
-    s.dataset.zone = '234781';
-    s.async = true;
-    s.setAttribute('data-cfasync','false');
+<!-- 11033994 -->
+<script>
+(function(s){
+    s.dataset.zone='11033994';
+    s.src='https://n6wxm.com/vignette.min.js';
     s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
     document.head.appendChild(s);
-    </script>
+})(document.createElement('script'));
+</script>
 
-    <!-- User Custom Ad Script -->
-    <script src="https://quge5.com/88/tag.min.js" data-zone="254244" async data-cfasync="false"></script>
+<!-- 11033969 -->
+<script>
+(function(s){
+    s.dataset.zone='11033969';
+    s.src='https://n6wxm.com/vignette.min.js';
+    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
+    document.head.appendChild(s);
+})(document.createElement('script'));
+</script>
 
-    <style>
-        body {
-            background-color: #07070a;
-            color: #ffffff;
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            padding: 20px;
-            box-sizing: border-box;
-            background-image: radial-gradient(circle at top, #18181b 0%, #07070a 100%);
-        }
-        .container {
-            max-width: 500px;
-            width: 100%;
-            background: rgba(15, 15, 20, 0.85);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 20px;
-            padding: 40px 30px;
-            text-align: center;
-            backdrop-filter: blur(16px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
-        }
-        h2 {
-            font-size: 24px;
-            margin-bottom: 12px;
-            font-weight: 800;
-            color: #b72424;
-            letter-spacing: -0.5px;
-        }
-        p {
-            font-size: 15px;
-            color: #a1a1aa;
-            line-height: 1.6;
-            margin-bottom: 30px;
-        }
-        .counter {
-            font-size: 48px;
-            font-weight: 800;
-            color: #ffffff;
-            width: 90px;
-            height: 90px;
-            line-height: 84px;
-            border-radius: 50%;
-            background: rgba(183, 36, 36, 0.08);
-            border: 3px solid #b72424;
-            margin: 0 auto 30px auto;
-            box-shadow: 0 0 20px rgba(183, 36, 36, 0.25);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-sizing: border-box;
-        }
-        .btn {
-            background: linear-gradient(135deg, #b72424 0%, #991b1b 100%);
-            color: #ffffff;
-            border: none;
-            padding: 16px 32px;
-            font-size: 16px;
-            font-weight: 700;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            width: 100%;
-            box-shadow: 0 4px 15px rgba(183, 36, 36, 0.2);
-            outline: none;
-        }
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(183, 36, 36, 0.35);
-            background: linear-gradient(135deg, #dc2626 0%, #b72424 100%);
-        }
-        .btn:active {
-            transform: translateY(0);
-        }
-        .btn-disabled {
-            background: #18181b !important;
-            color: #52525b !important;
-            cursor: not-allowed;
-            transform: none !important;
-            box-shadow: none !important;
-            border: 1px solid rgba(255, 255, 255, 0.04);
-        }
-        .footer-text {
-            font-size: 11px;
-            color: #3f3f46;
-            margin-top: 30px;
-            font-weight: 500;
-        }
-    </style>
+<!-- 10995706 -->
+<script>
+(function(s){
+    s.dataset.zone='10995706';
+    s.src='https://nap5k.com/tag.min.js';
+    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
+    document.head.appendChild(s);
+})(document.createElement('script'));
+</script>
+
+<!-- 10943622 -->
+<script>
+(function(s){
+    s.dataset.zone='10943622';
+    s.src='https://al5sm.com/tag.min.js';
+    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
+    document.head.appendChild(s);
+})(document.createElement('script'));
+</script>
+
+<!-- 234781 -->
+<script>
+var s = document.createElement('script');
+s.src = 'https://quge5.com/88/tag.min.js';
+s.dataset.zone = '234781';
+s.async = true;
+s.setAttribute('data-cfasync','false');
+s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
+document.head.appendChild(s);
+</script>
+
+<!-- User Custom Ad Script -->
+<script src="https://quge5.com/88/tag.min.js" data-zone="254244" async data-cfasync="false"></script>
+
 </head>
 <body dir="rtl">
     <div class="container">
@@ -1002,13 +3100,13 @@ app.get("/ad", (req, res) => {
                 return !isNaN(adUntilNum) && adUntilNum > Date.now();
             })();
 
-            if (isPremium) return;
+            if (isPremium) return; // Skip adblock check for premium users
 
             if (window.adBlockEnabled && !window.adBlockWarningShown) {
                 window.adBlockWarningShown = true;
                 
                 var warn = document.createElement('div');
-                warn.innerHTML = '<div style="background: rgba(239, 68, 68, 0.08); color: #ef4444; padding: 12px; border-radius: 8px; margin: 15px 0; border: 1px solid rgba(239, 68, 68, 0.2); font-size: 13px; text-align: center; font-weight: 600; font-family: inherit;">⚠️ يبدو أنك تستخدم مانع إعلانات. الإعلانات هامة جداً لاستمرارنا، فضلاً قم بتعطيله دعماً للموقع.</div>';
+                warn.innerHTML = '<div style="background: rgba(239, 68, 68, 0.1); color: #ef4444; padding: 12px; border-radius: 8px; margin: 15px 0; border: 1px solid rgba(239, 68, 68, 0.3); font-size: 13px; text-align: center; font-weight: 600;">⚠️ يبدو أنك تستخدم مانع إعلانات. الإعلانات هامة جداً لاستمرارنا، فضلاً قم بتعطيله دعماً للموقع.</div>';
                 
                 var container = document.querySelector('.container');
                 var btnContainer = document.getElementById('btn-container');
@@ -1018,6 +3116,7 @@ app.get("/ad", (req, res) => {
             }
         }
 
+        // Test 1: Fake ad element physical check
         setTimeout(function() {
             var testAd = document.createElement('div');
             testAd.innerHTML = '&nbsp;';
@@ -1037,17 +3136,15 @@ app.get("/ad", (req, res) => {
         }, 100);
 
         function triggerRedirect() {
-            try {
-                sessionStorage.setItem('ad_shown_this_session', 'true');
-            } catch (e) {}
             if (redirectUrl) {
                 window.location.replace(redirectUrl);
-            } else if (seriesId) {
-                window.location.replace('/watch/' + encodeURIComponent(seriesId));
             } else {
-                window.location.replace('/');
+                window.location.replace('/watch/' + encodeURIComponent(seriesId) + '?unlocked=true');
             }
         }
+
+        // Removed automatic redirection so that every user must manually click 'Skip Ad' to proceed, ensuring a fully controlled user action.
+        var isPremium = false;
 
         var countdown = 6;
         var timer = setInterval(function() {
@@ -1068,11 +3165,10 @@ app.get("/ad", (req, res) => {
     </script>
 </body>
 </html>`;
-  res.send(html);
-});
+    res.send(html);
+  });
 
-// Vite middleware
-async function startServer() {
+  // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -1080,11 +3176,36 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    // Robust resolution natively pointing to the compiled directory
+    const distPath = __dirname;
+    // Add 12-hour client-side caching for React/Vite assets to prevent repeated egress billing!
+    app.use(express.static(distPath, {
+      maxAge: '12h',
+      etag: true,
+      lastModified: true
+    }));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
     });
+  }
+
+  // Pre-download high-res logo dynamically to overwrite outdated logo
+  try {
+    const logoUrl = "https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png";
+    const logoPath = path.join(process.cwd(), 'public', 'logo.png');
+    axios.get(logoUrl, { responseType: 'arraybuffer' }).then((response) => {
+      fs.writeFileSync(logoPath, Buffer.from(response.data));
+      console.log("Successfully downloaded and updated local logo.png with the premium high-res image.");
+      // Also write in dist if dist exists
+      const distLogoPath = path.join(process.cwd(), 'dist', 'logo.png');
+      if (fs.existsSync(path.join(process.cwd(), 'dist'))) {
+        fs.writeFileSync(distLogoPath, Buffer.from(response.data));
+      }
+    }).catch(err => {
+      console.warn("Non-blocking logo cache helper bypassed:", err.message);
+    });
+  } catch (e) {
+    console.warn("Async non-blocking logo puller failed:", e);
   }
 
   app.listen(PORT, "0.0.0.0", () => {
