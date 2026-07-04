@@ -293,53 +293,46 @@ app.get("/api/proxy-embed", async (req, res) => {
   
   try {
     const response = await axiosInstance.get(targetUrl);
-    let html = response.data;
+    const html = response.data;
     
     const $ = cheerio.load(html);
     const myHost = `${req.protocol}://${req.get('host')}`;
     
-    // Find all iframes inside the embed and proxy them recursively
-    $("iframe").each((_, el) => {
-      const src = $(el).attr("src");
-      if (src) {
-        let resolvedSrc = src;
-        if (src.startsWith("/")) {
-          resolvedSrc = `${SOURCE_URL}${src}`;
-        } else if (!src.startsWith("http")) {
-          resolvedSrc = `${SOURCE_URL}/${src}`;
-        }
-        $(el).attr("src", `${myHost}/api/proxy-player?url=${encodeURIComponent(resolvedSrc)}`);
+    let playerIframeSrc = $("iframe").first().attr("src");
+    
+    if (playerIframeSrc) {
+      if (playerIframeSrc.startsWith("//")) {
+        playerIframeSrc = `https:${playerIframeSrc}`;
+      } else if (playerIframeSrc.startsWith("/")) {
+        playerIframeSrc = `${SOURCE_URL}${playerIframeSrc}`;
+      } else if (!playerIframeSrc.startsWith("http")) {
+        playerIframeSrc = `${SOURCE_URL}/${playerIframeSrc}`;
       }
-    });
-
-    html = $.html();
+      
+      const proxiedSrc = `${myHost}/api/proxy-player?url=${encodeURIComponent(playerIframeSrc)}`;
+      
+      const cleanHtml = `
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Player Proxy</title>
+  <style>
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
+    iframe { border: none; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <iframe src="${proxiedSrc}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+</body>
+</html>
+      `;
+      
+      return res.send(cleanHtml);
+    }
     
-    html = html.replace(/<\/head>/, `
-      <style>
-        body { background: black !important; color: white; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
-        iframe { border: none; width: 100%; height: 100%; }
-        .loading-proxy { position: fixed; inset: 0; background: black; display: flex; align-items: center; justify-content: center; z-index: 9999; font-family: sans-serif; }
-      </style>
-      <base href="${SOURCE_URL}/">
-      <meta name="referrer" content="no-referrer">
-      </head>
-    `);
-
-    // Inject script to handle potential clicks/popups and ensure player fills screen
-    html = html.replace(/<\/body>/, `
-      <script>
-        // Try to fix some common player issues
-        window.addEventListener('load', () => {
-          const iframes = document.getElementsByTagName('iframe');
-          for(let i=0; i<iframes.length; i++) {
-            iframes[i].style.width = '100%';
-            iframes[i].style.height = '100%';
-          }
-        });
-      </script>
-      </body>
-    `);
-    
+    // Fallback if no iframe found (unlikely, but just in case)
     res.send(html);
   } catch (error) {
     console.error("Proxy error:", error);
@@ -373,7 +366,9 @@ app.get("/api/proxy-player", async (req, res) => {
       const src = $(el).attr("src");
       if (src) {
         let resolvedSrc = src;
-        if (src.startsWith("/")) {
+        if (src.startsWith("//")) {
+          resolvedSrc = `https:${src}`;
+        } else if (src.startsWith("/")) {
           resolvedSrc = `${origin}${src}`;
         } else if (!src.startsWith("http")) {
           resolvedSrc = `${origin}/${src}`;
