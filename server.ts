@@ -710,6 +710,259 @@ app.get("/api/search", async (req, res) => {
   }
 });
 
+// Ad landing page with 6 seconds countdown and redirection
+app.get("/ad", (req, res) => {
+  const redirectUrl = req.query.redirectUrl || "";
+  const seriesId = req.query.seriesId || "";
+
+  const html = `<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>جاري تهيئة البث المباشر...</title>
+    
+    <!-- 11033994 -->
+    <script>
+    (function(s){
+        s.dataset.zone='11033994';
+        s.src='https://n6wxm.com/vignette.min.js';
+        s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
+        document.head.appendChild(s);
+    })(document.createElement('script'));
+    </script>
+
+    <!-- 11033969 -->
+    <script>
+    (function(s){
+        s.dataset.zone='11033969';
+        s.src='https://n6wxm.com/vignette.min.js';
+        s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
+        document.head.appendChild(s);
+    })(document.createElement('script'));
+    </script>
+
+    <!-- 10995706 -->
+    <script>
+    (function(s){
+        s.dataset.zone='10995706';
+        s.src='https://nap5k.com/tag.min.js';
+        s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
+        document.head.appendChild(s);
+    })(document.createElement('script'));
+    </script>
+
+    <!-- 10943622 -->
+    <script>
+    (function(s){
+        s.dataset.zone='10943622';
+        s.src='https://al5sm.com/tag.min.js';
+        s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
+        document.head.appendChild(s);
+    })(document.createElement('script'));
+    </script>
+
+    <!-- 234781 -->
+    <script>
+    var s = document.createElement('script');
+    s.src = 'https://quge5.com/88/tag.min.js';
+    s.dataset.zone = '234781';
+    s.async = true;
+    s.setAttribute('data-cfasync','false');
+    s.onerror = function() { window.adBlockEnabled = true; if(typeof checkAdBlock === 'function') checkAdBlock(); };
+    document.head.appendChild(s);
+    </script>
+
+    <!-- User Custom Ad Script -->
+    <script src="https://quge5.com/88/tag.min.js" data-zone="254244" async data-cfasync="false"></script>
+
+    <style>
+        body {
+            background-color: #07070a;
+            color: #ffffff;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            background-image: radial-gradient(circle at top, #18181b 0%, #07070a 100%);
+        }
+        .container {
+            max-width: 500px;
+            width: 100%;
+            background: rgba(15, 15, 20, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 40px 30px;
+            text-align: center;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+        }
+        h2 {
+            font-size: 24px;
+            margin-bottom: 12px;
+            font-weight: 800;
+            color: #b72424;
+            letter-spacing: -0.5px;
+        }
+        p {
+            font-size: 15px;
+            color: #a1a1aa;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+        .counter {
+            font-size: 48px;
+            font-weight: 800;
+            color: #ffffff;
+            width: 90px;
+            height: 90px;
+            line-height: 84px;
+            border-radius: 50%;
+            background: rgba(183, 36, 36, 0.08);
+            border: 3px solid #b72424;
+            margin: 0 auto 30px auto;
+            box-shadow: 0 0 20px rgba(183, 36, 36, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+        .btn {
+            background: linear-gradient(135deg, #b72424 0%, #991b1b 100%);
+            color: #ffffff;
+            border: none;
+            padding: 16px 32px;
+            font-size: 16px;
+            font-weight: 700;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 100%;
+            box-shadow: 0 4px 15px rgba(183, 36, 36, 0.2);
+            outline: none;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(183, 36, 36, 0.35);
+            background: linear-gradient(135deg, #dc2626 0%, #b72424 100%);
+        }
+        .btn:active {
+            transform: translateY(0);
+        }
+        .btn-disabled {
+            background: #18181b !important;
+            color: #52525b !important;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+        .footer-text {
+            font-size: 11px;
+            color: #3f3f46;
+            margin-top: 30px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body dir="rtl">
+    <div class="container">
+        <h2>جاري تهيئة خوادم البث المباشر...</h2>
+        <p>يرجى الانتظار بضع ثوانٍ لتخطي الإعلان الراعي والتحويل الفوري لسرعة البث القصوى.</p>
+        
+        <div class="counter" id="countdown">6</div>
+        
+        <div id="btn-container">
+            <button class="btn btn-disabled" id="main-btn" onclick="triggerRedirect()" disabled>الرجاء الانتظار 6 ثوانٍ لمتابعة المشاهدة...</button>
+        </div>
+
+        <div class="footer-text">شبكة البث الآمنة المعززة تضمن لك مشاهدة سلسة وذات دقة عالية.</div>
+    </div>
+
+    <script>
+        var redirectUrl = "${redirectUrl}";
+        var seriesId = "${seriesId}";
+        window.adBlockEnabled = false;
+        window.adBlockWarningShown = false;
+
+        function checkAdBlock() {
+            var isPremium = localStorage.getItem('ads_removed_forever') === 'true' || (function() {
+                var adUntil = localStorage.getItem('ad_free_until');
+                if (!adUntil) return false;
+                var adUntilNum = parseInt(adUntil, 10);
+                return !isNaN(adUntilNum) && adUntilNum > Date.now();
+            })();
+
+            if (isPremium) return;
+
+            if (window.adBlockEnabled && !window.adBlockWarningShown) {
+                window.adBlockWarningShown = true;
+                
+                var warn = document.createElement('div');
+                warn.innerHTML = '<div style="background: rgba(239, 68, 68, 0.08); color: #ef4444; padding: 12px; border-radius: 8px; margin: 15px 0; border: 1px solid rgba(239, 68, 68, 0.2); font-size: 13px; text-align: center; font-weight: 600; font-family: inherit;">⚠️ يبدو أنك تستخدم مانع إعلانات. الإعلانات هامة جداً لاستمرارنا، فضلاً قم بتعطيله دعماً للموقع.</div>';
+                
+                var container = document.querySelector('.container');
+                var btnContainer = document.getElementById('btn-container');
+                if (container && btnContainer) {
+                    container.insertBefore(warn, btnContainer);
+                }
+            }
+        }
+
+        setTimeout(function() {
+            var testAd = document.createElement('div');
+            testAd.innerHTML = '&nbsp;';
+            testAd.className = 'adsbox ad-banner google-auto-placed doubleclick';
+            testAd.style.position = 'absolute';
+            testAd.style.left = '-1000px';
+            testAd.style.width = '1px';
+            document.body.appendChild(testAd);
+            setTimeout(function() {
+                var isHidden = testAd.offsetHeight === 0 || testAd.display === 'none' || window.getComputedStyle(testAd).display === 'none';
+                if (isHidden) {
+                    window.adBlockEnabled = true;
+                    checkAdBlock();
+                }
+                document.body.removeChild(testAd);
+            }, 500);
+        }, 100);
+
+        function triggerRedirect() {
+            if (redirectUrl) {
+                window.location.replace(redirectUrl);
+            } else if (seriesId) {
+                window.location.replace('/watch/' + encodeURIComponent(seriesId));
+            } else {
+                window.location.replace('/');
+            }
+        }
+
+        var countdown = 6;
+        var timer = setInterval(function() {
+            countdown--;
+            if (countdown <= 0) {
+                clearInterval(timer);
+                document.getElementById('countdown').style.display = 'none';
+                
+                var btn = document.getElementById('main-btn');
+                btn.className = 'btn';
+                btn.removeAttribute('disabled');
+                btn.innerText = 'تخطي الإعلان والدخول للمشاهدة الآن 🍿🚀';
+            } else {
+                document.getElementById('countdown').innerText = countdown;
+                document.getElementById('main-btn').innerText = 'الرجاء الانتظار ' + countdown + ' ثوانٍ لمتابعة المشاهدة...';
+            }
+        }, 1000);
+    </script>
+</body>
+</html>`;
+  res.send(html);
+});
+
 // Vite middleware
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

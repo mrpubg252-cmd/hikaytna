@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { Series } from '../types';
 import { Loader2, Play, Info, ChevronLeft } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { triggerAdFlow } from '../lib/utils';
 
 export default function SeriesDetails() {
   const { slug } = useParams();
@@ -34,6 +34,8 @@ export default function SeriesDetails() {
 
   if (!series) return <div className="text-center py-20">المسلسل غير موجود</div>;
 
+  const firstEpSlug = series.episodes && series.episodes.length > 0 ? series.episodes[0].epSlug : '';
+
   return (
     <div className="pb-12 bg-[#0a0a0a]" dir="rtl">
       {/* Hero Header */}
@@ -56,13 +58,16 @@ export default function SeriesDetails() {
               {series.description}
             </p>
             <div className="flex flex-wrap gap-3 justify-center md:justify-start px-4">
-              <Link 
-                to={series.episodes && series.episodes.length > 0 ? `/watch/${series.episodes[0].epSlug}` : '#'}
-                className="bg-white text-black px-6 md:px-10 py-2.5 md:py-4 rounded-md font-black flex items-center justify-center gap-2 md:gap-3 hover:bg-gray-200 transition-all text-sm md:text-xl shadow-xl flex-1 md:flex-none"
+              <button 
+                onClick={() => firstEpSlug && triggerAdFlow(`/watch/${firstEpSlug}`)}
+                disabled={!firstEpSlug}
+                className={`bg-white text-black px-6 md:px-10 py-2.5 md:py-4 rounded-md font-black flex items-center justify-center gap-2 md:gap-3 hover:bg-gray-200 transition-all text-sm md:text-xl shadow-xl flex-1 md:flex-none ${
+                  !firstEpSlug ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
               >
                 <Play size={18} className="md:size-28" fill="black" />
                 مشاهدة الآن
-              </Link>
+              </button>
               <button className="bg-white/20 backdrop-blur-md text-white px-6 md:px-10 py-2.5 md:py-4 rounded-md font-black flex items-center justify-center gap-2 md:gap-3 hover:bg-white/30 transition-all text-sm md:text-xl shadow-xl flex-1 md:flex-none">
                 <Info size={18} className="md:size-28" />
                 المزيد
@@ -87,19 +92,19 @@ export default function SeriesDetails() {
         <div className="grid grid-cols-1 gap-4">
           {series.episodes && series.episodes.length > 0 ? (
             series.episodes.map((ep, index) => (
-              <Link 
+              <button 
                 key={ep.epSlug} 
-                to={`/watch/${ep.epSlug}`}
-                className="group flex items-center gap-4 md:gap-10 p-4 md:p-8 rounded-2xl bg-[#111] hover:bg-[#1a1a1a] transition-all duration-500 border border-white/5 hover:border-[#b72424]/30 shadow-2xl relative overflow-hidden"
+                onClick={() => triggerAdFlow(`/watch/${ep.epSlug}`)}
+                className="w-full text-right group flex items-center gap-4 md:gap-10 p-4 md:p-8 rounded-2xl bg-[#111] hover:bg-[#1a1a1a] transition-all duration-500 border border-white/5 hover:border-[#b72424]/30 shadow-2xl relative overflow-hidden"
               >
                 {/* Background Glow Effect */}
                 <div className="absolute inset-0 bg-gradient-to-r from-[#b72424]/0 to-[#b72424]/5 opacity-0 group-hover:opacity-100 transition-opacity" />
                 
-                <span className="text-2xl md:text-6xl font-black text-white/10 group-hover:text-white/20 transition-all duration-500 min-w-[30px] md:min-w-[80px] text-center italic">
+                <span className="text-2xl md:text-6xl font-black text-white/10 group-hover:text-white/20 transition-all duration-500 min-w-[30px] md:min-w-[80px] text-center italic select-none">
                   {index + 1}
                 </span>
                 
-                <div className="relative aspect-video w-32 md:w-72 rounded-xl overflow-hidden shrink-0 shadow-2xl ring-1 ring-white/10">
+                <div className="relative aspect-video w-32 md:w-72 rounded-xl overflow-hidden shrink-0 shadow-2xl ring-1 ring-white/10 select-none">
                   <img 
                     src={series.img} 
                     className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110 opacity-70 group-hover:opacity-100" 
@@ -128,7 +133,7 @@ export default function SeriesDetails() {
                    <ChevronLeft size={48} className="transform group-hover:-translate-x-2 transition-transform duration-500" />
                    <span className="text-[10px] font-black uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-opacity">شاهد</span>
                 </div>
-              </Link>
+              </button>
             ))
           ) : (
             <div className="text-center py-20 bg-[#141414] rounded-2xl border border-white/5">

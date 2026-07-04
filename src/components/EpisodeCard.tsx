@@ -1,8 +1,8 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { Play } from 'lucide-react';
 import { Episode } from '../types';
 import { motion } from 'motion/react';
+import { triggerAdFlow } from '../lib/utils';
 
 interface EpisodeCardProps {
   key?: string;
@@ -10,12 +10,17 @@ interface EpisodeCardProps {
 }
 
 export default function EpisodeCard({ episode }: EpisodeCardProps) {
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    triggerAdFlow(`/watch/${episode.slug}`);
+  };
+
   return (
     <motion.div 
       whileHover={{ y: -10 }}
       className="group relative bg-[#1a1a1a] rounded-xl overflow-hidden shadow-2xl transition-all duration-300 border border-white/5"
     >
-      <Link to={`/watch/${episode.slug}`}>
+      <div onClick={handleClick} className="cursor-pointer">
         <div className="aspect-[2/3] relative overflow-hidden">
           <img 
             src={episode.img} 
@@ -38,7 +43,7 @@ export default function EpisodeCard({ episode }: EpisodeCardProps) {
             {episode.title}
           </h3>
         </div>
-      </Link>
+      </div>
     </motion.div>
   );
 }
