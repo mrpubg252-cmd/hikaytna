@@ -966,11 +966,6 @@ async function startServer() {
     next();
   });
 
-  let API_BASE = process.env.EXTERNAL_API_BASE || 'https://series.albesriali03.workers.dev/';
-  if (!API_BASE.startsWith('http://') && !API_BASE.startsWith('https://')) {
-    API_BASE = 'https://series.albesriali03.workers.dev/';
-  }
-
   // Resilient Axios helper for backend stability
   async function axiosFetch(url: string, retries = 1) {
     for (let i = 0; i <= retries; i++) {
@@ -1024,192 +1019,17 @@ async function startServer() {
   }
   // =======================================================
 
-  // Dynamic scraper to find the currently active working domain of AlooyTV from their Altum BioLink page (https://fitnur.com/alooytv)
-  async function fetchActiveAlooyTvDomainFromBioLink(): Promise<string | null> {
-    const cacheKey = "alooytv_active_domain_scraped";
-    const cached = getCachedData(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    try {
-      console.log("[AlooyTV Scraper] Fetching active domain from biolink: https://fitnur.com/alooytv");
-      const res = await axios.get("https://fitnur.com/alooytv", {
-        timeout: 6000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5'
-        },
-        httpAgent: new http.Agent({ family: 4 }),
-        httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
-      });
-
-      const $ = cheerio.load(res.data);
-      const hrefs: string[] = [];
-      $('a').each((i, el) => {
-        const href = $(el).attr('href');
-        if (href && href.includes('alooytv')) {
-          hrefs.push(href);
-        }
-      });
-
-      for (const href of hrefs) {
-        try {
-          const parsed = new URL(href);
-          if (parsed.hostname && parsed.hostname.includes('alooytv')) {
-            const activeDomain = `${parsed.protocol}//${parsed.hostname}`;
-            console.log(`[AlooyTV Scraper] Successfully resolved active base domain: ${activeDomain}`);
-            setCachedData(cacheKey, activeDomain, 30 * 60 * 1000); // Cache for 30 minutes
-            return activeDomain;
-          }
-        } catch (e) {
-          // Skip invalid URLs
-        }
-      }
-    } catch (error: any) {
-      console.error("[AlooyTV Scraper] Error scraping fitnur.com/alooytv:", error.message);
-    }
-
-    return null;
-  }
-
-  // Fallback candidate verifier if scraping fails
-  async function findActiveDomainFromCandidates(): Promise<string | null> {
-    const cacheKey = "alooytv_active_domain_candidates";
-    const cached = getCachedData(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    const baseCandidates = [
-      "https://a.alooytv10.com",
-      "https://a.alooytv13.xyz",
-      "https://a.alooytv11.com",
-      "https://a.alooytv12.com",
-      "https://a.alooytv13.com",
-      "https://a.alooytv14.com",
-      "https://a.alooytv15.com",
-      "https://a.alooytv16.com",
-      "https://a.alooytv10.xyz",
-      "https://a.alooytv11.xyz",
-      "https://a.alooytv12.xyz",
-      "https://a.alooytv14.xyz",
-      "https://a.alooytv15.xyz",
-      "https://a.alooytv16.xyz"
-    ];
-
-    // Try verifying in parallel batches
-    for (let i = 0; i < baseCandidates.length; i += 4) {
-      const batch = baseCandidates.slice(i, i + 4);
-      const results = await Promise.allSettled(
-        batch.map(async (domain) => {
-          const response = await axios.head(domain, {
-            timeout: 2000,
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
-            },
-            httpAgent: new http.Agent({ family: 4 }),
-            httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
-          });
-          if (response.status === 200 || response.status === 301 || response.status === 302) {
-            return domain;
-          }
-          throw new Error("Invalid status");
-        })
-      );
-
-      for (const res of results) {
-        if (res.status === "fulfilled" && res.value) {
-          setCachedData(cacheKey, res.value, 15 * 60 * 1000); // Cache for 15 minutes
-          return res.value;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  // Dynamic resolver for AlooyTV domains to automatically bypass Cloudflare Turnstile blocks
-  async function getActiveAlooyTvUrl(requestedUrl: string): Promise<string> {
-    if (!requestedUrl) return requestedUrl;
-    const lowerUrl = requestedUrl.toLowerCase();
-    if (!lowerUrl.includes("fitnur.com/alooytv") && !lowerUrl.includes("alooytv")) {
-      return requestedUrl;
-    }
-
-    // 1. Try to scrape the current active domain from the fitnur.com/alooytv BioLink
-    let activeDomain = await fetchActiveAlooyTvDomainFromBioLink();
-
-    // 2. If scraping fails, try verifying candidates
-    if (!activeDomain) {
-      activeDomain = await findActiveDomainFromCandidates();
-    }
-
-    // 3. Fallback to a sensible default if all checks fail
-    if (!activeDomain) {
-      activeDomain = "https://a.alooytv10.com";
-    }
-
-    if (requestedUrl.includes("fitnur.com/alooytv")) {
-      const cleaned = requestedUrl.replace(/\/$/, "");
-      if (cleaned.endsWith("fitnur.com/alooytv") || cleaned.endsWith("fitnur.com/alooytv/tv-series.html")) {
-        return `${activeDomain}/tv-series.html`;
-      }
-      return requestedUrl.replace(/https?:\/\/(?:www\.)?fitnur\.com\/alooytv/i, activeDomain);
-    }
-
-    // Replace domain of original URL with the active one
-    try {
-      const originalUrlObj = new URL(requestedUrl);
-      const activeDomainObj = new URL(activeDomain);
-      originalUrlObj.hostname = activeDomainObj.hostname;
-      originalUrlObj.protocol = activeDomainObj.protocol;
-      if (activeDomainObj.port) {
-        originalUrlObj.port = activeDomainObj.port;
-      } else {
-        originalUrlObj.port = "";
-      }
-      return originalUrlObj.toString();
-    } catch {
-      return `${activeDomain}/tv-series.html`;
-    }
-  }
-
   // API Proxy Routes
   // 1. Categories
   app.get("/api/v1/categories", async (req, res) => {
-    const cacheKey = "categories_v3";
-    const cached = getCachedData(cacheKey);
-    if (cached) {
-      return res.json(cached);
-    }
     try {
-      const response = await axiosFetch(`${API_BASE}?action=categories`);
-      if (response.data && response.data.status) {
-        if (Array.isArray(response.data.data)) {
-          const resolvedData = [];
-          for (const cat of response.data.data) {
-            const resolvedUrl = await getActiveAlooyTvUrl(cat.url);
-            const pages = [resolvedUrl];
-            if (resolvedUrl && resolvedUrl.endsWith('.html')) {
-              const baseUrl = resolvedUrl.replace('.html', '');
-              // Generate ONLY the first extra page to keep it fast and avoid 503 errors
-              pages.push(`${baseUrl}/50.html`);
-            }
-            const resolvedImage = cat.image ? await getActiveAlooyTvUrl(cat.image) : "";
-            resolvedData.push({
-              ...cat,
-              url: resolvedUrl,
-              image: resolvedImage,
-              pages
-            });
-          }
-          response.data.data = resolvedData;
-        }
-        setCachedData(cacheKey, response.data, 6 * 60 * 60 * 1000); // Cache for 6 hours
-      }
-      res.json(response.data);
+      const categories = [
+        { name: 'جميع المسلسلات', url: 'https://3iskk.xyz/w-series/', pages: ['https://3iskk.xyz/w-series/', 'https://3iskk.xyz/w-series/page/2/'] },
+        { name: 'جميع الحلقات', url: 'https://3iskk.xyz/halaqat/', pages: ['https://3iskk.xyz/halaqat/', 'https://3iskk.xyz/halaqat/page/2/'] },
+        { name: 'جميع الأفلام', url: 'https://3iskk.xyz/w-movies/', pages: ['https://3iskk.xyz/w-movies/', 'https://3iskk.xyz/w-movies/page/2/'] },
+        { name: 'مسلسلات مدبلجة', url: 'https://3iskk.xyz/genre/series-mudablij-121/', pages: ['https://3iskk.xyz/genre/series-mudablij-121/', 'https://3iskk.xyz/genre/series-mudablij-121/page/2/'] }
+      ];
+      res.json({ status: true, data: categories });
     } catch (error: any) {
       console.error("DEBUG CATEGORIES ERROR:", error.message);
       res.status(500).json({ status: false, message: "Server Error" });
@@ -1222,24 +1042,43 @@ async function startServer() {
       const { url } = req.query;
       if (!url) return res.status(400).json({ status: false });
       
-      const realUrl = await getActiveAlooyTvUrl(url as string);
-      const cacheKey = `series:${realUrl}`;
+      const realUrl = url as string;
+      const cacheKey = `series_3isk:${realUrl}`;
       const cached = getCachedData(cacheKey);
       if (cached) {
         return res.json(cached);
       }
 
-      const response = await axiosFetch(`${API_BASE}?action=series&url=${encodeURIComponent(realUrl)}`);
-      if (response.data && response.data.status) {
-        if (Array.isArray(response.data.data)) {
-          for (const s of response.data.data) {
-            if (s.image) s.image = await getActiveAlooyTvUrl(s.image);
-            if (s.img) s.img = await getActiveAlooyTvUrl(s.img);
-          }
+      const response = await axios.get(realUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        timeout: 10000
+      });
+      const $ = cheerio.load(response.data);
+      const data: any[] = [];
+
+      $('.type_item_box a.type_item, .type_item_wide_box a.type_item_wide').each((i, el) => {
+        const itemUrl = $(el).attr('href');
+        let title = $(el).attr('title') || $(el).find('.item_title').text().trim();
+        const img = $(el).find('img.item_img').attr('data-image') || $(el).find('img.item_img').attr('src');
+        
+        // Remove trailing "مترجم" or "مدبلج" from title for cleaner display
+        title = title.replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '').trim();
+
+        if (itemUrl && title) {
+          data.push({
+            title,
+            url: itemUrl,
+            image: img || '',
+            img: img || ''
+          });
         }
-        setCachedData(cacheKey, response.data, 4 * 60 * 60 * 1000); // Cache for 4 hours
+      });
+
+      const responseData = { status: true, data };
+      if (data.length > 0) {
+        setCachedData(cacheKey, responseData, 4 * 60 * 60 * 1000);
       }
-      res.json(response.data);
+      res.json(responseData);
     } catch (error) {
       res.status(500).json({ status: false });
     }
@@ -1251,134 +1090,35 @@ async function startServer() {
       const { url } = req.query;
       if (!url) return res.status(400).json({ status: false });
       
-      const realUrl = await getActiveAlooyTvUrl(url as string);
-      const cacheKey = `episodes_v3:${realUrl}`;
+      const realUrl = url as string;
+      const cacheKey = `episodes_3isk:${realUrl}`;
       const cached = getCachedData(cacheKey);
       if (cached) {
         return res.json(cached);
       }
 
-      let responseData = { status: false, data: [] as any[] };
+      const response = await axios.get(realUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        timeout: 10000
+      });
+      const $ = cheerio.load(response.data);
+      const data: any[] = [];
 
-      try {
-        const response = await axiosFetch(`${API_BASE}?action=episodes&url=${encodeURIComponent(realUrl)}`);
-        if (response.data && response.data.data) {
-           responseData = response.data;
+      $('.season-eps a.ep-num').each((i, el) => {
+        const epUrl = $(el).attr('href');
+        let epTitle = $(el).attr('title') || $(el).find('.cl_srt').text().trim() || $(el).text().trim();
+        
+        if (epUrl) {
+          data.push({
+            name: epTitle,
+            url: encryptValue(epUrl)
+          });
         }
-      } catch (e) {
-        console.warn("Primary episodes API failed, trying fallback...");
-      }
+      });
 
-      // ALWAYS TRY FALLBACK SCRAPING FOR WATCH LINKS TO ENSURE WE GET ALL EPISODES (the proxy api might truncate)
-      if (realUrl.includes("/watch/") || realUrl.includes("alooytv")) {
-        try {
-           const fallRes = await axios.get(realUrl, {
-             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-             },
-             httpAgent: new http.Agent({ family: 4 }),
-             httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 }),
-           });
-           const $ = cheerio.load(fallRes.data);
-           const episodesMap = new Map<string, any>();
-           
-           const isAlooyTv = realUrl.includes("alooytv");
-           // Seed map with existing proxy data ONLY if not alooytv to avoid their bad proxy parsing
-           if (!isAlooyTv && responseData.data && Array.isArray(responseData.data)) {
-               responseData.data.forEach(ep => {
-                   if (ep.url) {
-                      const isBadProxyItem = ep.name && (/الخائن|القضاء|الطائر/i.test(ep.name) && !ep.name.includes("حلقة"));
-                      if (!isBadProxyItem) episodesMap.set(ep.url, ep);
-                   }
-               });
-           }
-
-           const parsedOriginalUrl = new URL(realUrl);
-           const originalPath = parsedOriginalUrl.pathname;
-           
-           // Find in <a> tags
-           $('.episodes-list a, .list-episodes a, a[href*="/watch/"], .seasons a').each((i, el) => {
-             const epTitle = $(el).text().replace(/\n/g, '').trim();
-             const epHref = $(el).attr('href');
-             processWatchLink(epTitle, epHref, $(el));
-           });
-
-           // Find in <option> tags for dropdowns
-           $('select option').each((i, el) => {
-             const epTitle = $(el).text().replace(/\n/g, '').trim();
-             const epHref = $(el).attr('value');
-             // often they put the raw URL in the value attribute
-             if (epHref && epHref.includes("/watch/")) {
-               processWatchLink(epTitle, epHref, $(el));
-             }
-           });
-
-           function processWatchLink(epTitle: string, epHref: string | undefined, $el: any) {
-             if (!epHref || !epTitle || !epHref.includes("/watch/")) return;
-
-             let fullHref = epHref;
-             if (!fullHref.startsWith("http")) {
-                fullHref = `${parsedOriginalUrl.origin}${fullHref.startsWith("/") ? "" : "/"}${fullHref}`;
-             }
-             
-             let parsedHref;
-             try {
-               parsedHref = new URL(fullHref);
-             } catch (e) { return; }
-
-             const isExplicitList = $el.parents('.episodes-list, .list-episodes, .seasons, .Episodes, .ListEpis').length > 0;
-             const isSameSeriesPath = parsedHref.pathname === originalPath;
-             
-             // Many "related" series have titles like "الحلقة الخائن الموسم الاول" and link to diff paths.
-             // We only accept the episode if it's explicitly in an episodes list OR its path matches the current series path exactly.
-             // Also exclude things that look like related garbage.
-             const isRelated = epTitle.includes("شاهد المزيد") || epTitle.includes("تغطية") || epTitle.includes("مسلسلات");
-             
-             if (!isRelated && (isExplicitList || isSameSeriesPath)) {
-                // Formatting E1-P1 to 'الحلقة 1 - جزء 1'
-                let formattedTitle = epTitle.replace(/تشغيل\s*الآن|تشغيل\s*الان|مفتوح\s*للمشاهدة/g, '').trim();
-                
-                if (/^E\d+-P\d+$/.test(formattedTitle)) {
-                    formattedTitle = formattedTitle.replace(/E(\d+)-P(\d+)/, 'الحلقة $1 - جزء $2');
-                } else if (/^E\d+$/.test(formattedTitle)) {
-                    formattedTitle = formattedTitle.replace(/E(\d+)/, 'الحلقة $1');
-                } else if (formattedTitle.includes('الحلقات') && formattedTitle.includes('-')) {
-                    // It's a tab, ignore it
-                    return;
-                }
-
-                if (!episodesMap.has(fullHref)) {
-                   episodesMap.set(fullHref, {
-                     name: formattedTitle,
-                     url: fullHref
-                   });
-                }
-             }
-           }
-           
-           const scrapedEps = Array.from(episodesMap.values());
-           if (scrapedEps.length > 0) {
-             responseData = { status: true, data: scrapedEps };
-           }
-        } catch (fallErr) {
-           console.error("Fallback scraping failed:", fallErr);
-        }
-      }
-
-      if (responseData && responseData.data) {
-        responseData.data = await Promise.all(responseData.data.map(async (ep: any) => {
-          const resolvedEp = { ...ep };
-          if (resolvedEp.image) resolvedEp.image = await getActiveAlooyTvUrl(resolvedEp.image);
-          if (resolvedEp.img) resolvedEp.img = await getActiveAlooyTvUrl(resolvedEp.img);
-          return {
-            ...resolvedEp,
-            url: encryptValue(resolvedEp.url)
-          };
-        }));
-      }
-      
-      if (responseData && responseData.status && responseData.data.length > 0) {
-        setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000); // Cache for 2 hours
+      const responseData = { status: true, data };
+      if (data.length > 0) {
+        setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000);
       }
       res.json(responseData);
     } catch (error) {
@@ -1402,153 +1142,6 @@ async function startServer() {
     }
   }
 
-  // Recursive resolver to find direct video URLs or standard bypass-safe embeds (like archive.org)
-  async function resolveDirectVideoFromPlayer(playerUrl: string, depth = 0): Promise<string> {
-    if (depth > 2) {
-      return playerUrl;
-    }
-
-    const urlLower = playerUrl.toLowerCase();
-    
-    // Already a direct video format
-    const isDirect = urlLower.includes('.mp4') || 
-                    urlLower.includes('.m3u8') || 
-                    urlLower.includes('.webm') || 
-                    urlLower.includes('.ogg');
-    if (isDirect) {
-      return playerUrl;
-    }
-
-    // Do not scrape external players like archive.org or ok.ru directly as players since they don't block us
-    if (urlLower.includes('archive.org') || urlLower.includes('ok.ru') || urlLower.includes('youtube.com') || urlLower.includes('drive.google.com')) {
-      return playerUrl;
-    }
-
-    try {
-      console.log(`[Player Direct Resolver - Depth ${depth}] Fetching: ${playerUrl}`);
-      const response = await axios.get(playerUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-          'Referer': 'https://alooytv.com/',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-        },
-        timeout: 8000,
-        httpAgent: new http.Agent({ family: 4 }),
-        httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
-      });
-
-      const html = response.data;
-      const $ = cheerio.load(html);
-      
-      let foundUrl = "";
-
-      // 1. Check video tag src directly
-      $('video').each((i, el) => {
-        const src = $(el).attr('src');
-        if (src) {
-          const srcAbs = makeAbsoluteUrl(src, playerUrl);
-          const srcLower = srcAbs.toLowerCase();
-          if ((srcLower.includes('.mp4') || srcLower.includes('.m3u8') || srcLower.includes('.webm')) && !srcLower.includes('alooytv.com.mp4')) {
-            foundUrl = srcAbs;
-            return false;
-          }
-        }
-      });
-
-      if (foundUrl) {
-        console.log(`[Player Direct Resolver - Depth ${depth}] Found video tag src: ${foundUrl}`);
-        return foundUrl;
-      }
-
-      // 2. Check video source tags
-      $('video source, source').each((i, el) => {
-        const src = $(el).attr('src');
-        if (src) {
-          const srcAbs = makeAbsoluteUrl(src, playerUrl);
-          const srcLower = srcAbs.toLowerCase();
-          if ((srcLower.includes('.mp4') || srcLower.includes('.m3u8') || srcLower.includes('.webm')) && !srcLower.includes('alooytv.com.mp4')) {
-            foundUrl = srcAbs;
-            return false;
-          }
-        }
-      });
-
-      if (foundUrl) {
-        console.log(`[Player Direct Resolver - Depth ${depth}] Found source tag src: ${foundUrl}`);
-        return foundUrl;
-      }
-
-      // 3. Check script text for media URLs (mp4, m3u8)
-      $('script').each((i, el) => {
-        const text = $(el).text();
-        
-        // Match m3u8 URLs
-        const m3u8Match = text.match(/(https?:\/\/[^\s"'`]+\.m3u8[^\s"'`]*)/i);
-        if (m3u8Match) {
-          foundUrl = m3u8Match[1];
-          return false;
-        }
-
-        // Match mp4 URLs
-        const mp4Match = text.match(/(https?:\/\/[^\s"'`]+\.mp4[^\s"'`]*)/i);
-        if (mp4Match) {
-          if (!mp4Match[1].includes('alooytv.com.mp4') && !mp4Match[1].includes('warning')) {
-            foundUrl = mp4Match[1];
-            return false;
-          }
-        }
-
-        // Match relative mp4/m3u8
-        const relMp4 = text.match(/["'](\/[^\s"'`]+\.mp4[^\s"'`]*)["']/i);
-        if (relMp4) {
-          foundUrl = makeAbsoluteUrl(relMp4[1], playerUrl);
-          return false;
-        }
-        const relM3u8 = text.match(/["'](\/[^\s"'`]+\.m3u8[^\s"'`]*)["']/i);
-        if (relM3u8) {
-          foundUrl = makeAbsoluteUrl(relM3u8[1], playerUrl);
-          return false;
-        }
-      });
-
-      if (foundUrl) {
-        console.log(`[Player Direct Resolver - Depth ${depth}] Found script-embedded URL: ${foundUrl}`);
-        return foundUrl;
-      }
-
-      // 4. Check iframe sources recursively
-      let iframeUrls: string[] = [];
-      $('iframe').each((i, el) => {
-        const src = $(el).attr('src');
-        if (src) {
-          iframeUrls.push(makeAbsoluteUrl(src, playerUrl));
-        }
-      });
-
-      for (const iframeUrl of iframeUrls) {
-        const iframeLower = iframeUrl.toLowerCase();
-        // If it is archive.org, ok.ru, drive.google.com etc. - return it immediately as they are bypass-safe embeds!
-        if (iframeLower.includes('archive.org') || iframeLower.includes('drive.google.com') || iframeLower.includes('ok.ru') || iframeLower.includes('youtube.com')) {
-          console.log(`[Player Direct Resolver - Depth ${depth}] Found bypass-safe embed iframe: ${iframeUrl}`);
-          return iframeUrl;
-        }
-        
-        // Otherwise, recursively resolve this iframe player
-        if (iframeLower.includes('alooytv') || iframeLower.includes('fitnur') || iframeLower.includes('play.php') || iframeLower.includes('player') || iframeLower.includes('embed')) {
-          const resolved = await resolveDirectVideoFromPlayer(iframeUrl, depth + 1);
-          if (resolved !== iframeUrl) {
-            return resolved;
-          }
-        }
-      }
-
-    } catch (err: any) {
-      console.error(`[Player Direct Resolver - Depth ${depth}] Error fetching ${playerUrl}:`, err.message);
-    }
-
-    return playerUrl;
-  }
-
   // 4. Play URL
   app.get("/api/v1/play", async (req, res) => {
     try {
@@ -1556,141 +1149,164 @@ async function startServer() {
       if (!url) return res.status(400).json({ status: false });
       
       const decryptedUrl = decryptValue(url as string) || (url as string);
-      const realUrl = await getActiveAlooyTvUrl(decryptedUrl);
-      const cacheKey = `play:${realUrl}`;
+      let realUrl = decryptedUrl;
+      // Append /see/ if it's not present, because that's the page containing the player iframe
+      if (!realUrl.endsWith('/see/') && !realUrl.endsWith('/see')) {
+        if (!realUrl.endsWith('/')) realUrl += '/';
+        realUrl += 'see/';
+      }
+
+      const cacheKey = `play_3isk:${realUrl}`;
       const cached = getCachedData(cacheKey);
       if (cached) {
         return res.json(cached);
       }
 
-      let responseData: any = null;
-      try {
-        const response = await axiosFetch(`${API_BASE}?action=play&url=${encodeURIComponent(realUrl)}`);
-        if (response.data && response.data.status && response.data.player_url) {
-          const checkUrl = String(response.data.player_url).toLowerCase();
-          // Only intercept the actual warning/hotlink block video (alooytv.com.mp4) or a generic warning link, allow all other archive.org links!
-          const isWarningVideo = checkUrl.includes("alooytv.com.mp4") || checkUrl.endsWith("/alooytv.com.mp4") || checkUrl.includes("warning");
-          if (!isWarningVideo) {
-            responseData = response.data;
-          } else {
-            console.warn(`[Play API Override] Intercepted blocked archive.org warning link: ${response.data.player_url}. Forcing fallback Cheerio scraper!`);
-          }
-        }
-      } catch (e) {
-        console.warn("Primary play API failed, trying fallback...");
-      }
+      const response = await axios.get(realUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        timeout: 10000
+      });
+      const $ = cheerio.load(response.data);
 
-      // Fallback Cheerio scraping specifically for AlooyTV URLs to find embedded play players or m3u8 sources
-      if ((!responseData || !responseData.player_url) && realUrl.includes("alooytv")) {
-        try {
-          const pageRes = await axios.get(realUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-              'Referer': 'https://alooytv.com/'
-            },
-            timeout: 10000,
-            httpAgent: new http.Agent({ family: 4 }),
-            httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
-          });
+      let iframeSrc = $('#iframe_player').attr('src') || $('.frame-container iframe').attr('src');
 
-          const $ = cheerio.load(pageRes.data);
-          let playerUrl = "";
-
-          // 1. Try finding iframe sources (players/embeds)
-          $('iframe').each((i, el) => {
+      if (!iframeSrc) {
+         // Also check for embedded players in other containers
+         $('iframe').each((i, el) => {
             const src = $(el).attr('src');
-            if (src && (src.includes('player') || src.includes('embed') || src.includes('vid') || src.includes('stream') || src.includes('play'))) {
-              playerUrl = src;
-              return false; // break
+            if (src && (src.includes('embed') || src.includes('player'))) {
+                iframeSrc = src;
+                return false;
             }
-          });
-
-          // 2. Try finding video/source sources (m3u8/mp4)
-          if (!playerUrl) {
-            $('video source, source').each((i, el) => {
-              const src = $(el).attr('src');
-              if (src && (src.includes('.m3u8') || src.includes('.mp4'))) {
-                playerUrl = src;
-                return false; // break
-              }
-            });
-          }
-
-          // 3. Try finding scripts with m3u8 or player URLs
-          if (!playerUrl) {
-            $('script').each((i, el) => {
-              const text = $(el).text();
-              const m3u8Match = text.match(/(https?:\/\/[^\s"'`]+\.m3u8[^\s"'`]*)/i);
-              if (m3u8Match) {
-                playerUrl = m3u8Match[1];
-                return false; // break
-              }
-              const iframeMatch = text.match(/src=["'](https?:\/\/[^\s"'`]+(?:player|embed)[^\s"'`]+)["']/i);
-              if (iframeMatch) {
-                playerUrl = iframeMatch[1];
-                return false; // break
-              }
-            });
-          }
-
-          if (playerUrl) {
-            if (playerUrl.startsWith('//')) {
-              playerUrl = 'https:' + playerUrl;
-            } else if (playerUrl.startsWith('/')) {
-              const parsed = new URL(realUrl);
-              playerUrl = parsed.origin + playerUrl;
-            }
-
-            console.log(`[AlooyTV Player Scraper] Successfully resolved fallback play URL: ${playerUrl}`);
-            responseData = {
-              status: true,
-              player_url: playerUrl
-            };
-          }
-        } catch (scrapeErr: any) {
-          console.error("Fallback player scraping failed:", scrapeErr.message);
-        }
+         });
       }
 
-      if (responseData && responseData.player_url) {
-        try {
-          const absPlayerUrl = makeAbsoluteUrl(responseData.player_url, realUrl);
-          const directStreamUrl = await resolveDirectVideoFromPlayer(absPlayerUrl);
-          if (directStreamUrl) {
-            console.log(`[Play API] Successfully resolved direct/bypassed streaming URL: ${directStreamUrl}`);
-            responseData.player_url = directStreamUrl;
-          }
-        } catch (resolveErr: any) {
-          console.error("Error resolving direct video from player page:", resolveErr.message);
-        }
+      if (iframeSrc) {
+         if (iframeSrc.startsWith('//')) {
+             iframeSrc = 'https:' + iframeSrc;
+         } else if (iframeSrc.startsWith('/')) {
+             const parsed = new URL(realUrl);
+             iframeSrc = parsed.origin + iframeSrc;
+         }
 
-        const urlLower = responseData.player_url.toLowerCase();
-        const isDirect = urlLower.includes('.mp4') || 
-                        urlLower.includes('.m3u8') || 
-                        urlLower.includes('.webm') || 
-                        urlLower.includes('.ogg');
-        
-        if (!isDirect && (urlLower.includes('alooytv') || urlLower.includes('fitnur') || urlLower.includes('play.php') || urlLower.includes('player'))) {
-          console.log(`[Play API Proxy Wrapper] Wrapping iframe player in secure server-side proxy: ${responseData.player_url}`);
-          const encryptedTarget = encryptValue(responseData.player_url);
-          responseData.player_url = `/api/v1/alooy-player?url=${encodeURIComponent(encryptedTarget)}`;
-        } else {
-          responseData.player_url = encryptValue(responseData.player_url);
-        }
+         // Wrap it in our new 3isk proxy to defeat frame-busters
+         const encryptedTarget = encryptValue(iframeSrc);
+         const proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
+         
+         const responseData = { status: true, player_url: proxyUrl };
+         setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000);
+         return res.json(responseData);
       }
 
-      if (responseData && responseData.status) {
-        setCachedData(cacheKey, responseData, 1 * 60 * 60 * 1000); // Cache for 1 hour
-        res.json(responseData);
-      } else {
-        res.status(404).json({ status: false, message: "Video resource not found" });
-      }
+      res.status(404).json({ status: false, message: "Video resource not found" });
     } catch (error) {
       res.status(500).json({ status: false });
     }
   });
 
-  // 4.1. Image Proxy to bypass hotlink and domain protections on API images
+  // 4.1. Secure Iframe Proxy / Bypass for 3iskk.xyz
+  app.get("/api/v1/3isk-player", async (req, res) => {
+    try {
+      const { url } = req.query;
+      if (!url) {
+        return res.status(400).send("Missing player URL");
+      }
+
+      const decryptedUrl = decryptValue(url as string) || (url as string);
+      if (!decryptedUrl.startsWith("http")) {
+        return res.status(400).send("Invalid player URL");
+      }
+
+      console.log(`[3isk Player Proxy] Fetching original player page: ${decryptedUrl}`);
+      
+      const response = await axios.get(decryptedUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Referer': 'https://3iskk.xyz/',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
+        },
+        timeout: 12000,
+        httpAgent: new http.Agent({ family: 4 }),
+        httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
+      });
+
+      let html = response.data;
+      if (typeof html !== 'string') {
+        return res.status(500).send("Invalid player response structure.");
+      }
+
+      const $ = cheerio.load(html);
+      const parsedUrl = new URL(decryptedUrl);
+      const originalOrigin = parsedUrl.origin;
+
+      // 1. Inject <base> tag to force the browser to resolve relative resources to the original host
+      const baseTagExists = $('base').length > 0;
+      if (!baseTagExists) {
+        $('head').prepend(`<base href="${originalOrigin}/">`);
+      } else {
+        $('base').attr('href', `${originalOrigin}/`);
+      }
+
+      // 2. Inject our elite window.top / window.parent spoofing script
+      const spoofScript = `
+        <script id="bypass-script">
+          (function() {
+            try {
+              // Block top level navigation changes & domain checks
+              Object.defineProperty(window, 'parent', { get: function() { return window; } });
+              Object.defineProperty(window, 'top', { get: function() { return window; } });
+              Object.defineProperty(document, 'referrer', { get: function() { return 'https://3iskk.xyz/'; } });
+              
+              // Prevent setting window.location.href or calling replace
+              const originalReplace = window.location.replace;
+              window.location.replace = function(url) {
+                console.warn('[Proxy Player] Blocked frame redirect:', url);
+                return;
+              };
+              
+              // Safeguard window.location setter
+              const loc = window.location;
+              const originalAssign = loc.assign;
+              loc.assign = function(url) {
+                console.warn('[Proxy Player] Blocked loc.assign redirect:', url);
+                return;
+              };
+            } catch(e) {
+              console.error('[Proxy Player] Spoof error:', e);
+            }
+          })();
+        </script>
+      `;
+      $('head').prepend(spoofScript);
+
+      // 3. Make all relative src/href attributes absolute just in case
+      $('[src]').each((i, el) => {
+        const src = $(el).attr('src');
+        if (src && !src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('//') && !src.startsWith('javascript:')) {
+          $(el).attr('src', makeAbsoluteUrl(src, decryptedUrl));
+        }
+      });
+
+      $('[href]').each((i, el) => {
+        const href = $(el).attr('href');
+        if (href && !href.startsWith('http') && !href.startsWith('javascript:') && !href.startsWith('#') && !href.startsWith('//')) {
+          $(el).attr('href', makeAbsoluteUrl(href, decryptedUrl));
+        }
+      });
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Frame-Options', 'ALLOWALL');
+      res.setHeader('Content-Security-Policy', "frame-ancestors *");
+      res.send($.html());
+
+    } catch (error: any) {
+      console.error("[3isk Player Proxy Error] Failed proxying player page:", error.message);
+      res.status(500).send(`Error loading secure player wrapper: ${error.message}`);
+    }
+  });
+
+  // 4.2. Image Proxy to bypass hotlink and domain protections on API images
   app.get("/api/v1/image-proxy", async (req, res) => {
     let targetUrl = "";
     let rawUrl = "";
@@ -1703,8 +1319,7 @@ async function startServer() {
         return res.status(400).send("Invalid target URL");
       }
 
-      // Automatically rewrite the image URL to the active AlooyTV domain if it's an AlooyTV image
-      targetUrl = await getActiveAlooyTvUrl(rawUrl);
+      targetUrl = rawUrl;
 
       // Helper function to fetch stream with manual redirect tracking to preserve headers!
       const fetchImageStream = async (urlToFetch: string) => {
@@ -1716,8 +1331,9 @@ async function startServer() {
           const parsedCurrent = new URL(currentUrl);
           const hostVal = parsedCurrent.origin;
           let referer = hostVal + '/';
-          if (currentUrl.includes('alooytv') || currentUrl.includes('fitnur')) {
-            referer = 'https://alooytv.com/';
+          
+          if (currentUrl.includes('3iskk.xyz')) {
+            referer = 'https://3iskk.xyz/';
           }
 
           response = await axios({
@@ -1834,118 +1450,6 @@ async function startServer() {
     `);
   });
 
-  // 4.5.5. AlooyTV Secure Iframe Proxy / Bypass
-  app.get("/api/v1/alooy-player", async (req, res) => {
-    try {
-      const { url } = req.query;
-      if (!url) {
-        return res.status(400).send("Missing player URL");
-      }
-
-      const decryptedUrl = decryptValue(url as string) || (url as string);
-      if (!decryptedUrl.startsWith("http")) {
-        return res.status(400).send("Invalid player URL");
-      }
-
-      console.log(`[Alooy Player Proxy] Fetching original player page: ${decryptedUrl}`);
-      
-      const response = await axios.get(decryptedUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-          'Referer': 'https://alooytv.com/',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
-        },
-        timeout: 12000,
-        httpAgent: new http.Agent({ family: 4 }),
-        httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
-      });
-
-      let html = response.data;
-      if (typeof html !== 'string') {
-        return res.status(500).send("Invalid player response structure.");
-      }
-
-      const $ = cheerio.load(html);
-      const parsedUrl = new URL(decryptedUrl);
-      const originalOrigin = parsedUrl.origin;
-
-      // 1. Inject <base> tag to force the browser to resolve relative resources to the original host
-      const baseTagExists = $('base').length > 0;
-      if (!baseTagExists) {
-        $('head').prepend(`<base href="${originalOrigin}/">`);
-      } else {
-        $('base').attr('href', `${originalOrigin}/`);
-      }
-
-      // 2. Inject our elite window.top / window.parent and document.referrer spoofing script
-      const spoofScript = `
-        <script id="alooy-bypass-script">
-          (function() {
-            try {
-              // Block top level navigation changes & domain checks
-              Object.defineProperty(window, 'parent', { get: function() { return window; } });
-              Object.defineProperty(window, 'top', { get: function() { return window; } });
-              Object.defineProperty(document, 'referrer', { get: function() { return 'https://alooytv.com/'; } });
-              
-              // Prevent setting window.location.href or calling replace with fitnur warning
-              const originalReplace = window.location.replace;
-              window.location.replace = function(url) {
-                if (url && (url.includes('fitnur.com') || url.includes('warning') || url.includes('alooytv.com.mp4'))) {
-                  console.warn('[Proxy Player] Blocked frame redirect to warning page:', url);
-                  return;
-                }
-                try {
-                  return originalReplace.apply(this, arguments);
-                } catch(e) {}
-              };
-              
-              // Safeguard window.location setter
-              const loc = window.location;
-              const originalAssign = loc.assign;
-              loc.assign = function(url) {
-                if (url && (url.includes('fitnur.com') || url.includes('warning') || url.includes('alooytv.com.mp4'))) {
-                  console.warn('[Proxy Player] Blocked loc.assign redirect:', url);
-                  return;
-                }
-                try {
-                  return originalAssign.apply(this, arguments);
-                } catch(e) {}
-              };
-            } catch(e) {
-              console.error('[Proxy Player] Spoof error:', e);
-            }
-          })();
-        </script>
-      `;
-      $('head').prepend(spoofScript);
-
-      // 3. Make all relative src/href attributes absolute just in case, to guarantee they load correctly
-      $('[src]').each((i, el) => {
-        const src = $(el).attr('src');
-        if (src && !src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('//') && !src.startsWith('javascript:')) {
-          $(el).attr('src', makeAbsoluteUrl(src, decryptedUrl));
-        }
-      });
-
-      $('[href]').each((i, el) => {
-        const href = $(el).attr('href');
-        if (href && !href.startsWith('http') && !href.startsWith('javascript:') && !href.startsWith('#') && !href.startsWith('//')) {
-          $(el).attr('href', makeAbsoluteUrl(href, decryptedUrl));
-        }
-      });
-
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.setHeader('X-Frame-Options', 'ALLOWALL');
-      res.setHeader('Content-Security-Policy', "frame-ancestors *");
-      res.send($.html());
-
-    } catch (error: any) {
-      console.error("[Alooy Player Proxy Error] Failed proxying player page:", error.message);
-      res.status(500).send(`Error loading secure player wrapper: ${error.message}`);
-    }
-  });
-
   // 4.6. Secure Stream Proxy (Absolute Protection against sniffers)
   app.get("/api/v1/stream-proxy/:encryptedUrl", async (req, res) => {
     try {
@@ -1968,10 +1472,10 @@ async function startServer() {
         };
 
         // Match known AlooyTV servers and archive.org video hosts
-        const hostMatch = currentUrl.match(/vid[0-9]|alooytv|zvde-dsn|cdn|archive|fitnur/i);
+        const hostMatch = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive/i);
         if (hostMatch) {
-           headersOptions['Referer'] = 'https://alooytv.com/';
-           headersOptions['Origin'] = 'https://alooytv.com';
+           headersOptions['Referer'] = 'https://3iskk.xyz/';
+           headersOptions['Origin'] = 'https://3iskk.xyz';
            headersOptions['Sec-Fetch-Dest'] = 'video';
            headersOptions['Sec-Fetch-Mode'] = 'no-cors';
            headersOptions['Sec-Fetch-Site'] = 'cross-site';

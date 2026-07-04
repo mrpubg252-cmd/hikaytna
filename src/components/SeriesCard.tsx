@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Play, Sparkles } from 'lucide-react';
 import { Series } from '../services/firebase';
+import { getProxiedImageUrl } from '../services/api';
 import { hasNewEpisode } from '../lib/episodeHistory';
 import { getTMDBPoster, getTMDBPosterSync } from '../lib/tmdbHealing';
 import { cn } from '../lib/utils';
@@ -34,7 +35,7 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
     if (cached) return cached;
     
     // 2. Return original image or transparent loading state
-    return item.image || "";
+    return getProxiedImageUrl(item.image) || "";
   });
   const [imageLoaded, setImageLoaded] = React.useState(false);
 
@@ -51,7 +52,7 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
       item.image.includes('default_image') || 
       item.image.includes('thumbnail.jpg') || 
       item.image.includes('logo.png') ||
-      item.image.includes('alooytv') ||
+      item.image.includes('3iskk') ||
       item.image.includes('video_thumb');
 
     if (isPlaceholder) {

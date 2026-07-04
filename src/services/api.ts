@@ -1,7 +1,21 @@
+import { decryptValue, encryptValue } from "../lib/security";
+
+export function getProxiedImageUrl(url: string | undefined): string {
+  if (!url) return "";
+  if (url.startsWith("/") || url.startsWith("data:") || url.includes("image.tmdb.org")) return url;
+  
+  // Only proxy if it's a 3isk or external potentially protected image
+  if (url.includes("3iskk.xyz") || url.includes("wp-content") || url.includes("uploads")) {
+    const encrypted = encodeURIComponent(encryptValue(url));
+    return getApiUrl(`/api/v1/image-proxy?url=${encrypted}`);
+  }
+  
+  return url;
+}
+
 // res-safe fetch logic
 import { fetchAllFromFirebase, db } from "./firebase";
 import { ref, onValue } from "firebase/database";
-import { decryptValue } from "../lib/security";
 import { hasNewEpisode, getEpisodeUpdatedAt } from "../lib/episodeHistory";
 import { getApiUrl } from "../lib/apiConfig";
 import { collection, onSnapshot } from "firebase/firestore";

@@ -40,7 +40,7 @@ const SliderBackgroundImage: React.FC<SliderBackgroundImageProps> = ({ series, i
       series.image.includes('default_image') || 
       series.image.includes('thumbnail.jpg') || 
       series.image.includes('logo.png') ||
-      series.image.includes('alooytv') ||
+      series.image.includes('3iskk') ||
       series.image.includes('video_thumb');
 
     if (isPlaceholder) {
@@ -96,7 +96,7 @@ const SliderMiniImage: React.FC<SliderMiniImageProps> = ({ series }) => {
       series.image.includes('default_image') || 
       series.image.includes('thumbnail.jpg') || 
       series.image.includes('logo.png') ||
-      series.image.includes('alooytv') ||
+      series.image.includes('3iskk') ||
       series.image.includes('video_thumb');
 
     if (isPlaceholder) {

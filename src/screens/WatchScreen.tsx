@@ -4,7 +4,7 @@ import { ChevronRight, Share2, Heart, History, MessageSquare, X, ChevronDown, Ch
 import EpisodeGrid, { formatEpisodeTitle } from '../components/EpisodeGrid';
 import CustomPlayer from '../components/CustomPlayer';
 import Header from '../components/Header';
-import { fetchEpisodesFromAPI, fetchPlayUrlFromAPI, fetchSeriesDetailsFromTMDB, fetchPersonCreditsFromTMDB } from '../services/api';
+import { fetchEpisodesFromAPI, fetchPlayUrlFromAPI, fetchSeriesDetailsFromTMDB, fetchPersonCreditsFromTMDB, getProxiedImageUrl } from '../services/api';
 import { fetchAllSeries } from '../services/dataService';
 import { Episode, Series } from '../services/firebase';
 import { db } from '../services/firebase';
@@ -229,7 +229,7 @@ export default function WatchScreen() {
   }
 
   const resolvedSeriesImage = React.useMemo(() => {
-    return getTMDBPosterSync(series.title, series.category) || series.image || "";
+    return getTMDBPosterSync(series.title, series.category) || getProxiedImageUrl(series.image) || "";
   }, [series]);
 
   const [episodes, setEpisodes] = useState<Episode[]>([]);
@@ -889,7 +889,7 @@ export default function WatchScreen() {
                         resultLower.includes('.m3u8') || 
                         resultLower.includes('.webm');
                         
-    const isAlooySource = resultLower.includes('alooytv') || 
+    const is3iskSource = resultLower.includes('3iskk') || 
                           resultLower.includes('fitnur.com') || 
                           resultLower.includes('archive.org');
 
@@ -898,7 +898,7 @@ export default function WatchScreen() {
                      resultLower.includes('play.php') || 
                      resultLower.includes('iframe');
 
-    if ((isVideoFile || isAlooySource) && !isIframe && !result.startsWith('/api/v1/')) {
+    if ((isVideoFile || is3iskSource) && !isIframe && !result.startsWith('/api/v1/')) {
       const encrypted = encodeURIComponent(encryptValue(result));
       result = getApiUrl(`/api/v1/stream-proxy/${encrypted}`);
     }
