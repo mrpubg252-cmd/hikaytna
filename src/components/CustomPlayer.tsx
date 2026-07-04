@@ -363,6 +363,26 @@ export default function CustomPlayer({
     }
   };
 
+  const getDirectEmbedUrl = (url: string): string => {
+    if (!url) return "";
+    if (url.startsWith("http") && !url.includes("/api/proxy-embed")) {
+      return url;
+    }
+    try {
+      const urlObj = new URL(url, window.location.origin);
+      const nume = urlObj.searchParams.get("nume");
+      const post = urlObj.searchParams.get("post");
+      const type = urlObj.searchParams.get("type");
+      if (nume && post) {
+        const mappedType = type === "tv" ? "2" : "1";
+        return `https://3iskk.xyz/embed/${nume}/${post}/${mappedType}/`;
+      }
+    } catch (e) {
+      console.error("Error parsing proxy URL:", e);
+    }
+    return url;
+  };
+
   return (
       <div 
         ref={containerRef}
@@ -457,7 +477,7 @@ export default function CustomPlayer({
             )}
             {videoUrl ? (
               <iframe
-                src={videoUrl}
+                src={getDirectEmbedUrl(videoUrl)}
                 className="w-full h-full border-none"
                 allowFullScreen
                 referrerPolicy="no-referrer"

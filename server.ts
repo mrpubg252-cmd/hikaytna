@@ -292,8 +292,14 @@ app.get("/api/proxy-embed", async (req, res) => {
   const targetUrl = `${SOURCE_URL}/embed/${nume}/${post}/${mappedType}/`;
   
   try {
-    const response = await axiosInstance.get(targetUrl);
-    const html = response.data;
+    const response = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Referer': SOURCE_URL,
+        'Origin': SOURCE_URL
+      }
+    });
+    const html = await response.text();
     
     const $ = cheerio.load(html);
     const myHost = `${req.protocol}://${req.get('host')}`;
@@ -348,13 +354,14 @@ app.get("/api/proxy-player", async (req, res) => {
   }
 
   try {
-    const response = await axiosInstance.get(url, {
+    const response = await fetch(url, {
       headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Referer': SOURCE_URL,
         'Origin': SOURCE_URL,
       }
     });
-    let html = response.data;
+    let html = await response.text();
     const parsedUrl = new URL(url);
     const origin = parsedUrl.origin;
 
@@ -426,10 +433,20 @@ function deobfuscateDeanEdwards(packedCode: string): string {
 async function resolveDirectVideo(nume: string, post: string, type: string): Promise<{ videoUrl: string | null; type: string; playerIframeSrc?: string } | null> {
   const mappedType = type === "tv" ? "2" : "1";
   const targetUrl = `${SOURCE_URL}/embed/${nume}/${post}/${mappedType}/`;
+  
   try {
+    const fetchOptions = {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Referer': SOURCE_URL,
+        'Origin': SOURCE_URL
+      }
+    };
+
     // 1. Fetch the 3iskk embed wrapper page
-    const embedRes = await axiosInstance.get(targetUrl);
-    const $embed = cheerio.load(embedRes.data);
+    const embedRes = await fetch(targetUrl, fetchOptions);
+    const embedHtml = await embedRes.text();
+    const $embed = cheerio.load(embedHtml);
     
     // Find the actual player iframe source
     const playerIframeSrc = $embed("iframe").first().attr("src");
@@ -445,14 +462,9 @@ async function resolveDirectVideo(nume: string, post: string, type: string): Pro
     }
 
     // 2. Fetch the player page with correct Referer/Origin spoofing
-    const playerRes = await axiosInstance.get(absolutePlayerIframeSrc, {
-      headers: {
-        'Referer': SOURCE_URL,
-        'Origin': SOURCE_URL
-      }
-    });
+    const playerRes = await fetch(absolutePlayerIframeSrc, fetchOptions);
     
-    const playerHtml = playerRes.data;
+    const playerHtml = await playerRes.text();
     const $player = cheerio.load(playerHtml);
     
     // Try to find a direct video tag or source tag first
@@ -612,12 +624,8 @@ app.get("/api/proxy-hls", async (req, res) => {
     const isM3U8 = url.includes('.m3u8') || url.includes('m3u8');
 
     if (isM3U8) {
-      const response = await axiosInstance.get(url, {
-        responseType: 'arraybuffer',
-        headers,
-      });
-
-      const text = response.data.toString('utf-8');
+      const response = await fetch(url, { headers });
+      const text = await response.text();
       const lines = text.split('\n');
       
       const refererParam = referer ? String(referer) : '';
@@ -659,23 +667,26 @@ app.get("/api/proxy-hls", async (req, res) => {
       res.send(rewrittenLines.join('\n'));
     } else {
       // It's a .ts segment or binary file, stream it directly to prevent high memory usage and timeout
-      const response = await axiosInstance.get(url, {
-        responseType: 'stream',
-        headers,
-      });
+      const response = await fetch(url, { headers });
 
-      const contentTypeRaw = response.headers['content-type'];
+      const contentTypeRaw = response.headers.get('content-type');
       const contentType = typeof contentTypeRaw === 'string' ? contentTypeRaw : '';
 
       res.setHeader('Content-Type', contentType || 'video/MP2T');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Cache-Control', 'public, max-age=86400');
       
-      if (response.headers['content-length']) {
-        res.setHeader('Content-Length', String(response.headers['content-length']));
+      if (response.headers.get('content-length')) {
+        res.setHeader('Content-Length', String(response.headers.get('content-length')));
       }
 
-      response.data.pipe(res);
+      if (response.body) {
+        // @ts-ignore
+        const { Readable } = require('stream');
+        Readable.fromWeb(response.body).pipe(res);
+      } else {
+        res.end();
+      }
     }
   } catch (error) {
     console.error("HLS proxy error:", error);
