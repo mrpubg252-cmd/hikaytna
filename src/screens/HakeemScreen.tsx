@@ -829,8 +829,13 @@ export default function HakeemScreen() {
               </p>
             </div>
 
-            {/* Hakeem AI Quick Activation Widget if not activated */}
-            {isActivated === false && (
+            {/* Hakeem AI Quick Activation Widget based on status */}
+            {isActivated === null ? (
+              <div className="flex items-center justify-center gap-2 py-4 text-zinc-500 text-xs font-semibold">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>جاري التحقق من حالة تفعيل حكيم...</span>
+              </div>
+            ) : isActivated === false ? (
               <motion.div 
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -860,6 +865,30 @@ export default function HakeemScreen() {
                       <span>تفعيل مساعد حكيم الآن تلقائياً ✨</span>
                     </>
                   )}
+                </button>
+              </motion.div>
+            ) : (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="max-w-md mx-auto p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center space-y-2 my-3 shadow-lg relative overflow-hidden"
+              >
+                <div className="flex items-center justify-center gap-2 text-emerald-400">
+                  <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
+                  <span className="text-xs font-black">مساعد حكيم نشط ومفعل بالكامل! 🟢</span>
+                </div>
+                {activationConfig && (
+                  <p className="text-[10px] text-zinc-400 font-mono leading-relaxed">
+                    النموذج: {activationConfig.model || 'google/gemini-2.5-flash'} | المفتاح: {activationConfig.keyObfuscated || 'نشط'}
+                  </p>
+                )}
+                <button
+                  onClick={handleActivateHakeem}
+                  disabled={isActivating}
+                  className="px-3 py-1.5 text-[10px] font-bold text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 active:scale-95 transition-all rounded-md cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isActivating ? 'animate-spin' : ''}`} />
+                  <span>إعادة تهيئة وتحديث التفعيل 🔄</span>
                 </button>
               </motion.div>
             )}

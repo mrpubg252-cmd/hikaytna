@@ -1197,9 +1197,11 @@ async function startServer() {
               // Generate ONLY the first extra page to keep it fast and avoid 503 errors
               pages.push(`${baseUrl}/50.html`);
             }
+            const resolvedImage = cat.image ? await getActiveAlooyTvUrl(cat.image) : "";
             resolvedData.push({
               ...cat,
               url: resolvedUrl,
+              image: resolvedImage,
               pages
             });
           }
@@ -1229,6 +1231,12 @@ async function startServer() {
 
       const response = await axiosFetch(`${API_BASE}?action=series&url=${encodeURIComponent(realUrl)}`);
       if (response.data && response.data.status) {
+        if (Array.isArray(response.data.data)) {
+          for (const s of response.data.data) {
+            if (s.image) s.image = await getActiveAlooyTvUrl(s.image);
+            if (s.img) s.img = await getActiveAlooyTvUrl(s.img);
+          }
+        }
         setCachedData(cacheKey, response.data, 4 * 60 * 60 * 1000); // Cache for 4 hours
       }
       res.json(response.data);
@@ -1358,9 +1366,14 @@ async function startServer() {
       }
 
       if (responseData && responseData.data) {
-        responseData.data = responseData.data.map((ep: any) => ({
-          ...ep,
-          url: encryptValue(ep.url)
+        responseData.data = await Promise.all(responseData.data.map(async (ep: any) => {
+          const resolvedEp = { ...ep };
+          if (resolvedEp.image) resolvedEp.image = await getActiveAlooyTvUrl(resolvedEp.image);
+          if (resolvedEp.img) resolvedEp.img = await getActiveAlooyTvUrl(resolvedEp.img);
+          return {
+            ...resolvedEp,
+            url: encryptValue(resolvedEp.url)
+          };
         }));
       }
       
@@ -1391,7 +1404,12 @@ async function startServer() {
       try {
         const response = await axiosFetch(`${API_BASE}?action=play&url=${encodeURIComponent(realUrl)}`);
         if (response.data && response.data.status && response.data.player_url) {
-          responseData = response.data;
+          const checkUrl = String(response.data.player_url).toLowerCase();
+          if (!checkUrl.includes("archive.org") && !checkUrl.includes("alooytv.com.mp4")) {
+            responseData = response.data;
+          } else {
+            console.warn(`[Play API Override] Intercepted blocked archive.org or warning link: ${response.data.player_url}. Forcing fallback Cheerio scraper!`);
+          }
         }
       } catch (e) {
         console.warn("Primary play API failed, trying fallback...");
@@ -1487,11 +1505,12 @@ async function startServer() {
   // 4.1. Image Proxy to bypass hotlink and domain protections on API images
   app.get("/api/v1/image-proxy", async (req, res) => {
     let targetUrl = "";
+    let rawUrl = "";
     try {
       const { url } = req.query;
       if (!url) return res.status(400).send("Missing URL parameter");
       
-      const rawUrl = decodeURIComponent(url as string);
+      rawUrl = decodeURIComponent(url as string);
       if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
         return res.status(400).send("Invalid target URL");
       }
@@ -1501,20 +1520,49 @@ async function startServer() {
 
       // Extract the original host of the image to set as Referer if needed
       const hostVal = new URL(targetUrl).origin;
+      let referer = hostVal + '/';
+      if (targetUrl.includes('alooytv') || targetUrl.includes('fitnur')) {
+        referer = 'https://alooytv.com/';
+      }
 
-      const response = await axios({
-        method: 'get',
-        url: targetUrl,
-        responseType: 'stream',
-        httpAgent: new http.Agent({ family: 4 }),
-        httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 }),
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-          'Referer': hostVal + '/', // Dynamically use the origin of the target image as the Referer
-          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
-        },
-        timeout: 4000 // Fast fail to prevent browser image stuttering
-      });
+      let response;
+      try {
+        response = await axios({
+          method: 'get',
+          url: targetUrl,
+          responseType: 'stream',
+          httpAgent: new http.Agent({ family: 4 }),
+          httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 }),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+            'Referer': referer,
+            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+          },
+          timeout: 6000
+        });
+      } catch (err: any) {
+        console.warn(`[Image Proxy First Try Failed] url: ${targetUrl}, trying fallback to original rawUrl...`);
+        // If targetUrl was rewritten and failed, try the original rawUrl
+        if (targetUrl !== rawUrl) {
+          const originalHost = new URL(rawUrl).origin;
+          const fallbackReferer = rawUrl.includes('alooytv') || rawUrl.includes('fitnur') ? 'https://alooytv.com/' : originalHost + '/';
+          response = await axios({
+            method: 'get',
+            url: rawUrl,
+            responseType: 'stream',
+            httpAgent: new http.Agent({ family: 4 }),
+            httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 }),
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+              'Referer': fallbackReferer,
+              'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+            },
+            timeout: 6000
+          });
+        } else {
+          throw err;
+        }
+      }
 
       const contentType = response.headers['content-type'];
       if (typeof contentType === 'string') {
