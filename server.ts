@@ -1007,6 +1007,112 @@ async function startServer() {
   }
   // =======================================================
 
+  // Dynamic scraper to find the currently active working domain of AlooyTV from their Altum BioLink page (https://fitnur.com/alooytv)
+  async function fetchActiveAlooyTvDomainFromBioLink(): Promise<string | null> {
+    const cacheKey = "alooytv_active_domain_scraped";
+    const cached = getCachedData(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      console.log("[AlooyTV Scraper] Fetching active domain from biolink: https://fitnur.com/alooytv");
+      const res = await axios.get("https://fitnur.com/alooytv", {
+        timeout: 6000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5'
+        },
+        httpAgent: new http.Agent({ family: 4 }),
+        httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
+      });
+
+      const $ = cheerio.load(res.data);
+      const hrefs: string[] = [];
+      $('a').each((i, el) => {
+        const href = $(el).attr('href');
+        if (href && href.includes('alooytv')) {
+          hrefs.push(href);
+        }
+      });
+
+      for (const href of hrefs) {
+        try {
+          const parsed = new URL(href);
+          if (parsed.hostname && parsed.hostname.includes('alooytv')) {
+            const activeDomain = `${parsed.protocol}//${parsed.hostname}`;
+            console.log(`[AlooyTV Scraper] Successfully resolved active base domain: ${activeDomain}`);
+            setCachedData(cacheKey, activeDomain, 30 * 60 * 1000); // Cache for 30 minutes
+            return activeDomain;
+          }
+        } catch (e) {
+          // Skip invalid URLs
+        }
+      }
+    } catch (error: any) {
+      console.error("[AlooyTV Scraper] Error scraping fitnur.com/alooytv:", error.message);
+    }
+
+    return null;
+  }
+
+  // Fallback candidate verifier if scraping fails
+  async function findActiveDomainFromCandidates(): Promise<string | null> {
+    const cacheKey = "alooytv_active_domain_candidates";
+    const cached = getCachedData(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const baseCandidates = [
+      "https://a.alooytv10.com",
+      "https://a.alooytv13.xyz",
+      "https://a.alooytv11.com",
+      "https://a.alooytv12.com",
+      "https://a.alooytv13.com",
+      "https://a.alooytv14.com",
+      "https://a.alooytv15.com",
+      "https://a.alooytv16.com",
+      "https://a.alooytv10.xyz",
+      "https://a.alooytv11.xyz",
+      "https://a.alooytv12.xyz",
+      "https://a.alooytv14.xyz",
+      "https://a.alooytv15.xyz",
+      "https://a.alooytv16.xyz"
+    ];
+
+    // Try verifying in parallel batches
+    for (let i = 0; i < baseCandidates.length; i += 4) {
+      const batch = baseCandidates.slice(i, i + 4);
+      const results = await Promise.allSettled(
+        batch.map(async (domain) => {
+          const response = await axios.head(domain, {
+            timeout: 2000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+            },
+            httpAgent: new http.Agent({ family: 4 }),
+            httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
+          });
+          if (response.status === 200 || response.status === 301 || response.status === 302) {
+            return domain;
+          }
+          throw new Error("Invalid status");
+        })
+      );
+
+      for (const res of results) {
+        if (res.status === "fulfilled" && res.value) {
+          setCachedData(cacheKey, res.value, 15 * 60 * 1000); // Cache for 15 minutes
+          return res.value;
+        }
+      }
+    }
+
+    return null;
+  }
+
   // Dynamic resolver for AlooyTV domains to automatically bypass Cloudflare Turnstile blocks
   async function getActiveAlooyTvUrl(requestedUrl: string): Promise<string> {
     if (!requestedUrl) return requestedUrl;
@@ -1015,48 +1121,38 @@ async function startServer() {
       return requestedUrl;
     }
 
-    const candidateDomains = [
-      "https://a.alooytv10.com",
-      "https://a.alooytv11.com",
-      "https://a.alooytv12.com",
-      "https://a.alooytv13.com",
-      "https://a.alooytv14.com",
-      "https://a.alooytv15.com",
-      "https://a.alooytv9.com"
-    ];
+    // 1. Try to scrape the current active domain from the fitnur.com/alooytv BioLink
+    let activeDomain = await fetchActiveAlooyTvDomainFromBioLink();
 
-    for (const domain of candidateDomains) {
-      try {
-        const response = await axios.head(domain, { 
-          timeout: 2500,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
-          },
-          httpAgent: new http.Agent({ family: 4 }),
-          httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
-        });
-        if (response.status === 200 || response.status === 301 || response.status === 302) {
-          console.log(`[AlooyTV Resolver] Successfully resolved active domain: ${domain}`);
-          if (requestedUrl.includes("fitnur.com/alooytv")) {
-            return `${domain}/tv-series.html`;
-          }
-          // Replace domain of original URL with the active one
-          try {
-            const originalUrlObj = new URL(requestedUrl);
-            const activeDomainObj = new URL(domain);
-            originalUrlObj.hostname = activeDomainObj.hostname;
-            return originalUrlObj.toString();
-          } catch {
-            return `${domain}/tv-series.html`;
-          }
-        }
-      } catch (err) {
-        // Domain failed or is offline, try next
-      }
+    // 2. If scraping fails, try verifying candidates
+    if (!activeDomain) {
+      activeDomain = await findActiveDomainFromCandidates();
     }
 
-    // Fallback if all candidate checks fail
-    return requestedUrl.includes("fitnur.com/alooytv") ? "https://a.alooytv10.com/tv-series.html" : requestedUrl;
+    // 3. Fallback to a sensible default if all checks fail
+    if (!activeDomain) {
+      activeDomain = "https://a.alooytv10.com";
+    }
+
+    if (requestedUrl.includes("fitnur.com/alooytv")) {
+      return `${activeDomain}/tv-series.html`;
+    }
+
+    // Replace domain of original URL with the active one
+    try {
+      const originalUrlObj = new URL(requestedUrl);
+      const activeDomainObj = new URL(activeDomain);
+      originalUrlObj.hostname = activeDomainObj.hostname;
+      originalUrlObj.protocol = activeDomainObj.protocol;
+      if (activeDomainObj.port) {
+        originalUrlObj.port = activeDomainObj.port;
+      } else {
+        originalUrlObj.port = "";
+      }
+      return originalUrlObj.toString();
+    } catch {
+      return `${activeDomain}/tv-series.html`;
+    }
   }
 
   // API Proxy Routes
@@ -1071,18 +1167,22 @@ async function startServer() {
       const response = await axiosFetch(`${API_BASE}?action=categories`);
       if (response.data && response.data.status) {
         if (Array.isArray(response.data.data)) {
-          response.data.data = response.data.data.map((cat: any) => {
-            const pages = [cat.url];
-            if (cat.url && cat.url.endsWith('.html')) {
-              const baseUrl = cat.url.replace('.html', '');
+          const resolvedData = [];
+          for (const cat of response.data.data) {
+            const resolvedUrl = await getActiveAlooyTvUrl(cat.url);
+            const pages = [resolvedUrl];
+            if (resolvedUrl && resolvedUrl.endsWith('.html')) {
+              const baseUrl = resolvedUrl.replace('.html', '');
               // Generate ONLY the first extra page to keep it fast and avoid 503 errors
               pages.push(`${baseUrl}/50.html`);
             }
-            return {
+            resolvedData.push({
               ...cat,
+              url: resolvedUrl,
               pages
-            };
-          });
+            });
+          }
+          response.data.data = resolvedData;
         }
         setCachedData(cacheKey, response.data, 6 * 60 * 60 * 1000); // Cache for 6 hours
       }
@@ -1099,7 +1199,7 @@ async function startServer() {
       const { url } = req.query;
       if (!url) return res.status(400).json({ status: false });
       
-      const realUrl = url as string;
+      const realUrl = await getActiveAlooyTvUrl(url as string);
       const cacheKey = `series:${realUrl}`;
       const cached = getCachedData(cacheKey);
       if (cached) {
