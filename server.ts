@@ -1663,7 +1663,20 @@ async function startServer() {
         } catch (resolveErr: any) {
           console.error("Error resolving direct video from player page:", resolveErr.message);
         }
-        responseData.player_url = encryptValue(responseData.player_url);
+
+        const urlLower = responseData.player_url.toLowerCase();
+        const isDirect = urlLower.includes('.mp4') || 
+                        urlLower.includes('.m3u8') || 
+                        urlLower.includes('.webm') || 
+                        urlLower.includes('.ogg');
+        
+        if (!isDirect && (urlLower.includes('alooytv') || urlLower.includes('fitnur') || urlLower.includes('play.php') || urlLower.includes('player'))) {
+          console.log(`[Play API Proxy Wrapper] Wrapping iframe player in secure server-side proxy: ${responseData.player_url}`);
+          const encryptedTarget = encryptValue(responseData.player_url);
+          responseData.player_url = `/api/v1/alooy-player?url=${encodeURIComponent(encryptedTarget)}`;
+        } else {
+          responseData.player_url = encryptValue(responseData.player_url);
+        }
       }
 
       if (responseData && responseData.status) {
@@ -1819,6 +1832,118 @@ async function startServer() {
 </body>
 </html>
     `);
+  });
+
+  // 4.5.5. AlooyTV Secure Iframe Proxy / Bypass
+  app.get("/api/v1/alooy-player", async (req, res) => {
+    try {
+      const { url } = req.query;
+      if (!url) {
+        return res.status(400).send("Missing player URL");
+      }
+
+      const decryptedUrl = decryptValue(url as string) || (url as string);
+      if (!decryptedUrl.startsWith("http")) {
+        return res.status(400).send("Invalid player URL");
+      }
+
+      console.log(`[Alooy Player Proxy] Fetching original player page: ${decryptedUrl}`);
+      
+      const response = await axios.get(decryptedUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Referer': 'https://alooytv.com/',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
+        },
+        timeout: 12000,
+        httpAgent: new http.Agent({ family: 4 }),
+        httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
+      });
+
+      let html = response.data;
+      if (typeof html !== 'string') {
+        return res.status(500).send("Invalid player response structure.");
+      }
+
+      const $ = cheerio.load(html);
+      const parsedUrl = new URL(decryptedUrl);
+      const originalOrigin = parsedUrl.origin;
+
+      // 1. Inject <base> tag to force the browser to resolve relative resources to the original host
+      const baseTagExists = $('base').length > 0;
+      if (!baseTagExists) {
+        $('head').prepend(`<base href="${originalOrigin}/">`);
+      } else {
+        $('base').attr('href', `${originalOrigin}/`);
+      }
+
+      // 2. Inject our elite window.top / window.parent and document.referrer spoofing script
+      const spoofScript = `
+        <script id="alooy-bypass-script">
+          (function() {
+            try {
+              // Block top level navigation changes & domain checks
+              Object.defineProperty(window, 'parent', { get: function() { return window; } });
+              Object.defineProperty(window, 'top', { get: function() { return window; } });
+              Object.defineProperty(document, 'referrer', { get: function() { return 'https://alooytv.com/'; } });
+              
+              // Prevent setting window.location.href or calling replace with fitnur warning
+              const originalReplace = window.location.replace;
+              window.location.replace = function(url) {
+                if (url && (url.includes('fitnur.com') || url.includes('warning') || url.includes('alooytv.com.mp4'))) {
+                  console.warn('[Proxy Player] Blocked frame redirect to warning page:', url);
+                  return;
+                }
+                try {
+                  return originalReplace.apply(this, arguments);
+                } catch(e) {}
+              };
+              
+              // Safeguard window.location setter
+              const loc = window.location;
+              const originalAssign = loc.assign;
+              loc.assign = function(url) {
+                if (url && (url.includes('fitnur.com') || url.includes('warning') || url.includes('alooytv.com.mp4'))) {
+                  console.warn('[Proxy Player] Blocked loc.assign redirect:', url);
+                  return;
+                }
+                try {
+                  return originalAssign.apply(this, arguments);
+                } catch(e) {}
+              };
+            } catch(e) {
+              console.error('[Proxy Player] Spoof error:', e);
+            }
+          })();
+        </script>
+      `;
+      $('head').prepend(spoofScript);
+
+      // 3. Make all relative src/href attributes absolute just in case, to guarantee they load correctly
+      $('[src]').each((i, el) => {
+        const src = $(el).attr('src');
+        if (src && !src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('//') && !src.startsWith('javascript:')) {
+          $(el).attr('src', makeAbsoluteUrl(src, decryptedUrl));
+        }
+      });
+
+      $('[href]').each((i, el) => {
+        const href = $(el).attr('href');
+        if (href && !href.startsWith('http') && !href.startsWith('javascript:') && !href.startsWith('#') && !href.startsWith('//')) {
+          $(el).attr('href', makeAbsoluteUrl(href, decryptedUrl));
+        }
+      });
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('X-Frame-Options', 'ALLOWALL');
+      res.setHeader('Content-Security-Policy', "frame-ancestors *");
+      res.send($.html());
+
+    } catch (error: any) {
+      console.error("[Alooy Player Proxy Error] Failed proxying player page:", error.message);
+      res.status(500).send(`Error loading secure player wrapper: ${error.message}`);
+    }
   });
 
   // 4.6. Secure Stream Proxy (Absolute Protection against sniffers)

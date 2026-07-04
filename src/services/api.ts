@@ -307,7 +307,12 @@ export async function fetchPlayUrlFromAPI(episodeUrl: string, signal?: AbortSign
   try {
     const res = await resilientFetch(getApiUrl(API_BASE + "/play?url=" + encodeURIComponent(episodeUrl)), { signal });
     const data = await res.json();
-    if (data.status && data.player_url) return decryptValue(data.player_url);
+    if (data.status && data.player_url) {
+      if (data.player_url.startsWith('/api/v1/')) {
+        return data.player_url;
+      }
+      return decryptValue(data.player_url);
+    }
   } catch (error) { console.error("Play error", error); }
   return null;
 }
