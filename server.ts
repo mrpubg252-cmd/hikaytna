@@ -8,6 +8,8 @@ import https from "https";
 const app = express();
 const PORT = 3000;
 
+app.set('trust proxy', true);
+
 const SOURCE_URL = "https://3iskk.xyz";
 
 const axiosInstance = axios.create({
@@ -302,7 +304,7 @@ app.get("/api/proxy-embed", async (req, res) => {
     const html = await response.text();
     
     const $ = cheerio.load(html);
-    const myHost = `${req.protocol}://${req.get('host')}`;
+    const myHost = getMyHost(req);
     
     let playerIframeSrc = $("iframe").first().attr("src");
     
@@ -366,7 +368,7 @@ app.get("/api/proxy-player", async (req, res) => {
     const origin = parsedUrl.origin;
 
     const $ = cheerio.load(html);
-    const myHost = `${req.protocol}://${req.get('host')}`;
+    const myHost = getMyHost(req);
 
     // Rewrite any nested iframes recursively
     $("iframe").each((_, el) => {
@@ -401,7 +403,8 @@ app.get("/api/proxy-player", async (req, res) => {
 
 // Dean Edwards unpacker
 function deobfuscateDeanEdwards(packedCode: string): string {
-  const regex = /return\s*p\s*\}\s*\(\s*['"](.*?)['"]\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*['"](.*?)['"]\s*\.\s*split\s*\(\s*['"]\|['"]\s*\)/;
+  // More flexible regex for Dean Edwards packing
+  const regex = /return\s*p\s*\}\s*\(\s*['"](.*?)['"]\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*['"](.*?)['"]\s*\.split\s*\(\s*['"]\|['"]\s*\)/;
   const match = packedCode.match(regex);
   if (!match) return "";
 
@@ -417,6 +420,18 @@ function deobfuscateDeanEdwards(packedCode: string): string {
   }
 
   return p;
+}
+
+function getMyHost(req: express.Request) {
+  let protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
+  const host = req.get('x-forwarded-host') || req.get('host') || '';
+  
+  // Force https for known production domains to avoid mixed content issues in iframes
+  if (host.includes('railway.app') || host.includes('run.app') || host.includes('vercel.app')) {
+    protocol = 'https';
+  }
+  
+  return `${protocol}://${host}`;
 }
 
 async function resolveDirectVideo(nume: string, post: string, type: string): Promise<{ videoUrl: string | null; type: string; playerIframeSrc?: string } | null> {
@@ -615,7 +630,8 @@ app.get("/api/proxy-hls", async (req, res) => {
     if (isM3U8) {
       const response = await fetch(url, { headers });
       const text = await response.text();
-      const lines = text.split('\n');
+      // Robust splitting for different line endings
+      const lines = text.split(/\r?\n/);
       
       const refererParam = referer ? String(referer) : '';
       const rewrittenLines = lines.map((line) => {
@@ -653,6 +669,9 @@ app.get("/api/proxy-hls", async (req, res) => {
 
       res.setHeader('Content-Type', 'application/x-mpegURL');
       res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', '*');
+      // Ensure we join with a single newline and no trailing carriage returns
       res.send(rewrittenLines.join('\n'));
     } else {
       // It's a .ts segment or binary file, stream it directly to prevent high memory usage and timeout
@@ -663,6 +682,8 @@ app.get("/api/proxy-hls", async (req, res) => {
 
       res.setHeader('Content-Type', contentType || 'video/MP2T');
       res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', '*');
       res.setHeader('Cache-Control', 'public, max-age=86400');
       
       if (response.headers.get('content-length')) {

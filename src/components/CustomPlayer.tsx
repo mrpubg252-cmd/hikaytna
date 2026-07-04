@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Play, Pause, Volume2, VolumeX, Maximize, Minimize, 
   Settings, SkipForward, SkipBack, ListVideo, Server, 
-  Tv, Loader2, RotateCw, Check, Info, ArrowRight, ArrowLeft
+  Tv, Loader2, RotateCw, Check, Info, ArrowRight, ArrowLeft,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Hls from 'hls.js';
@@ -81,10 +82,12 @@ export default function CustomPlayer({
   const [showEpisodesDrawer, setShowEpisodesDrawer] = useState(false);
   const [doubleTapFeedback, setDoubleTapFeedback] = useState<{ side: 'left' | 'right'; show: boolean }>({ side: 'left', show: false });
   const [forceIframe, setForceIframe] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Reset forceIframe when video or server changes
   useEffect(() => {
     setForceIframe(false);
+    setError(null);
   }, [videoUrl, activeServerUrl]);
 
   const isDirectStream = !forceIframe && videoUrl && (
@@ -139,11 +142,12 @@ export default function CustomPlayer({
               break;
             default:
               setIsLoading(false);
+              setError("فشل تحميل البث. يرجى تجربة سيرفر آخر أو استخدام المشغل الاحتياطي.");
               break;
           }
         }
       });
-    } else {
+    } else if (videoUrl) {
       // Fallback to standard source
       video.src = videoUrl;
       video.load();
@@ -155,9 +159,16 @@ export default function CustomPlayer({
           .catch(() => setIsPlaying(false));
       };
 
+      const handleError = () => {
+        setIsLoading(false);
+        setError("فشل تحميل الفيديو.");
+      };
+
       video.addEventListener('canplay', handleCanPlay);
+      video.addEventListener('error', handleError);
       return () => {
         video.removeEventListener('canplay', handleCanPlay);
+        video.removeEventListener('error', handleError);
       };
     }
   }, [videoUrl, isDirectStream]);
@@ -419,22 +430,35 @@ export default function CustomPlayer({
             </AnimatePresence>
 
             {/* Loading Indicator */}
-            {isLoading && (
-              <div className="absolute inset-0 flex flex-col gap-4 items-center justify-center bg-black/80 backdrop-blur-md z-50">
-                <Loader2 className="w-12 h-12 text-[#b72424] animate-spin drop-shadow-md" />
-                <div className="text-center space-y-1">
-                  <p className="text-sm font-bold text-zinc-200">جاري تحميل البث المباشر...</p>
-                  <p className="text-[11px] text-zinc-500 font-medium">إذا استغرق التحميل طويلاً، يمكنك التبديل للمشغل الاحتياطي</p>
-                </div>
+            {(isLoading || error) && (
+              <div className="absolute inset-0 flex flex-col gap-4 items-center justify-center bg-black/80 backdrop-blur-md z-50 p-6 text-center">
+                {error ? (
+                  <>
+                    <AlertTriangle className="w-12 h-12 text-[#b72424]" />
+                    <div className="space-y-2">
+                      <p className="text-sm font-bold text-white">{error}</p>
+                      <p className="text-xs text-zinc-400">قد يكون هذا بسبب قيود جغرافية أو مشاكل في السيرفر.</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Loader2 className="w-12 h-12 text-[#b72424] animate-spin drop-shadow-md" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-zinc-200">جاري تحميل البث المباشر...</p>
+                      <p className="text-[11px] text-zinc-500 font-medium">إذا استغرق التحميل طويلاً، يمكنك التبديل للمشغل الاحتياطي</p>
+                    </div>
+                  </>
+                )}
+                
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setForceIframe(true);
                   }}
-                  className="px-4 py-2.5 bg-[#b72424] hover:bg-red-600 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-[#b72424]/20 flex items-center gap-1.5 cursor-pointer z-50"
+                  className="px-6 py-3 bg-[#b72424] hover:bg-red-600 text-white rounded-xl text-sm font-black transition-all shadow-lg shadow-[#b72424]/20 flex items-center gap-2 cursor-pointer z-50"
                 >
-                  <Server className="w-3.5 h-3.5" />
+                  <Server className="w-4 h-4" />
                   تشغيل عبر المشغل الاحتياطي
                 </button>
               </div>
