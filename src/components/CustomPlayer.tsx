@@ -81,43 +81,15 @@ export default function CustomPlayer({
   const [showEpisodesDrawer, setShowEpisodesDrawer] = useState(false);
   const [doubleTapFeedback, setDoubleTapFeedback] = useState<{ side: 'left' | 'right'; show: boolean }>({ side: 'left', show: false });
   const [forceIframe, setForceIframe] = useState(false);
-  const [iframeMode, setIframeMode] = useState<'proxy' | 'direct'>(() => {
-    try {
-      const saved = localStorage.getItem('player_iframe_mode');
-      return (saved === 'proxy' || saved === 'direct') ? saved : 'direct';
-    } catch {
-      return 'direct';
-    }
-  });
-
-  const getDirectEmbedUrl = (url: string): string => {
-    if (!url) return "";
-    if (url.startsWith("http") && !url.includes("/api/proxy-embed")) {
-      return url;
-    }
-    try {
-      const urlObj = new URL(url, window.location.origin);
-      const nume = urlObj.searchParams.get("nume");
-      const post = urlObj.searchParams.get("post");
-      const type = urlObj.searchParams.get("type");
-      if (nume && post) {
-        const mappedType = type === "tv" ? "2" : "1";
-        return `https://3iskk.xyz/embed/${nume}/${post}/${mappedType}/`;
-      }
-    } catch (e) {
-      console.error("Error parsing proxy URL:", e);
-    }
-    return url;
-  };
 
   // Reset forceIframe when video or server changes
   useEffect(() => {
     setForceIframe(false);
   }, [videoUrl, activeServerUrl]);
 
-  // Always use iframe for proxy URLs because static hostings don't have the Express backend
   const isDirectStream = !forceIframe && videoUrl && (
-    (!videoUrl.includes('/api/') && (videoUrl.includes('.m3u8') || videoUrl.includes('.mp4') || videoUrl.includes('.webm')))
+    videoUrl.includes('/api/proxy-hls') || 
+    (!videoUrl.includes('/api/proxy-embed') && !videoUrl.includes('/api/proxy-player') && (videoUrl.includes('.m3u8') || videoUrl.includes('.mp4') || videoUrl.includes('.webm')))
   );
 
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -485,7 +457,7 @@ export default function CustomPlayer({
             )}
             {videoUrl ? (
               <iframe
-                src={getDirectEmbedUrl(videoUrl)}
+                src={videoUrl}
                 className="w-full h-full border-none"
                 allowFullScreen
                 referrerPolicy="no-referrer"
