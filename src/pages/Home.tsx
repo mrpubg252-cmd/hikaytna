@@ -4,7 +4,6 @@ import HeroSlider from '../components/HeroSlider';
 import EpisodeCard from '../components/EpisodeCard';
 import { Episode, Featured } from '../types';
 import { Loader2, Zap } from 'lucide-react';
-import { triggerAdFlow } from '../lib/utils';
 
 export default function Home() {
   const [latest, setLatest] = useState<Episode[]>([]);
@@ -76,11 +75,7 @@ export default function Home() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
           {featured.slice(0, 6).map((item) => (
-            <div 
-              key={item.slug} 
-              onClick={() => triggerAdFlow(`/series/${item.slug}`)}
-              className="group relative h-48 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 cursor-pointer"
-            >
+            <div key={item.slug} className="group relative h-48 rounded-xl overflow-hidden shadow-2xl transition-all duration-300">
               <img 
                 src={item.img} 
                 alt={item.title} 

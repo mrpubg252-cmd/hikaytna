@@ -1,11 +1,42 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Loader2, ChevronRight, ChevronLeft, LayoutGrid, Play } from 'lucide-react';
-import { cn, triggerAdFlow } from '../lib/utils';
+import { cn } from '../lib/utils';
 import { Series } from '../types';
-import CustomPlayer from '../components/CustomPlayer';
-import SeriesChat from '../components/SeriesChat';
+import Hls from 'hls.js';
+
+function CustomVideoPlayer({ src, type }: { src: string; type: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (Hls.isSupported() && (src.includes('.m3u8') || type === 'application/x-mpegURL')) {
+      const hls = new Hls({
+        maxMaxBufferLength: 10,
+        enableWorker: true,
+      });
+      hls.loadSource(src);
+      hls.attachMedia(video);
+      return () => {
+        hls.destroy();
+      };
+    } else {
+      video.src = src;
+    }
+  }, [src, type]);
+
+  return (
+    <video
+      ref={videoRef}
+      controls
+      autoPlay
+      className="absolute inset-0 w-full h-full object-contain bg-black"
+    />
+  );
+}
 
 export default function Watch() {
   const { slug } = useParams();
@@ -16,7 +47,6 @@ export default function Watch() {
   const [activeServer, setActiveServer] = useState<string>('');
   const [resolvedVideo, setResolvedVideo] = useState<{ videoUrl: string | null; type: string } | null>(null);
   const [resolving, setResolving] = useState(false);
-  const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
     async function fetchWatchData() {
@@ -108,7 +138,7 @@ export default function Watch() {
               <div className="flex items-center gap-2 md:gap-3">
                 <button 
                   disabled={!prevEp}
-                  onClick={() => prevEp && triggerAdFlow(`/watch/${prevEp.epSlug}`)}
+                  onClick={() => prevEp && navigate(`/watch/${prevEp.epSlug}`)}
                   className={cn(
                     "bg-[#1a1a1a] p-3 md:p-4 rounded-xl transition-all border border-white/10",
                     !prevEp ? "opacity-30 cursor-not-allowed" : "hover:bg-[#b72424] hover:border-[#b72424]"
@@ -118,7 +148,7 @@ export default function Watch() {
                 </button>
                 <button 
                   disabled={!nextEp}
-                  onClick={() => nextEp && triggerAdFlow(`/watch/${nextEp.epSlug}`)}
+                  onClick={() => nextEp && navigate(`/watch/${nextEp.epSlug}`)}
                   className={cn(
                     "bg-[#1a1a1a] p-3 md:p-4 rounded-xl transition-all border border-white/10",
                     !nextEp ? "opacity-30 cursor-not-allowed" : "hover:bg-[#b72424] hover:border-[#b72424]"
@@ -129,28 +159,30 @@ export default function Watch() {
               </div>
             </div>
 
-            {/* Video Player */}
-            <CustomPlayer
-              videoUrl={resolving ? "" : (resolvedVideo?.videoUrl || activeServer)}
-              activeServerUrl={activeServer}
-              seriesId={series?.slug || ""}
-              seriesImage={series?.img || ""}
-              episodeIndex={currentEpIndex}
-              episodes={series?.episodes || []}
-              servers={data.servers || []}
-              onSelectEpisode={(ep, index) => {
-                triggerAdFlow(`/watch/${ep.epSlug}`);
-              }}
-              onSelectServer={(url) => {
-                setActiveServer(url);
-              }}
-              isMaximized={isMaximized}
-              onToggleMaximize={() => {
-                setIsMaximized(!isMaximized);
-              }}
-              seriesTitle={series?.title}
-              seriesCategory="مسلسل"
+        {/* Video Player */}
+        <div className="relative aspect-video w-full bg-black rounded-xl md:rounded-2xl overflow-hidden shadow-2xl border border-white/10 ring-1 ring-white/5 group text-white">
+          {resolving ? (
+            <div className="absolute inset-0 flex items-center justify-center text-gray-400 flex-col gap-4">
+              <Loader2 className="animate-spin text-[#b72424]" size={40} />
+              <span className="text-sm md:text-base font-bold">جاري تحضير البث المباشر بدون إعلانات...</span>
+            </div>
+          ) : resolvedVideo?.videoUrl ? (
+            <CustomVideoPlayer src={resolvedVideo.videoUrl} type={resolvedVideo.type} />
+          ) : activeServer ? (
+            <iframe 
+              src={activeServer}
+              className="absolute inset-0 w-full h-full"
+              allowFullScreen
+              referrerPolicy="no-referrer"
+              title="Video Player"
             />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-gray-500 flex-col gap-4">
+              <Loader2 className="animate-spin text-[#b72424]" size={32} />
+              <span className="text-sm md:text-base">جاري تحميل المشغل...</span>
+            </div>
+          )}
+        </div>
 
             {/* Server Selection */}
             <div className="mt-6 md:mt-10">
@@ -191,17 +223,6 @@ export default function Watch() {
                 <span>مشاركة</span>
               </button>
             </div>
-
-            {/* Live Chat */}
-            {series && (
-              <div className="mt-8 md:mt-10">
-                <div className="flex items-center gap-3 md:gap-4 mb-4 md:mb-6">
-                  <div className="h-6 md:h-8 w-1 md:w-1.5 bg-[#b72424] rounded-full" />
-                  <h3 className="text-lg md:text-xl font-black text-white">الدردشة الحية والمناقشة 💬</h3>
-                </div>
-                <SeriesChat seriesId={series.slug} seriesTitle={series.title} />
-              </div>
-            )}
           </div>
 
           {/* Sidebar (Episode List) */}
@@ -215,26 +236,29 @@ export default function Watch() {
                 
                 <div className="flex-grow overflow-y-auto custom-scrollbar pr-1 md:pr-2 space-y-2">
                   {series.episodes?.map((ep) => (
-                    <button 
+                    <Link 
                       key={ep.epSlug} 
-                      onClick={() => triggerAdFlow(`/watch/${ep.epSlug}`)}
+                      to={`/watch/${ep.epSlug}`}
                       className={cn(
-                        "w-full flex items-center gap-3 md:gap-4 p-3 md:p-4 rounded-xl md:rounded-2xl transition-all border text-right",
+                        "flex items-center gap-3 md:gap-4 p-3 md:p-4 rounded-xl md:rounded-2xl transition-all border",
                         slug === ep.epSlug 
-                          ? "bg-[#b72424] border-[#b72424] shadow-lg shadow-[#b72424]/20 text-white" 
-                          : "bg-white/5 border-transparent hover:bg-white/10 text-gray-300 hover:text-white"
+                          ? "bg-[#b72424] border-[#b72424] shadow-lg shadow-[#b72424]/20" 
+                          : "bg-white/5 border-transparent hover:bg-white/10"
                       )}
                     >
                       <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-black/20 flex items-center justify-center shrink-0">
                         <Play size={16} className="md:size-20" fill={slug === ep.epSlug ? "white" : "currentColor"} />
                       </div>
                       <div className="flex-grow overflow-hidden">
-                        <h4 className="font-bold text-xs md:text-sm line-clamp-1">
+                        <h4 className={cn(
+                          "font-bold text-xs md:text-sm line-clamp-1",
+                          slug === ep.epSlug ? "text-white" : "text-gray-300"
+                        )}>
                           الحلقة {ep.epNum}
                         </h4>
                         <p className="text-[10px] md:text-xs text-white/40 truncate">{series.title}</p>
                       </div>
-                    </button>
+                    </Link>
                   ))}
                 </div>
               </div>
