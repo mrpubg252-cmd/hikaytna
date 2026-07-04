@@ -1,9 +1,10 @@
 {
-  "apiKey": "AIzaSyAnYkOnP2XWfaKrXXvTO3Euq7s-pl9QGKg",
-  "authDomain": "chat-516a8.firebaseapp.com",
-  "projectId": "chat-516a8",
-  "databaseURL": "https://chat-516a8-default-rtdb.firebaseio.com",
-  "storageBucket": "chat-516a8.firebasestorage.app",
-  "messagingSenderId": "276393305302",
-  "appId": "1:276393305302:web:12f90a55d7c13a4c57d577"
+  "projectId": "gen-lang-client-0269374578",
+  "appId": "1:370254284633:web:fcb1f60aec0894668b2e48",
+  "apiKey": "AIzaSyCkm6DMKkB2V76zGCbiB_KnN3GoLhjGCAc",
+  "authDomain": "gen-lang-client-0269374578.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-048a39af-ab79-48db-b170-6e12d74acd6f",
+  "storageBucket": "gen-lang-client-0269374578.firebasestorage.app",
+  "messagingSenderId": "370254284633",
+  "measurementId": ""
 }

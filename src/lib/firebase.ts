@@ -1,15 +1,14 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
+import { initializeApp } from "firebase/app";
+import { initializeFirestore } from "firebase/firestore";
 
-// Use a named app to avoid conflict with the existing [DEFAULT] app used for data
-const config = firebaseConfig as any;
-const app = getApps().find(a => a.name === 'warm-imagery') || initializeApp(firebaseConfig, 'warm-imagery');
+const firebaseConfig = {
+  apiKey: "AIzaSyCkm6DMKkB2V76zGCbiB_KnN3GoLhjGCAc",
+  authDomain: "gen-lang-client-0269374578.firebaseapp.com",
+  projectId: "gen-lang-client-0269374578",
+  storageBucket: "gen-lang-client-0269374578.firebasestorage.app",
+  messagingSenderId: "370254284633",
+  appId: "1:370254284633:web:fcb1f60aec0894668b2e48"
+};
 
-const dbId = config && config.firestoreDatabaseId && config.firestoreDatabaseId !== "remixed-firestore-database-id"
-  ? config.firestoreDatabaseId 
-  : "(default)";
-
-export const db = getFirestore(app, dbId);
-export const auth = getAuth(app);
+const app = initializeApp(firebaseConfig);
+export const db = initializeFirestore(app, {}, "ai-studio-048a39af-ab79-48db-b170-6e12d74acd6f");
