@@ -545,18 +545,41 @@ async function resolveDirectVideo(nume: string, post: string, type: string): Pro
     
     const searchInText = (text: string) => {
       // 1. Quoted string match
-      const quotedRegex = /(["'])([^"'\s]+?\.(?:m3u8|mp4|webm)(?:\?[^"']*)?)\1/gi;
+      const quotedRegex = /(["'])([^"'\s]+?\.(?:m3u8|mp4|webm|urlset)(?:\?[^"']*)?)\1/gi;
       let match;
       while ((match = quotedRegex.exec(text)) !== null) {
-        let u = match[2];
-        u = u.replace(/\\/g, "");
-        if (u.includes(".m3u8") || u.includes(".mp4") || u.includes(".webm")) {
-          return u;
+        let url = match[2];
+        if (url.includes("google") && !url.includes("googleapis")) continue; 
+        
+        // Handle relative URLs
+        if (url.startsWith("//")) url = "https:" + url;
+        if (!url.startsWith("http")) continue;
+
+        matchedUrl = url;
+        break;
+      }
+
+      if (!matchedUrl) {
+        // Look for common JS variables
+        const jsVarRegex = /(?:file|src|url|source|link|m3u8)\s*[:=]\s*["']([^"']+\.(?:m3u8|mp4|urlset|webm)[^"']*)["']/gi;
+        const varMatch = jsVarRegex.exec(text);
+        if (varMatch) matchedUrl = varMatch[1];
+      }
+
+      if (!matchedUrl && text.includes('eval(')) {
+        // Try deobfuscating and searching again
+        const deobfuscated = deobfuscateDeanEdwards(text);
+        if (deobfuscated) {
+          const innerMatch = quotedRegex.exec(deobfuscated);
+          if (innerMatch) matchedUrl = innerMatch[2];
         }
+      }
+      if (matchedUrl) {
+        return matchedUrl.replace(/\\/g, "");
       }
       
       // 2. Fallback to unquoted absolute url regex
-      const absMatch = text.match(/(https?:\/\/[^"'\s]+?\.(?:m3u8|mp4|webm)[^"'\s]*)/i);
+      const absMatch = text.match(/(https?:\/\/[^"'\s]+?\.(?:m3u8|mp4|webm|urlset)[^"'\s]*)/i);
       if (absMatch) {
         return absMatch[1].replace(/\\/g, "");
       }
@@ -677,8 +700,14 @@ app.get("/api/proxy-hls", async (req, res) => {
     // Check if it's an m3u8 playlist by looking at the URL path/extension
     const isM3U8 = url.includes('.m3u8') || url.includes('m3u8');
 
+    const response = await fetch(url, { headers });
+
+    if (response.status === 403 || response.status === 1005) {
+      console.warn(`HLS Proxy blocked (Status: ${response.status}) for URL: ${url}`);
+      return res.status(403).send("Streaming server blocked access (Cloudflare 1005/403). Please try another server.");
+    }
+
     if (isM3U8) {
-      const response = await fetch(url, { headers });
       const text = await response.text();
       // Robust splitting for different line endings
       const lines = text.split(/\r?\n/);
@@ -726,6 +755,10 @@ app.get("/api/proxy-hls", async (req, res) => {
     } else {
       // It's a .ts segment or binary file, stream it directly to prevent high memory usage and timeout
       const response = await fetch(url, { headers });
+
+      if (response.status === 403 || response.status === 1005) {
+        return res.status(403).send("Segment blocked");
+      }
 
       const contentTypeRaw = response.headers.get('content-type');
       const contentType = typeof contentTypeRaw === 'string' ? contentTypeRaw : '';

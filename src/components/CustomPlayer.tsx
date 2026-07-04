@@ -168,7 +168,13 @@ export default function CustomPlayer({
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               console.error("HLS Network Error:", data);
-              hls.startLoad();
+              if (data.response && data.response.code === 403) {
+                setIsLoading(false);
+                setError("تم حظر هذا السيرفر من قبل مزود البث (Error 403/1005). يرجى التبديل للمشغل الاحتياطي أو تجربة سيرفر آخر.");
+                hls.destroy();
+              } else {
+                hls.startLoad();
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               console.error("HLS Media Error:", data);
@@ -474,36 +480,58 @@ export default function CustomPlayer({
 
             {/* Loading Indicator */}
             {(isLoading || error) && (
-              <div className="absolute inset-0 flex flex-col gap-4 items-center justify-center bg-black/80 backdrop-blur-md z-50 p-6 text-center">
+              <div className="absolute inset-0 flex flex-col gap-4 items-center justify-center bg-black/90 backdrop-blur-xl z-50 p-6 text-center">
                 {error ? (
                   <>
-                    <AlertTriangle className="w-12 h-12 text-[#b72424]" />
-                    <div className="space-y-2">
-                      <p className="text-sm font-bold text-white">{error}</p>
-                      <p className="text-xs text-zinc-400">قد يكون هذا بسبب قيود جغرافية أو مشاكل في السيرفر.</p>
+                    <AlertTriangle className="w-16 h-16 text-[#b72424] mb-2" />
+                    <div className="space-y-3">
+                      <p className="text-base font-black text-white">{error}</p>
+                      <p className="text-xs text-zinc-400 max-w-xs mx-auto">المواقع الأصلية (مثل miravd) تفرض قيوداً على الاتصال أحياناً. المشغل الاحتياطي هو الحل الأفضل في هذه الحالة.</p>
                     </div>
                   </>
                 ) : (
                   <>
-                    <Loader2 className="w-12 h-12 text-[#b72424] animate-spin drop-shadow-md" />
-                    <div className="space-y-1">
-                      <p className="text-sm font-bold text-zinc-200">جاري تحميل البث المباشر...</p>
-                      <p className="text-[11px] text-zinc-500 font-medium">إذا استغرق التحميل طويلاً، يمكنك التبديل للمشغل الاحتياطي</p>
+                    <Loader2 className="w-14 h-14 text-[#b72424] animate-spin drop-shadow-lg" />
+                    <div className="space-y-2">
+                      <p className="text-base font-black text-zinc-100">جاري الاتصال بخادم البث...</p>
+                      <p className="text-xs text-zinc-400">إذا استغرق الأمر أكثر من 30 ثانية، نوصي بالتبديل للمشغل الاحتياطي</p>
                     </div>
                   </>
                 )}
                 
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setForceIframe(true);
-                  }}
-                  className="px-6 py-3 bg-[#b72424] hover:bg-red-600 text-white rounded-xl text-sm font-black transition-all shadow-lg shadow-[#b72424]/20 flex items-center gap-2 cursor-pointer z-50"
-                >
-                  <Server className="w-4 h-4" />
-                  تشغيل عبر المشغل الاحتياطي
-                </button>
+                <div className="flex flex-col gap-3 w-full max-w-xs mt-4">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setForceIframe(true);
+                      setError(null);
+                    }}
+                    className="w-full px-6 py-4 bg-[#b72424] hover:bg-red-600 text-white rounded-2xl text-sm font-black transition-all shadow-xl shadow-[#b72424]/30 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                  >
+                    <Server className="w-5 h-5" />
+                    استخدام المشغل الاحتياطي (حل سريع)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Try next server if available
+                      const currentIndex = servers.findIndex(s => s.url === activeServerUrl);
+                      if (currentIndex !== -1 && currentIndex < servers.length - 1) {
+                        onSelectServer(servers[currentIndex + 1].url);
+                      } else if (servers.length > 0) {
+                        onSelectServer(servers[0].url);
+                      }
+                      setError(null);
+                    }}
+                    className="w-full px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <RotateCw className="w-4 h-4" />
+                    تجربة سيرفر مختلف
+                  </button>
+                </div>
               </div>
             )}
           </>
