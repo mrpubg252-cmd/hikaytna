@@ -1405,10 +1405,12 @@ async function startServer() {
         const response = await axiosFetch(`${API_BASE}?action=play&url=${encodeURIComponent(realUrl)}`);
         if (response.data && response.data.status && response.data.player_url) {
           const checkUrl = String(response.data.player_url).toLowerCase();
-          if (!checkUrl.includes("archive.org") && !checkUrl.includes("alooytv.com.mp4")) {
+          // Only intercept the actual warning/hotlink block video (alooytv.com.mp4) or a generic warning link, allow all other archive.org links!
+          const isWarningVideo = checkUrl.includes("alooytv.com.mp4") || checkUrl.endsWith("/alooytv.com.mp4") || checkUrl.includes("warning");
+          if (!isWarningVideo) {
             responseData = response.data;
           } else {
-            console.warn(`[Play API Override] Intercepted blocked archive.org or warning link: ${response.data.player_url}. Forcing fallback Cheerio scraper!`);
+            console.warn(`[Play API Override] Intercepted blocked archive.org warning link: ${response.data.player_url}. Forcing fallback Cheerio scraper!`);
           }
         }
       } catch (e) {
@@ -1518,47 +1520,58 @@ async function startServer() {
       // Automatically rewrite the image URL to the active AlooyTV domain if it's an AlooyTV image
       targetUrl = await getActiveAlooyTvUrl(rawUrl);
 
-      // Extract the original host of the image to set as Referer if needed
-      const hostVal = new URL(targetUrl).origin;
-      let referer = hostVal + '/';
-      if (targetUrl.includes('alooytv') || targetUrl.includes('fitnur')) {
-        referer = 'https://alooytv.com/';
-      }
+      // Helper function to fetch stream with manual redirect tracking to preserve headers!
+      const fetchImageStream = async (urlToFetch: string) => {
+        let currentUrl = urlToFetch;
+        let redirectCount = 0;
+        let response;
+
+        while (redirectCount < 10) {
+          const parsedCurrent = new URL(currentUrl);
+          const hostVal = parsedCurrent.origin;
+          let referer = hostVal + '/';
+          if (currentUrl.includes('alooytv') || currentUrl.includes('fitnur')) {
+            referer = 'https://alooytv.com/';
+          }
+
+          response = await axios({
+            method: 'get',
+            url: currentUrl,
+            responseType: 'stream',
+            maxRedirects: 0, // Handle redirects manually
+            validateStatus: (status) => status >= 200 && status < 400,
+            httpAgent: new http.Agent({ family: 4 }),
+            httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 }),
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+              'Referer': referer,
+              'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+            },
+            timeout: 8000
+          });
+
+          if (response.status >= 300 && response.status < 400 && response.headers.location) {
+            let nextUrl = response.headers.location;
+            if (!nextUrl.startsWith('http')) {
+              nextUrl = new URL(nextUrl, currentUrl).toString();
+            }
+            currentUrl = nextUrl;
+            redirectCount++;
+          } else {
+            break;
+          }
+        }
+        return response;
+      };
 
       let response;
       try {
-        response = await axios({
-          method: 'get',
-          url: targetUrl,
-          responseType: 'stream',
-          httpAgent: new http.Agent({ family: 4 }),
-          httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 }),
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-            'Referer': referer,
-            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
-          },
-          timeout: 6000
-        });
+        response = await fetchImageStream(targetUrl);
       } catch (err: any) {
         console.warn(`[Image Proxy First Try Failed] url: ${targetUrl}, trying fallback to original rawUrl...`);
         // If targetUrl was rewritten and failed, try the original rawUrl
         if (targetUrl !== rawUrl) {
-          const originalHost = new URL(rawUrl).origin;
-          const fallbackReferer = rawUrl.includes('alooytv') || rawUrl.includes('fitnur') ? 'https://alooytv.com/' : originalHost + '/';
-          response = await axios({
-            method: 'get',
-            url: rawUrl,
-            responseType: 'stream',
-            httpAgent: new http.Agent({ family: 4 }),
-            httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 }),
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-              'Referer': fallbackReferer,
-              'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
-            },
-            timeout: 6000
-          });
+          response = await fetchImageStream(rawUrl);
         } else {
           throw err;
         }
@@ -1642,46 +1655,61 @@ async function startServer() {
       const url = decryptValue(decodeURIComponent(encrypted));
       if (!url || !url.startsWith("http")) return res.status(400).send("Invalid stream source.");
 
-      const parsedUrl = new URL(url);
-      
-      const headersOptions: any = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
-        'Accept': '*/*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
-      };
+      let currentUrl = url;
+      let redirectCount = 0;
+      let axiosResponse: any;
 
-      // Specific fixes for known sources like AlooyTV / Vid2 / Vid3 which host "The Pit" (Al-Hofrah)
-      const hostMatch = url.match(/vid[0-9]|alooytv|zvde-dsn|cdn/i);
-      if (hostMatch) {
-         headersOptions['Referer'] = 'https://alooytv.com/';
-         headersOptions['Origin'] = 'https://alooytv.com';
-         headersOptions['Sec-Fetch-Dest'] = 'video';
-         headersOptions['Sec-Fetch-Mode'] = 'no-cors';
-         headersOptions['Sec-Fetch-Site'] = 'cross-site';
-         // Use a more recent User-Agent
-         headersOptions['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36';
-      } else {
-         headersOptions['Referer'] = parsedUrl.origin + '/';
-         headersOptions['Origin'] = parsedUrl.origin;
+      while (redirectCount < 10) {
+        const parsedCurrent = new URL(currentUrl);
+        const headersOptions: any = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Accept': '*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        };
+
+        // Match known AlooyTV servers and archive.org video hosts
+        const hostMatch = currentUrl.match(/vid[0-9]|alooytv|zvde-dsn|cdn|archive|fitnur/i);
+        if (hostMatch) {
+           headersOptions['Referer'] = 'https://alooytv.com/';
+           headersOptions['Origin'] = 'https://alooytv.com';
+           headersOptions['Sec-Fetch-Dest'] = 'video';
+           headersOptions['Sec-Fetch-Mode'] = 'no-cors';
+           headersOptions['Sec-Fetch-Site'] = 'cross-site';
+        } else {
+           headersOptions['Referer'] = parsedCurrent.origin + '/';
+           headersOptions['Origin'] = parsedCurrent.origin;
+        }
+
+        if (req.headers.range) {
+          headersOptions.range = req.headers.range;
+        }
+
+        axiosResponse = await axios({
+          method: 'GET',
+          url: currentUrl,
+          responseType: 'stream',
+          headers: headersOptions,
+          maxRedirects: 0, // Handle redirects manually to preserve Referer/Origin headers
+          validateStatus: (status) => status >= 200 && status < 400,
+          httpAgent: new http.Agent({ keepAlive: true, family: 4 }),
+          httpsAgent: new https.Agent({ keepAlive: true, rejectUnauthorized: false, family: 4 }),
+          timeout: 45000 // Higher timeout for slow video providers
+        });
+
+        if (axiosResponse.status >= 300 && axiosResponse.status < 400 && axiosResponse.headers.location) {
+          let nextUrl = axiosResponse.headers.location;
+          if (!nextUrl.startsWith('http')) {
+            nextUrl = new URL(nextUrl, currentUrl).toString();
+          }
+          console.log(`[Stream Proxy Redirect] ${currentUrl} -> ${nextUrl}`);
+          currentUrl = nextUrl;
+          redirectCount++;
+        } else {
+          break;
+        }
       }
-
-      if (req.headers.range) {
-        headersOptions.range = req.headers.range;
-      }
-
-      const axiosResponse = await axios({
-        method: 'GET',
-        url: url,
-        responseType: 'stream',
-        headers: headersOptions,
-        maxRedirects: 10,
-        validateStatus: () => true,
-        httpAgent: new http.Agent({ keepAlive: true, family: 4 }),
-        httpsAgent: new https.Agent({ keepAlive: true, rejectUnauthorized: false, family: 4 }),
-        timeout: 45000 // Higher timeout for slow video providers
-      });
 
       const proxyRes = axiosResponse.data;
       const contentType = axiosResponse.headers['content-type'] || '';
