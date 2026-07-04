@@ -395,56 +395,6 @@ export default function CustomPlayer({
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Dynamic connection bar / status */}
-      <div className="bg-zinc-900/60 backdrop-blur-md rounded-xl p-4 border border-white/5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${iframeMode === 'direct' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${iframeMode === 'direct' ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
-            </span>
-            <h4 className="text-sm font-extrabold text-white">بوابات الاتصال والبث الذكي</h4>
-          </div>
-          <p className="text-xs text-zinc-400 text-right leading-relaxed">
-            {iframeMode === 'direct' 
-              ? "متصل الآن عبر البوابة المباشرة (تتجنب قيود استضافات Render/Railway وتوفر سرعة غير محدودة)." 
-              : "متصل الآن عبر البروكسي السحابي (يمرر البيانات عبر السيرفر لتجاوز الحجب الجغرافي)."}
-          </p>
-        </div>
-        
-        <div className="flex items-center gap-2 self-stretch md:self-auto flex-shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              setIframeMode('direct');
-              localStorage.setItem('player_iframe_mode', 'direct');
-            }}
-            className={`flex-1 md:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
-              iframeMode === 'direct'
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-950/25 border border-emerald-500/30'
-                : 'bg-zinc-950/40 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/5'
-            }`}
-          >
-            ⚡ بوابة الاتصال المباشر (موصى به)
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setIframeMode('proxy');
-              localStorage.setItem('player_iframe_mode', 'proxy');
-            }}
-            className={`flex-1 md:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
-              iframeMode === 'proxy'
-                ? 'bg-[#b72424] hover:bg-red-600 text-white shadow-lg shadow-red-950/25 border border-red-500/30'
-                : 'bg-zinc-950/40 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/5'
-            }`}
-          >
-            ☁️ البروكسي السحابي (احتياطي)
-          </button>
-        </div>
-      </div>
-
       <div 
         ref={containerRef}
         onMouseMove={triggerActivity}
@@ -878,7 +828,6 @@ export default function CustomPlayer({
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
     </div>
   );
 }
