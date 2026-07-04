@@ -669,13 +669,8 @@ app.get("/api/proxy-hls", async (req, res) => {
         res.setHeader('Content-Length', String(response.headers.get('content-length')));
       }
 
-      if (response.body) {
-        // @ts-ignore
-        const { Readable } = require('stream');
-        Readable.fromWeb(response.body).pipe(res);
-      } else {
-        res.end();
-      }
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
     }
   } catch (error) {
     console.error("HLS proxy error:", error);
