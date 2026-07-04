@@ -115,12 +115,9 @@ export default function CustomPlayer({
     setForceIframe(false);
   }, [videoUrl, activeServerUrl]);
 
-  // Check if the current source is a direct stream or iframe embed
-  const isDirectStream = iframeMode === 'proxy' && !forceIframe && videoUrl && (
-    videoUrl.includes('/api/proxy-hls') || 
-    videoUrl.includes('.m3u8') || 
-    videoUrl.includes('.mp4') || 
-    videoUrl.includes('.webm')
+  // Always use iframe for proxy URLs because static hostings don't have the Express backend
+  const isDirectStream = !forceIframe && videoUrl && (
+    (!videoUrl.includes('/api/') && (videoUrl.includes('.m3u8') || videoUrl.includes('.mp4') || videoUrl.includes('.webm')))
   );
 
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -488,7 +485,7 @@ export default function CustomPlayer({
             )}
             {videoUrl ? (
               <iframe
-                src={iframeMode === 'direct' ? getDirectEmbedUrl(videoUrl) : videoUrl}
+                src={getDirectEmbedUrl(videoUrl)}
                 className="w-full h-full border-none"
                 allowFullScreen
                 referrerPolicy="no-referrer"

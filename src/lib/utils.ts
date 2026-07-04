@@ -11,18 +11,10 @@ export function cn(...inputs: ClassValue[]) {
  * Highly robust on iOS Safari and Chrome.
  */
 export function triggerAdFlow(targetUrl: string, navigate?: (url: string) => void) {
-  if (typeof window !== "undefined") {
-    const hasAdCleared = sessionStorage.getItem('ad_shown_this_session') === 'true';
-    if (hasAdCleared) {
-      if (navigate) {
-        navigate(targetUrl);
-      } else {
-        window.location.href = targetUrl;
-      }
-    } else {
-      sessionStorage.setItem('ad_shown_this_session', 'true');
-      window.open(`/ad?redirectUrl=${encodeURIComponent(targetUrl)}`, '_blank');
-    }
+  if (navigate) {
+    navigate(targetUrl);
+  } else {
+    window.location.href = targetUrl;
   }
 }
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AlertTriangle, Check, X, Loader2, Send } from 'lucide-react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, push, serverTimestamp } from 'firebase/database';
 import { db } from '../lib/firebase';
 
 interface ReportModalProps {
@@ -84,7 +84,7 @@ export default function ReportModal({ isOpen, onClose, seriesTitle = "", episode
     setError('');
 
     try {
-      await addDoc(collection(db, 'reports'), {
+      await push(ref(db, 'reports'), {
         seriesTitle,
         episodeTitle,
         episodeSlug,

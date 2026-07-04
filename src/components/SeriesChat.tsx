@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, addDoc, query, orderBy, limit, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { ref, push, query as rtdbQuery, orderByChild, limitToLast, onValue, serverTimestamp } from 'firebase/database';
 import { db } from '../lib/firebase';
 import { Send, Users, MessageSquare, Flame, Check, User, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -82,21 +82,21 @@ export default function SeriesChat({ seriesId, seriesTitle }: SeriesChatProps) {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch messages from Firestore
+  // Fetch messages from Firebase RTDB
   useEffect(() => {
     if (!seriesId) return;
 
-    const messagesCol = collection(db, 'chats', seriesId, 'messages');
-    const q = query(messagesCol, orderBy('createdAt', 'asc'), limit(80));
+    const messagesRef = ref(db, `chats/${seriesId}/messages`);
+    const q = rtdbQuery(messagesRef, orderByChild('createdAt'), limitToLast(80));
 
-    const unsubscribe = onSnapshot(
+    const unsubscribe = onValue(
       q,
       (snapshot) => {
         const list: ChatMessage[] = [];
-        snapshot.forEach((doc) => {
-          const data = doc.data();
+        snapshot.forEach((childSnapshot) => {
+          const data = childSnapshot.val();
           list.push({
-            id: doc.id,
+            id: childSnapshot.key as string,
             text: data.text || '',
             username: data.username || 'مجهول',
             avatarColor: data.avatarColor || AVATAR_COLORS[0],
@@ -106,7 +106,7 @@ export default function SeriesChat({ seriesId, seriesTitle }: SeriesChatProps) {
         setMessages(list);
       },
       (error) => {
-        console.error('Firestore chat fetch error:', error);
+        console.error('Firebase RTDB chat fetch error:', error);
       }
     );
 
@@ -137,8 +137,8 @@ export default function SeriesChat({ seriesId, seriesTitle }: SeriesChatProps) {
     if (!msgText || !seriesId || !username) return;
 
     try {
-      const messagesCol = collection(db, 'chats', seriesId, 'messages');
-      await addDoc(messagesCol, {
+      const messagesRef = ref(db, `chats/${seriesId}/messages`);
+      await push(messagesRef, {
         text: msgText,
         username,
         avatarColor,
