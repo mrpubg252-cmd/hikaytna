@@ -204,7 +204,7 @@ export default function Watch() {
 
             {/* Video Player */}
             <CustomPlayer
-              videoUrl={activeServer}
+              videoUrl={activeServer && !activeServer.includes('/api/proxy') ? `/api/proxy-player?url=${encodeURIComponent(activeServer)}` : activeServer}
               activeServerUrl={activeServer}
               seriesId={series?.slug || ""}
               seriesImage={series?.img || ""}

@@ -175,129 +175,154 @@ app.get("/api/series/:slug", async (req, res) => {
 
 app.get("/api/episode/:slug", async (req, res) => {
   const { slug } = req.params;
-  try {
-    // 1. Fetch main landing page with /see/ suffix as requested
-    const cleanSlugForLanding = slug.replace(/\/$/, "");
-    const landingUrl = `${SOURCE_URL}/watch/episodes/${cleanSlugForLanding}/see/`;
-    const landingRes = await axiosInstance.get(landingUrl);
-    const $landing = cheerio.load(landingRes.data);
+  const cleanSlugForLanding = slug.replace(/\/$/, "");
+  
+  // Try both variations: without /see/ first (to let the form submission two-post flow work), and with /see/ second.
+  const urlsToTry = [
+    `${SOURCE_URL}/watch/episodes/${cleanSlugForLanding}/`,
+    `${SOURCE_URL}/watch/episodes/${cleanSlugForLanding}/see/`
+  ];
 
-    const title = cleanBranding($landing(".title").first().text().trim() || $landing("title").text().trim());
+  let successData = null;
+  let lastError = null;
 
-    const seriesLink = $landing(".single-serie-btn").attr("href") || $landing(".breadcrumb a").last().attr("href") || $landing(".series-title a").attr("href");
-    let seriesSlug = seriesLink ? cleanSlug(seriesLink, 'tvshows') : "";
-
-    // Fallback: extract series slug from episode slug (e.g., 'series-name-episode-1' -> 'series-name')
-    if (!seriesSlug && slug.includes("-الحلقة-")) {
-      seriesSlug = slug.split("-الحلقة-")[0];
-    } else if (!seriesSlug && slug.includes("-episode-")) {
-      seriesSlug = slug.split("-episode-")[0];
-    }
-
-    const servers: any[] = [];
-    let iframeSrc = "";
-
-    // 2. Try the two-post flow to get the player page
+  for (const landingUrl of urlsToTry) {
     try {
-      const form = $landing("div.single_buttons form").first();
-      const actionUrl1 = form.attr('action');
-      const newsValue1 = form.find("input[name='news']").val();
-      const uValue1 = form.find("input[name='u']").val();
+      console.log(`[EpisodeScraper] Trying landing URL: ${landingUrl}`);
+      const landingRes = await axiosInstance.get(landingUrl);
+      const $landing = cheerio.load(landingRes.data);
 
-      if (actionUrl1 && newsValue1) {
-        const params1 = new URLSearchParams();
-        params1.append('news', String(newsValue1));
-        params1.append('u', String(uValue1 || ''));
-        params1.append('submit', 'submit');
+      const title = cleanBranding($landing(".title").first().text().trim() || $landing("title").text().trim());
+      if (!title || title.includes("Page not found") || title.includes("Not Found") || title.includes("404")) {
+        console.log(`[EpisodeScraper] Skipping ${landingUrl} due to invalid/404 title: ${title}`);
+        continue;
+      }
 
-        const res1 = await axiosInstance.post(actionUrl1, params1, {
-          headers: {
-            'Referer': landingUrl,
-            'Origin': SOURCE_URL,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Upgrade-Insecure-Requests': '1',
-          }
-        });
+      const seriesLink = $landing(".single-serie-btn").attr("href") || $landing(".breadcrumb a").last().attr("href") || $landing(".series-title a").attr("href");
+      let seriesSlug = seriesLink ? cleanSlug(seriesLink, 'tvshows') : "";
 
-        const $res1 = cheerio.load(res1.data);
+      if (!seriesSlug && slug.includes("-الحلقة-")) {
+        seriesSlug = slug.split("-الحلقة-")[0];
+      } else if (!seriesSlug && slug.includes("-episode-")) {
+        seriesSlug = slug.split("-episode-")[0];
+      }
 
-        let myUrl = null;
-        let myInputValue = null;
+      const servers: any[] = [];
+      let iframeSrc = "";
 
-        $res1("script").each((_, el) => {
-          const text = $res1(el).html() || "";
-          if (text.includes("myUrl") && text.includes("myInput.value")) {
-            const urlMatch = text.match(/myUrl\s*=\s*"([^"]+)"/);
-            if (urlMatch) myUrl = urlMatch[1];
+      // Try the two-post flow to get the player page
+      try {
+        const form = $landing("div.single_buttons form").first();
+        const actionUrl1 = form.attr('action');
+        const newsValue1 = form.find("input[name='news']").val();
+        const uValue1 = form.find("input[name='u']").val();
 
-            const valMatch = text.match(/myInput\.value\s*=\s*"([^"]+)"/);
-            if (valMatch) myInputValue = valMatch[1];
-          }
-        });
+        if (actionUrl1 && newsValue1) {
+          const params1 = new URLSearchParams();
+          params1.append('news', String(newsValue1));
+          params1.append('u', String(uValue1 || ''));
+          params1.append('submit', 'submit');
 
-        if (myUrl && myInputValue) {
-          const params2 = new URLSearchParams();
-          params2.append('news', myInputValue);
-          params2.append('u', '');
-          params2.append('submit', 'submit');
-
-          const res2 = await axiosInstance.post(myUrl, params2, {
+          const res1 = await axiosInstance.post(actionUrl1, params1, {
             headers: {
-              'Referer': actionUrl1,
+              'Referer': landingUrl,
               'Origin': SOURCE_URL,
               'Content-Type': 'application/x-www-form-urlencoded',
               'Upgrade-Insecure-Requests': '1',
             }
           });
 
-          const $res2 = cheerio.load(res2.data);
+          const $res1 = cheerio.load(res1.data);
+          let myUrl = null;
+          let myInputValue = null;
 
-          $res2("#player_servers li").each((_, el) => {
-            const name = $res2(el).find(".server_name").text().trim();
-            const type = $res2(el).attr("data-type");
-            const post = $res2(el).attr("data-post");
-            const nume = $res2(el).attr("data-nume");
+          $res1("script").each((_, el) => {
+            const text = $res1(el).html() || "";
+            if (text.includes("myUrl") && text.includes("myInput.value")) {
+              const urlMatch = text.match(/myUrl\s*=\s*"([^"]+)"/);
+              if (urlMatch) myUrl = urlMatch[1];
 
-            servers.push({
-              name,
-              url: `/api/proxy-embed?nume=${nume}&post=${post}&type=${type}`
-            });
+              const valMatch = text.match(/myInput\.value\s*=\s*"([^"]+)"/);
+              if (valMatch) myInputValue = valMatch[1];
+            }
           });
 
-          const defaultIframe = $res2("iframe").first().attr("src");
-          if (defaultIframe) {
-            iframeSrc = defaultIframe;
+          if (myUrl && myInputValue) {
+            const params2 = new URLSearchParams();
+            params2.append('news', myInputValue);
+            params2.append('u', '');
+            params2.append('submit', 'submit');
+
+            const res2 = await axiosInstance.post(myUrl, params2, {
+              headers: {
+                'Referer': actionUrl1,
+                'Origin': SOURCE_URL,
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Upgrade-Insecure-Requests': '1',
+              }
+            });
+
+            const $res2 = cheerio.load(res2.data);
+
+            $res2("#player_servers li").each((_, el) => {
+              const name = $res2(el).find(".server_name").text().trim();
+              const type = $res2(el).attr("data-type");
+              const post = $res2(el).attr("data-post");
+              const nume = $res2(el).attr("data-nume");
+
+              servers.push({
+                name,
+                url: `/api/proxy-embed?nume=${nume}&post=${post}&type=${type}`
+              });
+            });
+
+            const defaultIframe = $res2("iframe").first().attr("src");
+            if (defaultIframe) {
+              iframeSrc = defaultIframe;
+            }
           }
         }
+      } catch (postFlowError) {
+        console.error("[EpisodeScraper] Two-post flow failed:", postFlowError);
       }
-    } catch (postFlowError) {
-      console.error("Two-post flow failed, falling back to direct landing page scraping:", postFlowError);
-    }
 
-    // Fallback: if two-post flow returned no servers, try to scrape directly from landing page (just in case they change it back)
-    if (servers.length === 0) {
-      $landing("#player_servers li").each((_, el) => {
-        const name = $landing(el).find(".server_name").text().trim();
-        const type = $landing(el).attr("data-type");
-        const post = $landing(el).attr("data-post");
-        const nume = $landing(el).attr("data-nume");
+      // Fallback: try direct landing page parsing if no servers found yet
+      if (servers.length === 0) {
+        $landing("#player_servers li").each((_, el) => {
+          const name = $landing(el).find(".server_name").text().trim();
+          const type = $landing(el).attr("data-type");
+          const post = $landing(el).attr("data-post");
+          const nume = $landing(el).attr("data-nume");
 
-        servers.push({
-          name,
-          url: `/api/proxy-embed?nume=${nume}&post=${post}&type=${type}`
+          servers.push({
+            name,
+            url: `/api/proxy-embed?nume=${nume}&post=${post}&type=${type}`
+          });
         });
-      });
-    }
+      }
 
-    if (!iframeSrc && servers.length > 0) {
-      iframeSrc = servers[0].url;
-    }
+      if (!iframeSrc && servers.length > 0) {
+        iframeSrc = servers[0].url;
+      }
 
-    res.json({ title, iframeSrc, servers, seriesSlug });
-  } catch (error) {
-    console.error("Failed to fetch episode details:", error);
-    res.status(500).json({ error: "Failed to fetch episode details" });
+      if (servers.length > 0) {
+        successData = { title, iframeSrc, servers, seriesSlug };
+        console.log(`[EpisodeScraper] Successfully scraped ${servers.length} servers from ${landingUrl}`);
+        break; // Stop trying other URLs
+      }
+    } catch (err: any) {
+      console.error(`[EpisodeScraper] Error fetching ${landingUrl}:`, err.message);
+      lastError = err;
+    }
   }
+
+  if (successData) {
+    return res.json(successData);
+  }
+
+  // Final fallback: if both failed or found absolutely nothing, don't let it load forever. Provide at least standard placeholder so client displays an alert
+  console.error(`[EpisodeScraper] All scrape paths failed for slug ${slug}. Last error:`, lastError?.message);
+  res.status(500).json({ error: "Failed to fetch episode details" });
 });
 
 // Proxy for Embeds to handle Referer/CORS and spoof origin
@@ -316,12 +341,22 @@ app.get("/api/proxy-embed", async (req, res) => {
     });
     
     if (response.status === 403 || response.status === 1005) {
-      return res.status(403).send(`
-        <div style="background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;text-align:center;padding:20px;">
-          <h2 style="color:#b72424;">تم حظر الوصول (Cloudflare 1005)</h2>
-          <p>يبدو أن السيرفر محظور حالياً. يرجى تجربة "سيرفر 2" أو سيرفرات أخرى.</p>
-          <button onclick="window.parent.postMessage('switch-server', '*')" style="background:#b72424;border:none;color:#fff;padding:10px 20px;border-radius:5px;cursor:pointer;font-weight:bold;margin-top:10px;">تجربة سيرفر آخر</button>
-        </div>
+      console.log(`[ProxyEmbed] Server-side fetch got ${response.status}, rendering direct iframe fallback to bypass host block.`);
+      return res.send(`
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>Embed Direct Fallback</title>
+  <style>
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
+    iframe { border: none; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <iframe src="${targetUrl}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+</body>
+</html>
       `);
     }
 
@@ -368,7 +403,22 @@ app.get("/api/proxy-embed", async (req, res) => {
     res.send(html);
   } catch (error) {
     console.error("Proxy error:", error);
-    res.status(500).send("Player proxy error");
+    return res.send(`
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>Embed Direct Fallback</title>
+  <style>
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
+    iframe { border: none; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <iframe src="${targetUrl}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+</body>
+</html>
+    `);
   }
 });
 
@@ -389,13 +439,22 @@ app.get("/api/proxy-player", async (req, res) => {
     });
 
     if (response.status === 403 || response.status === 1005) {
-      return res.status(403).send(`
-        <div style="background:#000;color:#fff;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;text-align:center;padding:20px;">
-          <h2 style="color:#b72424;">تم حظر المشغل (Access Denied)</h2>
-          <p>هذا السيرفر (miravd) يرفض الاتصال من السيرفر حالياً.</p>
-          <p style="font-size:12px;color:#666;">يرجى اختيار سيرفر آخر من القائمة بالأسفل.</p>
-          <button onclick="window.parent.postMessage('switch-server', '*')" style="background:#b72424;border:none;color:#fff;padding:10px 20px;border-radius:5px;cursor:pointer;font-weight:bold;margin-top:10px;">التبديل لسيرفر آخر</button>
-        </div>
+      console.log(`[ProxyPlayer] Server-side fetch got ${response.status} for url ${url}, loading direct iframe fallback in browser.`);
+      return res.send(`
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>Player Direct Fallback</title>
+  <style>
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
+    iframe { border: none; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <iframe src="${url}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+</body>
+</html>
       `);
     }
 
@@ -406,7 +465,7 @@ app.get("/api/proxy-player", async (req, res) => {
     const $ = cheerio.load(html);
     const myHost = getMyHost(req);
 
-    // Rewrite any nested iframes recursively
+    // 1. Rewrite any nested iframes recursively
     $("iframe").each((_, el) => {
       const src = $(el).attr("src");
       if (src) {
@@ -422,18 +481,169 @@ app.get("/api/proxy-player", async (req, res) => {
       }
     });
 
-    // Make sure we have a base tag so relative files like JS/CSS load from their origin
+    // 2. Remove known malicious script tags and ad networks
+    $("script").each((_, el) => {
+      const src = $(el).attr("src") || "";
+      const content = $(el).html() || "";
+      
+      const isAd = /popads|propeller|exoclick|adsterra|popunder|clickunder|vast|ad\.js|analytic|onclick|alert|confirm|prompt|adsby|banner/i.test(src) ||
+                   /window\.open|popunder|onclick|vast|adblock|eval\(|document\.write/i.test(content);
+      
+      // Keep player logic intact
+      const isPlayerScript = /jwplayer|setup|videojs|plyr|Clappr|clappr|player|shaka|hls|m3u8/i.test(content) || 
+                             /jwplayer|videojs|plyr|clappr/i.test(src);
+      
+      if (isAd && !isPlayerScript) {
+        $(el).remove();
+      }
+    });
+
+    // 3. Remove existing layout ad blocks (banners, popup wraps) while avoiding removing player elements
+    $("div[id*='pop'], div[class*='pop'], div[id*='ads'], div[class*='ads']").each((_, el) => {
+      const id = $(el).attr("id") || "";
+      const klass = $(el).attr("class") || "";
+      
+      if ($(el).find("video").length > 0 || $(el).find("iframe").length > 0) {
+        return;
+      }
+      
+      if (/player|wrapper|container|content|main|body|root|app/i.test(id + klass)) {
+        return;
+      }
+      
+      $(el).remove();
+    });
+
+    // 4. Inject base tags, CSS styling, and the highly advanced Anti-Ad script
+    const antiAdStyles = `
+      <style id="anti-ad-styles">
+        [id*="pop"]:not(video), [class*="pop"]:not(video), 
+        [id*="ads"]:not(video), [class*="ads"]:not(video), 
+        [class*="overlay"]:not(.video-overlay):not(.jw-preview), 
+        div[style*="z-index: 9999"], div[style*="z-index:9999"], 
+        div[style*="z-index: 2147483647"], div[style*="z-index:2147483647"],
+        iframe[src*="ad"], iframe[src*="click"], iframe[src*="pop"] {
+          display: none !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
+          width: 0px !important;
+          height: 0px !important;
+        }
+      </style>
+    `;
+
+    const antiAdScript = `
+      <script id="anti-ad-shield">
+        (function() {
+          // Block window.open entirely to stop popups
+          window.open = function() {
+            console.log("[AdShield] Blocked window.open attempt");
+            return {
+              focus: function() {},
+              close: function() {},
+              closed: true
+            };
+          };
+          
+          // Disable dialog freezes
+          window.alert = function(msg) { console.log("[AdShield] Blocked alert:", msg); };
+          window.confirm = function() { return true; };
+          window.prompt = function() { return null; };
+          
+          // Intercept click-hijacking
+          const originalAddEventListener = EventTarget.prototype.addEventListener;
+          EventTarget.prototype.addEventListener = function(type, listener, options) {
+            if (type === 'click' || type === 'mousedown' || type === 'mouseup') {
+              const wrappedListener = function(event) {
+                let target = event.target;
+                while (target) {
+                  if (target.tagName === 'A') {
+                    const href = target.getAttribute('href') || '';
+                    if (href.startsWith('http') && !href.includes(window.location.hostname) && !href.includes('miravd') && !href.includes('3isk')) {
+                      console.log("[AdShield] Intercepted external redirect to:", href);
+                      event.preventDefault();
+                      event.stopPropagation();
+                      return false;
+                    }
+                  }
+                  target = target.parentElement;
+                }
+                try {
+                  return listener.apply(this, arguments);
+                } catch (e) {
+                  console.error(e);
+                }
+              };
+              return originalAddEventListener.call(this, type, wrappedListener, options);
+            }
+            return originalAddEventListener.call(this, type, listener, options);
+          };
+
+          // MutationObserver to catch dynamically added ad elements
+          const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+              mutation.addedNodes.forEach((node) => {
+                if (node.tagName === 'SCRIPT') {
+                  const src = node.getAttribute('src') || '';
+                  const content = node.innerHTML || '';
+                  if (/pop|ad|click|vast/i.test(src) || /window\\.open/i.test(content)) {
+                    node.remove();
+                  }
+                }
+                if (node.tagName === 'IFRAME') {
+                  const src = node.getAttribute('src') || '';
+                  if (/pop|ad|click|vast|bet|casino/i.test(src)) {
+                    node.remove();
+                  }
+                }
+              });
+            });
+          });
+          observer.observe(document.documentElement, { childList: true, subtree: true });
+
+          // Auto-play videos when ready
+          document.addEventListener("DOMContentLoaded", () => {
+            const videos = document.querySelectorAll("video");
+            videos.forEach(v => {
+              v.setAttribute("autoplay", "true");
+              v.play().catch(() => {
+                v.muted = true;
+                v.play().catch(e => console.log("Muted autoplay started", e));
+              });
+            });
+          });
+        })();
+      </script>
+    `;
+
     if ($("head").length > 0) {
       $("head").prepend(`<base href="${origin}/">`);
       $("head").prepend(`<meta name="referrer" content="no-referrer">`);
+      $("head").append(antiAdStyles);
+      $("head").append(antiAdScript);
     } else {
-      $("html").prepend(`<head><base href="${origin}/"><meta name="referrer" content="no-referrer"></head>`);
+      $("html").prepend(`<head><base href="${origin}/"><meta name="referrer" content="no-referrer">${antiAdStyles}${antiAdScript}</head>`);
     }
 
     res.send($.html());
   } catch (error) {
-    console.error("Player proxy error:", error);
-    res.status(500).send("Failed to proxy player");
+    console.error("Player proxy error, falling back to direct iframe:", error);
+    return res.send(`
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>Player Direct Fallback</title>
+  <style>
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
+    iframe { border: none; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <iframe src="${url}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+</body>
+</html>
+    `);
   }
 });
 
