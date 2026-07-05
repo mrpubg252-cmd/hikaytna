@@ -560,7 +560,6 @@ export default function CustomPlayer({
                   allowFullScreen
                   title="Streaming Server"
                   allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-                  sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
                 />
               ) : (
                 <div className="absolute inset-0 flex flex-col gap-3 items-center justify-center bg-[#07070a]">

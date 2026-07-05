@@ -177,10 +177,10 @@ app.get("/api/episode/:slug", async (req, res) => {
   const { slug } = req.params;
   const cleanSlugForLanding = slug.replace(/\/$/, "");
   
-  // Try both variations: without /see/ first (to let the form submission two-post flow work), and with /see/ second.
+  // Try both variations: with /see/ first (as requested by user), and without /see/ second.
   const urlsToTry = [
-    `${SOURCE_URL}/watch/episodes/${cleanSlugForLanding}/`,
-    `${SOURCE_URL}/watch/episodes/${cleanSlugForLanding}/see/`
+    `${SOURCE_URL}/watch/episodes/${cleanSlugForLanding}/see/`,
+    `${SOURCE_URL}/watch/episodes/${cleanSlugForLanding}/`
   ];
 
   let successData = null;
@@ -401,8 +401,8 @@ app.get("/api/episode/:slug", async (req, res) => {
           if (matchedEpisode) {
             console.log(`[ResolveLegacy] Match found! epNum ${matchedEpisode.epNum} -> real epSlug: ${matchedEpisode.epSlug}. Scraping matched episode.`);
             const realUrlsToTry = [
-              `${SOURCE_URL}/watch/episodes/${matchedEpisode.epSlug}/`,
-              `${SOURCE_URL}/watch/episodes/${matchedEpisode.epSlug}/see/`
+              `${SOURCE_URL}/watch/episodes/${matchedEpisode.epSlug}/see/`,
+              `${SOURCE_URL}/watch/episodes/${matchedEpisode.epSlug}/`
             ];
 
             for (const landingUrl of realUrlsToTry) {
