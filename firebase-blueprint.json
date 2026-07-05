@@ -1,80 +1,167 @@
 {
   "entities": {
-    "ChatMessage": {
-      "title": "ChatMessage",
-      "description": "A live chat message sent by a user for a specific series",
+    "User": {
+      "title": "User Profile",
+      "description": "Information about a user, including points and premium status.",
       "type": "object",
       "properties": {
-        "text": {
-          "type": "string",
-          "description": "The text content of the message"
-        },
-        "username": {
-          "type": "string",
-          "description": "The user's customizable handle"
-        },
-        "avatarColor": {
-          "type": "string",
-          "description": "Tailwind color class for avatar styling"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "The server-generated timestamp"
-        }
+        "userId": { "type": "string", "description": "The Firebase Auth UID." },
+        "email": { "type": "string", "description": "User email." },
+        "points": { "type": "integer", "description": "Number of referral points." },
+        "isPremium": { "type": "boolean", "description": "Whether the user has ads disabled." },
+        "referralCode": { "type": "string", "description": "Unique referral code." },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["text", "username", "avatarColor", "createdAt"]
+      "required": ["userId", "points", "isPremium", "referralCode"]
     },
-    "Report": {
-      "title": "Report",
-      "description": "A quality/technical issue report filed by a user for a video stream",
+    "Referral": {
+      "title": "Referral Log",
+      "description": "Tracks unique referral clicks to prevent fraud.",
       "type": "object",
       "properties": {
-        "seriesTitle": {
-          "type": "string",
-          "description": "Title of the series"
-        },
-        "episodeTitle": {
-          "type": "string",
-          "description": "Title of the episode"
-        },
-        "episodeSlug": {
-          "type": "string",
-          "description": "URL slug of the episode"
-        },
-        "reason": {
-          "type": "string",
-          "description": "The selected category/reason for reporting"
-        },
-        "comment": {
-          "type": "string",
-          "description": "Detailed explanation of the issue"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time",
-          "description": "The server-generated timestamp"
-        },
-        "userAgent": {
-          "type": "string",
-          "description": "Device and browser info of reporter"
-        },
-        "timestamp": {
-          "type": "string",
-          "description": "ISO timestamp format"
-        }
+        "referrerId": { "type": "string", "description": "UID of the user who shared the link." },
+        "visitorId": { "type": "string", "description": "An identifier for the visitor (could be a generated UUID in localStorage)." },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["reason", "comment", "createdAt"]
+      "required": ["referrerId", "visitorId"]
+    },
+    "Short": {
+      "title": "Short Clip",
+      "description": "A shared video clip from a series.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "seriesName": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "thumbnail": { "type": "string" },
+        "likes": { "type": "integer" },
+        "views": { "type": "integer" },
+        "timeRange": { "type": "string" },
+        "episodeLink": { "type": "string" },
+        "publisherName": { "type": "string" },
+        "tag": { "type": "string" },
+        "author": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "seriesName", "videoUrl", "author"]
+    },
+    "Chat": {
+        "title": "Chat Session",
+        "description": "A chat session between users or in a series channel.",
+        "type": "object",
+        "properties": {
+            "id": { "type": "string" },
+            "participants": { "type": "array", "items": { "type": "string" } },
+            "messages": { "type": "array", "items": { "type": "object" } },
+            "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "participants"]
+    },
+    "Presence": {
+        "title": "User Presence",
+        "description": "User online status.",
+        "type": "object",
+        "properties": {
+            "userId": { "type": "string" },
+            "status": { "type": "string", "enum": ["online", "offline", "away"] },
+            "lastSeen": { "type": "string", "format": "date-time" }
+        },
+        "required": ["userId", "status"]
+    },
+    "CategoryPin": {
+      "title": "Category Pin",
+      "description": "Information about a pinned series in its category.",
+      "type": "object",
+      "properties": {
+        "pinned": { "type": "boolean" },
+        "seriesId": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "pinnedAt": { "type": "integer" }
+      },
+      "required": ["pinned", "seriesId", "title"]
+    },
+    "SliderSelection": {
+      "title": "Slider Selection",
+      "description": "Information about a featured series in the slider.",
+      "type": "object",
+      "properties": {
+        "selected": { "type": "boolean" },
+        "seriesId": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "selectedAt": { "type": "integer" }
+      },
+      "required": ["selected", "seriesId", "title"]
+    },
+    "SupportTicket": {
+        "title": "Support Ticket",
+        "description": "User support request.",
+        "type": "object",
+        "properties": {
+            "id": { "type": "string" },
+            "userId": { "type": "string" },
+            "issue": { "type": "string" },
+            "status": { "type": "string", "enum": ["open", "in-progress", "closed"] },
+            "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "userId", "issue", "status"]
+    },
+    "ManualSeries": {
+      "title": "Manual Series",
+      "description": "Series added manually by admin.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "image": { "type": "string" },
+        "category": { "type": "string" },
+        "rating": { "type": "number" },
+        "isPriority": { "type": "boolean" },
+        "trailer": { "type": "string" },
+        "episodes": { "type": "array" },
+        "isSeries": { "type": "boolean" }
+      },
+      "required": ["id", "title", "image", "category"]
     }
   },
   "firestore": {
-    "/chats/{seriesId}/messages/{messageId}": {
-      "schema": { "$ref": "#/entities/ChatMessage" },
-      "description": "Subcollection containing messages for a series chatroom"
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and points."
     },
-    "/reports/{reportId}": {
-      "schema": { "$ref": "#/entities/Report" },
-      "description": "Global collection containing all submitted stream issue reports"
+    "/referrals/{referralId}": {
+      "schema": "Referral",
+      "description": "Unique referral tracking."
+    },
+    "/shorts/{shortId}": {
+        "schema": "Short",
+        "description": "Shared shorts."
+    },
+    "/chats/{chatId}": {
+        "schema": "Chat",
+        "description": "Chats."
+    },
+    "/presence/{userId}": {
+        "schema": "Presence",
+        "description": "User presence."
+    },
+    "/category_pins/{pinId}": {
+        "schema": "CategoryPin",
+        "description": "Pinned category items."
+    },
+    "/slider_selections/{selectionId}": {
+        "schema": "SliderSelection",
+        "description": "Featured slider items."
+    },
+    "/supportTickets/{ticketId}": {
+        "schema": "SupportTicket",
+        "description": "Support tickets."
+    },
+    "/custom_series/{seriesId}": {
+        "schema": "ManualSeries",
+        "description": "Admin-added series."
     }
   }
 }
