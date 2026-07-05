@@ -25,7 +25,7 @@ import {
 export default function HomeScreen() {
   const [allSeriesRaw, setAllSeriesRaw] = useState<Series[]>([]);
   const [globalCache, setGlobalCache] = useState<Series[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState("تركي");
+  const [selectedCategory, setSelectedCategory] = useState("الكل");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -82,23 +82,32 @@ export default function HomeScreen() {
       }
 
       try {
-        // Fetch the first 4 pages for thorough coverage (especially for Turkish series)
-        const pagePromises = [0, 1, 2, 3].map(page => 
-          fetchCategoryPage(selectedCategory, page, controller.signal)
-        );
-        
-        const results = await Promise.allSettled(pagePromises);
-        let allFetched: Series[] = [];
-        results.forEach(res => {
-          if (res.status === 'fulfilled' && res.value.length > 0) {
-            allFetched = [...allFetched, ...res.value];
+        if (selectedCategory === "الكل") {
+          const allFetched = await fetchAllSeries(false);
+          if (isMounted && allFetched && allFetched.length > 0) {
+            initializeEpisodeTracking(allFetched);
+            setAllSeriesRaw(allFetched);
+            setLoading(false);
           }
-        });
+        } else {
+          // Fetch the first 4 pages for thorough coverage (especially for Turkish series)
+          const pagePromises = [0, 1, 2, 3].map(page => 
+            fetchCategoryPage(selectedCategory, page, controller.signal)
+          );
+          
+          const results = await Promise.allSettled(pagePromises);
+          let allFetched: Series[] = [];
+          results.forEach(res => {
+            if (res.status === 'fulfilled' && res.value.length > 0) {
+              allFetched = [...allFetched, ...res.value];
+            }
+          });
 
-        if (isMounted && allFetched.length > 0) {
-          initializeEpisodeTracking(allFetched);
-          setAllSeriesRaw(allFetched);
-          setLoading(false);
+          if (isMounted && allFetched.length > 0) {
+            initializeEpisodeTracking(allFetched);
+            setAllSeriesRaw(allFetched);
+            setLoading(false);
+          }
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
@@ -157,6 +166,13 @@ export default function HomeScreen() {
       } else {
         list = allSeriesRaw;
       }
+
+      // Filter out individual episode posters so only the main series show up
+      list = list.filter(s => {
+        const title = s.title || "";
+        const isEpisode = /الحلقة|الحلقه|حلقة|حلقه/.test(title);
+        return !isEpisode;
+      });
 
       // Step B: Apply Universal Professional Sort (handled by API service for consistency)
       return applyPrioritySort(list);
@@ -272,20 +288,14 @@ export default function HomeScreen() {
 
       <main className="pb-20">
         <div className="relative z-10 pt-4">
-          <CategoryBar
-            selected={selectedCategory}
-            onSelect={handleCategoryChange}
-          />
 
           <div className="px-4 sm:px-8 py-8 sm:py-12 pb-32">
             <div className="flex items-center justify-between mb-8 sm:mb-10">
               <div className="flex flex-col gap-1">
-                <h2 className="text-xl sm:text-3xl font-black-italic border-r-4 border-primary pr-4 sm:pr-6">
+                <h2 className="text-xl sm:text-3xl font-black border-r-4 border-primary pr-4 sm:pr-6 text-white tracking-tight">
                   {query
-                    ? "SEARCH RESULTS"
-                    : selectedCategory === "الكل"
-                    ? "NEW SERIES"
-                    : `${selectedCategory.toUpperCase()} SERIES`}
+                    ? "نتائج البحث"
+                    : "جميع المسلسلات"}
                 </h2>
                 {query && (
                   <button
@@ -297,8 +307,8 @@ export default function HomeScreen() {
                   </button>
                 )}
               </div>
-              <span className="text-zinc-600 font-bold text-[8px] sm:text-[10px] tracking-widest uppercase italic">
-                {processedSeries.length} TITLES
+              <span className="text-zinc-500 font-black text-xs">
+                {processedSeries.length} عمل فني
               </span>
             </div>
 

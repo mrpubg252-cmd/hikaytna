@@ -882,10 +882,38 @@ async function startServer() {
   app.get("/api/v1/categories", async (req, res) => {
     try {
       const categories = [
-        { name: 'آخر الحلقات', url: 'https://wwv.qeseh.com/', pages: ['https://wwv.qeseh.com/', 'https://wwv.qeseh.com/page/2/', 'https://wwv.qeseh.com/page/3/', 'https://wwv.qeseh.com/page/4/', 'https://wwv.qeseh.com/page/5/'] },
-        { name: 'جميع المسلسلات', url: 'https://wwv.qeseh.com/discover/', pages: ['https://wwv.qeseh.com/discover/', 'https://wwv.qeseh.com/discover/page/2/', 'https://wwv.qeseh.com/discover/page/3/', 'https://wwv.qeseh.com/discover/page/4/'] },
-        { name: 'مسلسلات كاملة', url: 'https://wwv.qeseh.com/category/alarshif/', pages: ['https://wwv.qeseh.com/category/alarshif/', 'https://wwv.qeseh.com/category/alarshif/page/2/', 'https://wwv.qeseh.com/category/alarshif/page/3/'] },
-        { name: 'أفلام تركية', url: 'https://wwv.qeseh.com/category/yeni-filmler/', pages: ['https://wwv.qeseh.com/category/yeni-filmler/', 'https://wwv.qeseh.com/category/yeni-filmler/page/2/'] }
+        { 
+          name: 'آخر الحلقات', 
+          url: 'https://wwv.qeseh.com/', 
+          pages: [
+            'https://wwv.qeseh.com/',
+            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/page/${i + 2}/`)
+          ] 
+        },
+        { 
+          name: 'جميع المسلسلات', 
+          url: 'https://wwv.qeseh.com/discover/', 
+          pages: [
+            'https://wwv.qeseh.com/discover/',
+            ...Array.from({ length: 19 }, (_, i) => `https://wwv.qeseh.com/discover/page/${i + 2}/`)
+          ] 
+        },
+        { 
+          name: 'مسلسلات كاملة', 
+          url: 'https://wwv.qeseh.com/category/alarshif/', 
+          pages: [
+            'https://wwv.qeseh.com/category/alarshif/',
+            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/category/alarshif/page/${i + 2}/`)
+          ] 
+        },
+        { 
+          name: 'أفلام تركية', 
+          url: 'https://wwv.qeseh.com/category/yeni-filmler/', 
+          pages: [
+            'https://wwv.qeseh.com/category/yeni-filmler/',
+            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/category/yeni-filmler/page/${i + 2}/`)
+          ] 
+        }
       ];
       res.json({ status: true, data: categories });
     } catch (error: any) {
@@ -1187,16 +1215,29 @@ async function startServer() {
         
         if (playerLink) {
           try {
-            const urlObj = new URL(playerLink);
-            const postParam = urlObj.searchParams.get('post');
-            if (postParam) {
-              const decodedJson = Buffer.from(postParam, 'base64').toString('utf-8');
-              const postData = JSON.parse(decodedJson);
-              if (postData && postData.servers && postData.servers.length > 0) {
-                // Find first server or preferred ones like Arab HD / estream
-                const firstServer = postData.servers[0];
-                iframeSrc = getEmbedUrl(firstServer.name, firstServer.id);
-                console.log(`[Qeseh Play Resolver] Decoded embed URL: ${iframeSrc}`);
+            let actualTarget = playerLink;
+            if (playerLink.includes('sayyarh.com')) {
+              const urlObj = new URL(playerLink);
+              const nestedUrl = urlObj.searchParams.get('url');
+              if (nestedUrl) {
+                actualTarget = nestedUrl;
+              }
+            }
+
+            if (actualTarget.includes('thenextstop.net')) {
+              iframeSrc = actualTarget;
+              console.log(`[Qeseh Play Resolver] Found thenextstop URL: ${iframeSrc}`);
+            } else {
+              const targetUrlObj = new URL(actualTarget);
+              const postParam = targetUrlObj.searchParams.get('post');
+              if (postParam) {
+                const decodedJson = Buffer.from(postParam, 'base64').toString('utf-8');
+                const postData = JSON.parse(decodedJson);
+                if (postData && postData.servers && postData.servers.length > 0) {
+                  const firstServer = postData.servers[0];
+                  iframeSrc = getEmbedUrl(firstServer.name, firstServer.id);
+                  console.log(`[Qeseh Play Resolver] Decoded embed URL: ${iframeSrc}`);
+                }
               }
             }
           } catch (err: any) {
@@ -1229,6 +1270,13 @@ async function startServer() {
                  const parsed = new URL(realUrl);
                  iframeSrc = parsed.origin + iframeSrc;
              } catch (e) {}
+         }
+
+         // If the resolved URL is thenextstop.net, serve it directly to prevent referrer blocks from breaking ArabHD
+         if (iframeSrc.includes('thenextstop.net')) {
+           const responseData = { status: true, player_url: iframeSrc };
+           setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000);
+           return res.json(responseData);
          }
 
          // Wrap it in our player proxy to defeat frame-busters

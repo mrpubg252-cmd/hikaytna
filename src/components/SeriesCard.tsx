@@ -1,5 +1,4 @@
 import React from 'react';
-import { motion } from 'motion/react';
 import { Play, Sparkles } from 'lucide-react';
 import { Series } from '../services/firebase';
 import { getProxiedImageUrl } from '../services/api';
@@ -85,19 +84,31 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
   }, [item.rating, item.title, item.id]);
 
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ duration: 0.3 }}
+    <div
       className={cn(
-        "relative group cursor-pointer aspect-[3/4] rounded-2xl overflow-hidden bg-zinc-900 border transition-all will-change-transform",
-        isLegendary ? "border-amber-500/40 shadow-[0_0_20px_rgba(245,158,11,0.15)] hover:shadow-[0_0_30px_rgba(245,158,11,0.25)]" : "border-white/5"
+        "relative group cursor-pointer aspect-[2/3] rounded-2xl overflow-hidden bg-zinc-950 border transition-all duration-300 ease-out hover:scale-[1.03] hover:shadow-[0_12px_30px_rgba(0,0,0,0.8)] active:scale-[0.98] select-none",
+        isLegendary 
+          ? "border-amber-500/40 shadow-[0_0_20px_rgba(245,158,11,0.15)] hover:border-amber-500/80 hover:shadow-[0_0_30px_rgba(245,158,11,0.35)]" 
+          : "border-white/5 shadow-md hover:border-white/15"
       )}
       onClick={handlePress}
     >
+      {/* Blurred background copy for premium seamless fit, preventing any blank gaps while showing 100% of the poster */}
+      {currentSrc && (
+        <div className="absolute inset-0 w-full h-full overflow-hidden select-none pointer-events-none bg-zinc-950">
+          <img 
+            src={currentSrc} 
+            alt="" 
+            referrerPolicy="no-referrer"
+            className={cn(
+              "w-full h-full object-cover blur-2xl opacity-35 scale-125 transition-opacity duration-500",
+              imageLoaded ? 'opacity-35' : 'opacity-0'
+            )}
+          />
+        </div>
+      )}
+
+      {/* Main Image with Object-Contain so 100% of the original artwork/title is visible without any crop */}
       <img 
         src={currentSrc} 
         alt={item.title} 
@@ -105,22 +116,19 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
         decoding="async"
         referrerPolicy="no-referrer"
         className={cn(
-          "w-full h-full object-cover transition-opacity duration-500 will-change-transform",
-          imageLoaded ? 'opacity-100' : 'opacity-0',
+          "absolute inset-0 w-full h-full object-contain transition-all duration-500 will-change-transform z-10 p-0.5",
+          imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95',
           isLegendary && "scale-[1.01]"
         )}
         onLoad={() => setImageLoaded(true)}
         onError={() => {
-          // Reactively fetch fallback poster path from TMDB on rendering errors
           if (currentSrc && currentSrc.includes('image.tmdb.org')) {
-            // Already a TMDB url that failed, prevent infinite loops
             return;
           }
           getTMDBPoster(item.title, item.category).then((healedUrl) => {
             if (healedUrl) {
               setCurrentSrc(healedUrl);
             } else {
-              // Final generic background fallbacks
               setCurrentSrc("https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
             }
           });
@@ -128,11 +136,11 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
       />
 
       {isLegendary && (
-        <div className="absolute inset-0 bg-gradient-to-t from-amber-500/10 via-transparent to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-amber-500/10 via-transparent to-transparent pointer-events-none z-25" />
       )}
 
       {/* Floating Rating Badge */}
-      <div className="absolute top-2.5 left-2 bg-black/70 backdrop-blur-md border border-white/10 text-[9px] sm:text-[10px] text-yellow-500 font-extrabold px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-lg z-30 select-none">
+      <div className="absolute top-2.5 left-2 bg-black/75 backdrop-blur-md border border-white/10 text-[9px] sm:text-[10px] text-yellow-500 font-extrabold px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-lg z-30 select-none">
         ⭐ <span className="text-zinc-100">{displayRating}</span>
       </div>
 
@@ -143,16 +151,18 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
         </div>
       )}
       
-      <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent flex flex-col justify-end p-3 sm:p-5">
-        <h3 className="text-white font-black text-xs sm:text-sm uppercase tracking-tight truncate">{item.title}</h3>
+      {/* Title with solid dark backdrop for legibility */}
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/40 to-transparent pt-8 pb-3 px-3 sm:pb-5 sm:px-5 z-20">
+        <h3 className="text-white font-black text-xs sm:text-sm uppercase tracking-tight truncate text-right direction-rtl">{item.title}</h3>
       </div>
 
-      <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-2xl">
-          <Play className="w-6 h-6 text-black fill-current" />
+      {/* Hover visual Play indicator */}
+      <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center z-30">
+        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-2xl scale-90 group-hover:scale-100 transition-all duration-300">
+          <Play className="w-6 h-6 text-black fill-current translate-x-0.5" />
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 });
 

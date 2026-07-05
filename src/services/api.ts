@@ -115,10 +115,13 @@ export async function fetchCategories(): Promise<ApiCategory[]> {
       data.data.forEach((cat: any) => {
         const baseName = cat.name.replace(/\s+صفحة\s+\d+/gi, '').replace(/\s+page\s+\d+/gi, '').trim();
         if (!mergedMap.has(baseName)) {
-          mergedMap.set(baseName, { name: baseName, url: cat.url, pages: [cat.url] });
+          mergedMap.set(baseName, { name: baseName, url: cat.url, pages: cat.pages || [cat.url] });
         } else {
           const ex = mergedMap.get(baseName)!;
-          if (!ex.pages?.includes(cat.url)) ex.pages?.push(cat.url);
+          const incomingPages = cat.pages || [cat.url];
+          incomingPages.forEach((p: string) => {
+            if (!ex.pages?.includes(p)) ex.pages?.push(p);
+          });
         }
       });
       categoriesCache = Array.from(mergedMap.values());
@@ -220,14 +223,33 @@ export async function fetchAllFromAPI(isBackground = false) {
   if (allCats.length === 0) return [];
   const allMap = new Map<string, any>();
   const chunk = allCats.slice(0, 20);
-  const results = await Promise.allSettled(chunk.map(c => fetchSeriesByCategory(c.url)));
-  results.forEach((r, idx) => {
-    if (r.status === "fulfilled") {
-      r.value.forEach((s: any, i: number) => {
-        if (!allMap.has(s.title)) allMap.set(s.title, { ...s, category: chunk[idx].name, rank: i });
-      });
-    }
+
+  // Flatten all page URLs we want to fetch across all categories
+  const pageUrls: { url: string; catName: string }[] = [];
+  chunk.forEach(c => {
+    // Limit to first 15 pages for "جميع المسلسلات", 6 pages for others to keep it fast yet highly comprehensive
+    const maxPages = c.name.includes("جميع المسلسلات") ? 15 : 6;
+    const pagesToFetch = (c.pages || [c.url]).slice(0, maxPages);
+    pagesToFetch.forEach(p => {
+      pageUrls.push({ url: p, catName: c.name });
+    });
   });
+
+  // Fetch page series in batches of 5 to protect server resources
+  const batchSize = 5;
+  for (let i = 0; i < pageUrls.length; i += batchSize) {
+    const batch = pageUrls.slice(i, i + batchSize);
+    const results = await Promise.allSettled(batch.map(item => fetchSeriesByCategory(item.url)));
+    results.forEach((r, idx) => {
+      if (r.status === "fulfilled") {
+        r.value.forEach((s: any, iRank: number) => {
+          if (!allMap.has(s.title)) {
+            allMap.set(s.title, { ...s, category: batch[idx].catName, rank: iRank });
+          }
+        });
+      }
+    });
+  }
 
   const firebaseData = await fetchAllFromFirebase();
   const merged = [...Array.from(allMap.values()), ...firebaseData];

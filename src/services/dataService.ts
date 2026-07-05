@@ -190,6 +190,10 @@ export function clearCache() {
 
 export async function fetchAllSeries(forceRefresh = false): Promise<Series[]> {
   if (!forceRefresh && cachedSeriesList && cachedSeriesList.length > 0 && Date.now() - lastFetchTime < CACHE_DURATION_MS) {
+    // If cache is older than 15 minutes, trigger a background refresh quietly
+    if (Date.now() - lastFetchTime > 15 * 60 * 1000) {
+      triggerBackgroundFetch();
+    }
     return cachedSeriesList;
   }
   return doFetchAndMerge();
