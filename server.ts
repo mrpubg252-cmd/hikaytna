@@ -573,22 +573,20 @@ app.get("/api/proxy-embed", async (req, res) => {
         playerIframeSrc = `${SOURCE_URL}/${playerIframeSrc}`;
       }
       
-      const proxiedSrc = `${myHost}/api/proxy-player?url=${encodeURIComponent(playerIframeSrc)}`;
-      
       const cleanHtml = `
 <!DOCTYPE html>
 <html lang="ar">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Player Proxy</title>
+  <title>Player</title>
   <style>
     body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
     iframe { border: none; width: 100%; height: 100%; }
   </style>
 </head>
 <body>
-  <iframe src="${proxiedSrc}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+  <iframe src="${playerIframeSrc}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
 </body>
 </html>
       `;
