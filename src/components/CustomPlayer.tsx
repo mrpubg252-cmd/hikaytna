@@ -552,8 +552,7 @@ export default function CustomPlayer({
               </div>
             )}
             {(() => {
-              const activeServerItem = servers.find(s => s.url === activeServerUrl);
-              const iframeSrc = (activeServerItem as any)?.directUrl || activeServerUrl || videoUrl;
+              const iframeSrc = activeServerUrl || videoUrl;
               return iframeSrc ? (
                 <iframe
                   src={iframeSrc}

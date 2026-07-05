@@ -549,7 +549,7 @@ app.get("/api/proxy-embed", async (req, res) => {
   const targetUrl = `${SOURCE_URL}/embed/${nume}/${post}/${mappedType}/`;
   
   try {
-    const response = await fetch(targetUrl, {
+    const response = await axiosInstance.get(targetUrl, {
       headers: {
         'User-Agent': getRandomUA(),
         'Referer': SOURCE_URL,
@@ -557,27 +557,7 @@ app.get("/api/proxy-embed", async (req, res) => {
       }
     });
     
-    if (response.status === 403 || response.status === 1005) {
-      console.log(`[ProxyEmbed] Server-side fetch got ${response.status}, rendering direct iframe fallback to bypass host block.`);
-      return res.send(`
-<!DOCTYPE html>
-<html lang="ar">
-<head>
-  <meta charset="UTF-8">
-  <title>Embed Direct Fallback</title>
-  <style>
-    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
-    iframe { border: none; width: 100%; height: 100%; }
-  </style>
-</head>
-<body>
-  <iframe src="${targetUrl}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
-</body>
-</html>
-      `);
-    }
-
-    const html = await response.text();
+    const html = response.data;
     
     const $ = cheerio.load(html);
     const myHost = getMyHost(req);
@@ -619,20 +599,25 @@ app.get("/api/proxy-embed", async (req, res) => {
     // Fallback if no iframe found (unlikely, but just in case)
     res.send(html);
   } catch (error) {
-    console.error("Proxy error:", error);
+    console.error("Proxy error:", error.message || error);
     return res.send(`
 <!DOCTYPE html>
 <html lang="ar">
 <head>
   <meta charset="UTF-8">
-  <title>Embed Direct Fallback</title>
+  <title>فشل تحميل مشغل الفيديو</title>
   <style>
-    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
-    iframe { border: none; width: 100%; height: 100%; }
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background-color: #000; color: #fff; font-family: sans-serif; text-align: center; }
+    .container { padding: 20px; }
+    h1 { font-size: 20px; color: #b72424; margin-bottom: 10px; }
+    p { font-size: 14px; color: #aaa; }
   </style>
 </head>
 <body>
-  <iframe src="${targetUrl}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+  <div class="container">
+    <h1>فشل تحميل مشغل الفيديو</h1>
+    <p>يرجى تجربة سيرفر آخر من قائمة السيرفرات المتوفرة.</p>
+  </div>
 </body>
 </html>
     `);
@@ -647,7 +632,7 @@ app.get("/api/proxy-player", async (req, res) => {
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await axiosInstance.get(url, {
       headers: {
         'User-Agent': getRandomUA(),
         'Referer': SOURCE_URL,
@@ -655,27 +640,7 @@ app.get("/api/proxy-player", async (req, res) => {
       }
     });
 
-    if (response.status === 403 || response.status === 1005) {
-      console.log(`[ProxyPlayer] Server-side fetch got ${response.status} for url ${url}, loading direct iframe fallback in browser.`);
-      return res.send(`
-<!DOCTYPE html>
-<html lang="ar">
-<head>
-  <meta charset="UTF-8">
-  <title>Player Direct Fallback</title>
-  <style>
-    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
-    iframe { border: none; width: 100%; height: 100%; }
-  </style>
-</head>
-<body>
-  <iframe src="${url}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
-</body>
-</html>
-      `);
-    }
-
-    let html = await response.text();
+    let html = response.data;
     const parsedUrl = new URL(url);
     const origin = parsedUrl.origin;
 
@@ -844,20 +809,25 @@ app.get("/api/proxy-player", async (req, res) => {
 
     res.send($.html());
   } catch (error) {
-    console.error("Player proxy error, falling back to direct iframe:", error);
+    console.error("Player proxy error:", error.message || error);
     return res.send(`
 <!DOCTYPE html>
 <html lang="ar">
 <head>
   <meta charset="UTF-8">
-  <title>Player Direct Fallback</title>
+  <title>فشل اتصال المشغل</title>
   <style>
-    body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
-    iframe { border: none; width: 100%; height: 100%; }
+    body, html { margin: 0; padding: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background-color: #000; color: #fff; font-family: sans-serif; text-align: center; }
+    .container { padding: 20px; }
+    h1 { font-size: 20px; color: #b72424; margin-bottom: 10px; }
+    p { font-size: 14px; color: #aaa; }
   </style>
 </head>
 <body>
-  <iframe src="${url}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+  <div class="container">
+    <h1>فشل اتصال المشغل</h1>
+    <p>يرجى تبديل سيرفر البث من الأسفل أو المحاولة لاحقاً.</p>
+  </div>
 </body>
 </html>
     `);
