@@ -573,6 +573,8 @@ app.get("/api/proxy-embed", async (req, res) => {
         playerIframeSrc = `${SOURCE_URL}/${playerIframeSrc}`;
       }
       
+      const proxiedSrc = `${myHost}/api/proxy-player?url=${encodeURIComponent(playerIframeSrc)}`;
+      
       const cleanHtml = `
 <!DOCTYPE html>
 <html lang="ar">
@@ -586,7 +588,7 @@ app.get("/api/proxy-embed", async (req, res) => {
   </style>
 </head>
 <body>
-  <iframe src="${playerIframeSrc}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+  <iframe src="${proxiedSrc}" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
 </body>
 </html>
       `;
@@ -715,6 +717,24 @@ app.get("/api/proxy-player", async (req, res) => {
     const antiAdScript = `
       <script id="anti-ad-shield">
         (function() {
+          // Bypass Referer & Parent Origin protections
+          try {
+            Object.defineProperty(document, 'referrer', {
+              get: function() { return 'https://3iskk.xyz/'; },
+              configurable: true
+            });
+            Object.defineProperty(window, 'parent', {
+              get: function() { return window; },
+              configurable: true
+            });
+            Object.defineProperty(window, 'top', {
+              get: function() { return window; },
+              configurable: true
+            });
+          } catch(e) {
+            console.error("[AdShield] Failed to spoof referrers:", e);
+          }
+
           // Block window.open entirely to stop popups
           window.open = function() {
             console.log("[AdShield] Blocked window.open attempt");
