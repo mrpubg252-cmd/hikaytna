@@ -142,8 +142,8 @@ export default function Watch() {
       }
     }
 
-    // Do not resolve automatically to preserve original iframe player as requested
-    // resolve();
+    // Resolve automatically for high performance direct stream player
+    resolve();
   }, [activeServer]);
 
   const currentEpIndex = series?.episodes?.findIndex(ep => ep.epSlug === slug) ?? -1;
@@ -204,7 +204,7 @@ export default function Watch() {
 
             {/* Video Player */}
             <CustomPlayer
-              videoUrl={activeServer && !activeServer.includes('/api/proxy') ? `/api/proxy-player?url=${encodeURIComponent(activeServer)}` : activeServer}
+              videoUrl={resolvedVideo?.videoUrl || (activeServer && !activeServer.includes('/api/proxy') ? `/api/proxy-player?url=${encodeURIComponent(activeServer)}` : activeServer)}
               activeServerUrl={activeServer}
               seriesId={series?.slug || ""}
               seriesImage={series?.img || ""}

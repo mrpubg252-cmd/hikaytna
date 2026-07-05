@@ -17,6 +17,7 @@ interface Episode {
 interface ServerItem {
   name: string;
   url: string;
+  directUrl?: string;
 }
 
 interface CustomPlayerProps {
@@ -550,21 +551,25 @@ export default function CustomPlayer({
                 </button>
               </div>
             )}
-            {videoUrl ? (
-              <iframe
-                src={videoUrl}
-                className="w-full h-full border-none"
-                allowFullScreen
-                referrerPolicy="no-referrer"
-                title="Streaming Server"
-                allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-              />
-            ) : (
-              <div className="absolute inset-0 flex flex-col gap-3 items-center justify-center bg-[#07070a]">
-                <Loader2 className="w-10 h-10 text-[#b72424] animate-spin" />
-                <span className="text-sm font-semibold text-zinc-400">جاري الاتصال بخادم البث...</span>
-              </div>
-            )}
+            {(() => {
+              const activeServerItem = servers.find(s => s.url === activeServerUrl);
+              const iframeSrc = (activeServerItem as any)?.directUrl || activeServerUrl || videoUrl;
+              return iframeSrc ? (
+                <iframe
+                  src={iframeSrc}
+                  className="w-full h-full border-none"
+                  allowFullScreen
+                  title="Streaming Server"
+                  allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                  sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"
+                />
+              ) : (
+                <div className="absolute inset-0 flex flex-col gap-3 items-center justify-center bg-[#07070a]">
+                  <Loader2 className="w-10 h-10 text-[#b72424] animate-spin" />
+                  <span className="text-sm font-semibold text-zinc-400">جاري الاتصال بخادم البث...</span>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>

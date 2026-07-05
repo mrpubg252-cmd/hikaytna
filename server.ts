@@ -269,10 +269,12 @@ app.get("/api/episode/:slug", async (req, res) => {
               const type = $res2(el).attr("data-type");
               const post = $res2(el).attr("data-post");
               const nume = $res2(el).attr("data-nume");
+              const mappedType = type === "tv" ? "2" : "1";
 
               servers.push({
                 name,
-                url: `/api/proxy-embed?nume=${nume}&post=${post}&type=${type}`
+                url: `/api/proxy-embed?nume=${nume}&post=${post}&type=${type}`,
+                directUrl: `${SOURCE_URL}/embed/${nume}/${post}/${mappedType}/`
               });
             });
 
@@ -293,10 +295,12 @@ app.get("/api/episode/:slug", async (req, res) => {
           const type = $landing(el).attr("data-type");
           const post = $landing(el).attr("data-post");
           const nume = $landing(el).attr("data-nume");
+          const mappedType = type === "tv" ? "2" : "1";
 
           servers.push({
             name,
-            url: `/api/proxy-embed?nume=${nume}&post=${post}&type=${type}`
+            url: `/api/proxy-embed?nume=${nume}&post=${post}&type=${type}`,
+            directUrl: `${SOURCE_URL}/embed/${nume}/${post}/${mappedType}/`
           });
         });
       }
@@ -313,6 +317,219 @@ app.get("/api/episode/:slug", async (req, res) => {
     } catch (err: any) {
       console.error(`[EpisodeScraper] Error fetching ${landingUrl}:`, err.message);
       lastError = err;
+    }
+  }
+
+  if (!successData) {
+    console.log(`[EpisodeScraper] Standard scraping failed for slug ${slug}. Attempting legacy Arabic slug resolution.`);
+    try {
+      // 1. Extract episode number
+      let targetEpNum = null;
+      const epNumMatch = slug.match(/(?:الحلقة|episode)-?(\d+)/i) || slug.match(/-(\d+)(?:-|$)/);
+      if (epNumMatch) {
+        targetEpNum = parseInt(epNumMatch[1]);
+      }
+
+      // 2. Extract series search query
+      let seriesSearchQuery = "";
+      if (slug.includes("-الحلقة-")) {
+        seriesSearchQuery = slug.split("-الحلقة-")[0];
+      } else if (slug.includes("-episode-")) {
+        seriesSearchQuery = slug.split("-episode-")[0];
+      } else {
+        seriesSearchQuery = slug.replace(/-\d+.*$/, "");
+      }
+      seriesSearchQuery = seriesSearchQuery.replace(/-/g, " ").trim();
+
+      if (seriesSearchQuery) {
+        const searchUrl = `${SOURCE_URL}/?s=${encodeURIComponent(seriesSearchQuery)}`;
+        console.log(`[ResolveLegacy] Searching for series on site: ${searchUrl}`);
+        const searchRes = await axiosInstance.get(searchUrl);
+        const $search = cheerio.load(searchRes.data);
+
+        let resolvedSeriesSlug = "";
+        $search(".type_item_box a").each((_, el) => {
+          const link = $search(el).attr("href") || "";
+          if (link.includes("/tvshows/") && !resolvedSeriesSlug) {
+            resolvedSeriesSlug = cleanSlug(link, "tvshows");
+          }
+        });
+
+        if (resolvedSeriesSlug) {
+          console.log(`[ResolveLegacy] Found series slug: ${resolvedSeriesSlug}. Loading episodes.`);
+          const seriesPageUrl = `${SOURCE_URL}/watch/tvshows/${resolvedSeriesSlug}/`;
+          const seriesRes = await axiosInstance.get(seriesPageUrl);
+          const $series = cheerio.load(seriesRes.data);
+
+          const episodes = [];
+          const epSelectors = [
+            ".season-eps a.ep-num",
+            ".episodes-list a.ep-num",
+            ".items_list.season-eps a"
+          ];
+
+          let epElements = null;
+          for (const selector of epSelectors) {
+            const found = $series(selector);
+            if (found.length > 0) {
+              epElements = found;
+              break;
+            }
+          }
+
+          if (epElements) {
+            epElements.each((_, el) => {
+              const epLink = $series(el).attr("href") || "";
+              const epNumStr = $series(el).find("b").text().trim() || $series(el).attr("data-ep-num") || "";
+              const epSlug = cleanSlug(epLink, 'episodes');
+              if (epSlug) {
+                episodes.push({
+                  epNum: parseInt(epNumStr) || 0,
+                  epSlug
+                });
+              }
+            });
+          }
+
+          let matchedEpisode = null;
+          if (targetEpNum !== null) {
+            matchedEpisode = episodes.find(ep => ep.epNum === targetEpNum);
+          } else if (episodes.length > 0) {
+            matchedEpisode = episodes[0];
+          }
+
+          if (matchedEpisode) {
+            console.log(`[ResolveLegacy] Match found! epNum ${matchedEpisode.epNum} -> real epSlug: ${matchedEpisode.epSlug}. Scraping matched episode.`);
+            const realUrlsToTry = [
+              `${SOURCE_URL}/watch/episodes/${matchedEpisode.epSlug}/`,
+              `${SOURCE_URL}/watch/episodes/${matchedEpisode.epSlug}/see/`
+            ];
+
+            for (const landingUrl of realUrlsToTry) {
+              try {
+                console.log(`[EpisodeScraper] Scraping resolved landing URL: ${landingUrl}`);
+                const landingRes = await axiosInstance.get(landingUrl);
+                const $landing = cheerio.load(landingRes.data);
+
+                const title = cleanBranding($landing(".title").first().text().trim() || $landing("title").text().trim());
+                if (!title || title.includes("Page not found") || title.includes("Not Found") || title.includes("404")) {
+                  continue;
+                }
+
+                const servers = [];
+                let iframeSrc = "";
+
+                // Try the two-post flow
+                try {
+                  const form = $landing("div.single_buttons form").first();
+                  const actionUrl1 = form.attr('action');
+                  const newsValue1 = form.find("input[name='news']").val();
+                  const uValue1 = form.find("input[name='u']").val();
+
+                  if (actionUrl1 && newsValue1) {
+                    const params1 = new URLSearchParams();
+                    params1.append('news', String(newsValue1));
+                    params1.append('u', String(uValue1 || ''));
+                    params1.append('submit', 'submit');
+
+                    const res1 = await axiosInstance.post(actionUrl1, params1, {
+                      headers: {
+                        'Referer': landingUrl,
+                        'Origin': SOURCE_URL,
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Upgrade-Insecure-Requests': '1',
+                      }
+                    });
+
+                    const $res1 = cheerio.load(res1.data);
+                    let myUrl = null;
+                    let myInputValue = null;
+
+                    $res1("script").each((_, el) => {
+                      const text = $res1(el).html() || "";
+                      if (text.includes("myUrl") && text.includes("myInput.value")) {
+                        const urlMatch = text.match(/myUrl\s*=\s*"([^"]+)"/);
+                        if (urlMatch) myUrl = urlMatch[1];
+
+                        const valMatch = text.match(/myInput\.value\s*=\s*"([^"]+)"/);
+                        if (valMatch) myInputValue = valMatch[1];
+                      }
+                    });
+
+                    if (myUrl && myInputValue) {
+                      const params2 = new URLSearchParams();
+                      params2.append('news', myInputValue);
+                      params2.append('u', '');
+                      params2.append('submit', 'submit');
+
+                      const res2 = await axiosInstance.post(myUrl, params2, {
+                        headers: {
+                          'Referer': actionUrl1,
+                          'Origin': SOURCE_URL,
+                          'Content-Type': 'application/x-www-form-urlencoded',
+                          'Upgrade-Insecure-Requests': '1',
+                        }
+                      });
+
+                      const $res2 = cheerio.load(res2.data);
+
+                      $res2("#player_servers li").each((_, el) => {
+                        const name = $res2(el).find(".server_name").text().trim();
+                        const type = $res2(el).attr("data-type");
+                        const post = $res2(el).attr("data-post");
+                        const nume = $res2(el).attr("data-nume");
+                        const mappedType = type === "tv" ? "2" : "1";
+
+                        servers.push({
+                          name,
+                          url: `/api/proxy-embed?nume=${nume}&post=${post}&type=${type}`,
+                          directUrl: `${SOURCE_URL}/embed/${nume}/${post}/${mappedType}/`
+                        });
+                      });
+
+                      const defaultIframe = $res2("iframe").first().attr("src");
+                      if (defaultIframe) {
+                        iframeSrc = defaultIframe;
+                      }
+                    }
+                  }
+                } catch (postFlowError) {
+                  console.error("[EpisodeScraper] Two-post flow failed on resolved ep:", postFlowError);
+                }
+
+                if (servers.length === 0) {
+                  $landing("#player_servers li").each((_, el) => {
+                    const name = $landing(el).find(".server_name").text().trim();
+                    const type = $landing(el).attr("data-type");
+                    const post = $landing(el).attr("data-post");
+                    const nume = $landing(el).attr("data-nume");
+                    const mappedType = type === "tv" ? "2" : "1";
+
+                    servers.push({
+                      name,
+                      url: `/api/proxy-embed?nume=${nume}&post=${post}&type=${type}`,
+                      directUrl: `${SOURCE_URL}/embed/${nume}/${post}/${mappedType}/`
+                    });
+                  });
+                }
+
+                if (!iframeSrc && servers.length > 0) {
+                  iframeSrc = servers[0].url;
+                }
+
+                if (servers.length > 0) {
+                  successData = { title, iframeSrc, servers, seriesSlug: resolvedSeriesSlug };
+                  break;
+                }
+              } catch (err) {
+                console.error(`[EpisodeScraper] Error scraping resolved ep URL ${landingUrl}:`, err.message);
+              }
+            }
+          }
+        }
+      }
+    } catch (resolveErr) {
+      console.error("[EpisodeScraper] Legacy Arabic resolution failed:", resolveErr.message);
     }
   }
 
