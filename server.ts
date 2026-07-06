@@ -1751,7 +1751,7 @@ async function startServer() {
       const decodedUrl = Buffer.from(req.params.b64, 'base64').toString('utf-8');
       const encrypted = encodeURIComponent(encryptValue(decodedUrl));
       req.url = `/api/v1/stream-proxy/${encrypted}`;
-      req.app.handle(req, res);
+      (req.app as any).handle(req, res);
     } catch(e) {
       res.status(400).send("Invalid base64");
     }
