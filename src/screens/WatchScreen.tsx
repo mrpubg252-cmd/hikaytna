@@ -157,6 +157,17 @@ export default function WatchScreen() {
 
     const params = new URLSearchParams(window.location.search);
     const locParams = new URLSearchParams(location.search);
+
+    // Detect if the page was hard-reloaded/refreshed
+    const isReload = typeof window !== 'undefined' && (
+      window.performance?.navigation?.type === 1 || 
+      (window.performance?.getEntriesByType?.('navigation')?.[0] as any)?.type === 'reload'
+    );
+
+    if (isReload) {
+      sessionStorage.removeItem('unlocked_' + series.id);
+    }
+
     const isUnlockedParam = params.get('unlocked') === 'true' || locParams.get('unlocked') === 'true';
     const isUnlockedSession = sessionStorage.getItem('unlocked_' + series.id) === 'true';
 
@@ -167,7 +178,7 @@ export default function WatchScreen() {
       return !isNaN(adUntilNum) && adUntilNum > Date.now();
     })();
 
-    if (isUnlockedParam || isUnlockedSession || isPremium) {
+    if (isUnlockedParam || (isUnlockedSession && !isReload) || isPremium) {
       setIsAdGatePassed(true);
       sessionStorage.setItem('unlocked_' + series.id, 'true');
     } else {
@@ -1465,6 +1476,7 @@ export default function WatchScreen() {
                 currentIndex={currentEpisode}
                 seriesId={series.id}
                 seriesImage={resolvedSeriesImage}
+                seriesTitle={series.title}
                 isMovie={episodes.length === 1 && (/فيلم|افلام/i.test(series.category || "") || /فيلم/i.test(series.title || ""))}
                 onSelect={(ep, idx) => playEpisode(ep, idx)}
               />

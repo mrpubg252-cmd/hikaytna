@@ -280,6 +280,51 @@ const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 const TMDB_LANG = 'ar-SA';
 const tmdbCache = new Map<string, any>();
 
+export interface TMDBSimplifiedEpisode {
+  episodeNumber: number;
+  stillUrl: string;
+  runtime: number; // in minutes
+}
+
+const tmdbEpisodesCache = new Map<string, TMDBSimplifiedEpisode[]>();
+
+export async function fetchEpisodesDetailsFromTMDB(title: string, signal?: AbortSignal): Promise<TMDBSimplifiedEpisode[]> {
+  if (!title) return [];
+  const clean = title.replace(/(مسلسل|فيلم|مترجم|مدبلج|جزء|ج\d+)/gi, '').trim();
+  if (tmdbEpisodesCache.has(clean)) return tmdbEpisodesCache.get(clean)!;
+
+  try {
+    // 1. Search for TV show
+    const searchUrl = `${TMDB_BASE}search/tv?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}&query=${encodeURIComponent(clean)}`;
+    const searchRes = await fetch(getApiUrl(`/api/v1/tmdb/proxy?url=${encodeURIComponent(searchUrl)}`), { signal });
+    const searchData = await searchRes.json();
+    
+    if (searchData.results && searchData.results.length > 0) {
+      const tvShow = searchData.results[0];
+      const tvId = tvShow.id;
+      
+      // 2. Fetch Season 1 episodes
+      const seasonUrl = `${TMDB_BASE}tv/${tvId}/season/1?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}`;
+      const seasonRes = await fetch(getApiUrl(`/api/v1/tmdb/proxy?url=${encodeURIComponent(seasonUrl)}`), { signal });
+      const seasonData = await seasonRes.json();
+      
+      if (seasonData.episodes && Array.isArray(seasonData.episodes)) {
+        const simplified: TMDBSimplifiedEpisode[] = seasonData.episodes.map((ep: any) => ({
+          episodeNumber: ep.episode_number,
+          stillUrl: ep.still_path ? `${TMDB_IMAGE_BASE}${ep.still_path}` : "",
+          runtime: ep.runtime || tvShow.episode_run_time?.[0] || 45
+        }));
+        
+        tmdbEpisodesCache.set(clean, simplified);
+        return simplified;
+      }
+    }
+  } catch (e) {
+    console.warn("fetchEpisodesDetailsFromTMDB failed", e);
+  }
+  return [];
+}
+
 export async function fetchSeriesDetailsFromTMDB(title: string, signal?: AbortSignal) {
   if (!title) return null;
   const clean = title.replace(/(مسلسل|فيلم)/gi, '').trim();
