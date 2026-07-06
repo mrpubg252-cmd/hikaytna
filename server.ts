@@ -110,13 +110,23 @@ function findFirebaseDatabaseId(): string {
   return "(default)";
 }
 
+let LAST_KNOWN_AI_KEY = "";
+
 async function getDynamicAiConfig() {
   const firebaseProjectId = findFirebaseProjectId();
   const firebaseDatabaseId = findFirebaseDatabaseId();
+  
+  // 1. Try reading from Realtime Database
   try {
     const res = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, { timeout: 3000 });
     if (res.data) {
-      const data = res.data;
+      let data = res.data;
+      if (typeof data === 'string') {
+        try {
+          data = JSON.parse(data);
+        } catch (e) {}
+      }
+      
       const keyVal = data.api_key || data.key || "";
       if (keyVal) {
         USER_CUSTOM_AI_CONFIG = {
@@ -125,6 +135,7 @@ async function getDynamicAiConfig() {
           model: data.model_name || data.model || "",
           type: data.type || (keyVal.startsWith('AIzaSy') ? 'gemini' : 'openai')
         };
+        
         if (USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
           USER_CUSTOM_AI_CONFIG.type = 'openai';
           if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
@@ -141,6 +152,13 @@ async function getDynamicAiConfig() {
             }
           }
         }
+        
+        if (USER_CUSTOM_AI_CONFIG.key !== LAST_KNOWN_AI_KEY) {
+          LAST_KNOWN_AI_KEY = USER_CUSTOM_AI_CONFIG.key;
+          geminiClientInstance = null;
+          KEY_COOLDOWNS.clear();
+          console.log(`[Hakeem AI] Dynamic configuration changed in RTDB! Resetting cached instances for key: ${LAST_KNOWN_AI_KEY.slice(0, 10)}...`);
+        }
         return USER_CUSTOM_AI_CONFIG;
       }
     }
@@ -148,37 +166,73 @@ async function getDynamicAiConfig() {
     // silent fallback
   }
 
+  // 2. Try reading from Firestore
   try {
     const res = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_admin_ai_config`, { timeout: 3000 });
-    if (res.data && res.data.fields && res.data.fields.data && res.data.fields.data.stringValue) {
-      const parsed = JSON.parse(res.data.fields.data.stringValue);
+    if (res.data && res.data.fields) {
+      const fields = res.data.fields;
+      let parsed: any = null;
+      
+      // Parse data string if it exists
+      if (fields.data && fields.data.stringValue) {
+        try {
+          parsed = JSON.parse(fields.data.stringValue);
+        } catch (e) {}
+      }
+
+      // Read direct string fields if they exist as separate Firestore fields
+      const directKey = (fields.key && fields.key.stringValue) || (fields.api_key && fields.api_key.stringValue) || "";
+      const directBaseUrl = (fields.baseUrl && fields.baseUrl.stringValue) || (fields.url && fields.url.stringValue) || "";
+      const directModel = (fields.model && fields.model.stringValue) || (fields.model_name && fields.model_name.stringValue) || "";
+      const directType = (fields.type && fields.type.stringValue) || "";
+
       if (parsed) {
-        const keyVal = parsed.api_key || parsed.key || "";
-        if (keyVal) {
-          USER_CUSTOM_AI_CONFIG = {
-            key: keyVal,
-            baseUrl: parsed.url || parsed.baseUrl || "",
-            model: parsed.model_name || parsed.model || "",
-            type: parsed.type || (keyVal.startsWith('AIzaSy') ? 'gemini' : 'openai')
-          };
-          if (USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
-            USER_CUSTOM_AI_CONFIG.type = 'openai';
-            if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
-              USER_CUSTOM_AI_CONFIG.baseUrl = USER_CUSTOM_AI_CONFIG.baseUrl || 'https://openrouter.ai/api/v1';
-              if (!USER_CUSTOM_AI_CONFIG.model || !USER_CUSTOM_AI_CONFIG.model.includes('/')) {
-                USER_CUSTOM_AI_CONFIG.model = 'google/gemini-2.5-flash';
-              }
-            } else {
-              if (!USER_CUSTOM_AI_CONFIG.baseUrl || USER_CUSTOM_AI_CONFIG.baseUrl.includes('openrouter.ai')) {
-                USER_CUSTOM_AI_CONFIG.baseUrl = USER_CUSTOM_AI_CONFIG.baseUrl || 'https://api.openai-proxy.org/v1';
-              }
-              if (!USER_CUSTOM_AI_CONFIG.model) {
-                USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
-              }
+        // Merge them, direct fields take priority
+        parsed.key = directKey || parsed.key || parsed.api_key || "";
+        parsed.baseUrl = directBaseUrl || parsed.baseUrl || parsed.url || "";
+        parsed.model = directModel || parsed.model || parsed.model_name || "";
+        parsed.type = directType || parsed.type || "";
+      } else if (directKey) {
+        parsed = {
+          key: directKey,
+          baseUrl: directBaseUrl,
+          model: directModel,
+          type: directType
+        };
+      }
+
+      if (parsed && parsed.key) {
+        USER_CUSTOM_AI_CONFIG = {
+          key: parsed.key,
+          baseUrl: parsed.baseUrl || "",
+          model: parsed.model || "",
+          type: parsed.type || (parsed.key.startsWith('AIzaSy') ? 'gemini' : 'openai')
+        };
+
+        if (USER_CUSTOM_AI_CONFIG.key && (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-') || USER_CUSTOM_AI_CONFIG.type === 'openai')) {
+          USER_CUSTOM_AI_CONFIG.type = 'openai';
+          if (USER_CUSTOM_AI_CONFIG.key.startsWith('sk-or-')) {
+            USER_CUSTOM_AI_CONFIG.baseUrl = USER_CUSTOM_AI_CONFIG.baseUrl || 'https://openrouter.ai/api/v1';
+            if (!USER_CUSTOM_AI_CONFIG.model || !USER_CUSTOM_AI_CONFIG.model.includes('/')) {
+              USER_CUSTOM_AI_CONFIG.model = 'google/gemini-2.5-flash';
+            }
+          } else {
+            if (!USER_CUSTOM_AI_CONFIG.baseUrl || USER_CUSTOM_AI_CONFIG.baseUrl.includes('openrouter.ai')) {
+              USER_CUSTOM_AI_CONFIG.baseUrl = USER_CUSTOM_AI_CONFIG.baseUrl || 'https://api.openai-proxy.org/v1';
+            }
+            if (!USER_CUSTOM_AI_CONFIG.model) {
+              USER_CUSTOM_AI_CONFIG.model = 'gpt-4o-mini';
             }
           }
-          return USER_CUSTOM_AI_CONFIG;
         }
+
+        if (USER_CUSTOM_AI_CONFIG.key !== LAST_KNOWN_AI_KEY) {
+          LAST_KNOWN_AI_KEY = USER_CUSTOM_AI_CONFIG.key;
+          geminiClientInstance = null;
+          KEY_COOLDOWNS.clear();
+          console.log(`[Hakeem AI] Dynamic configuration changed in Firestore! Resetting cached instances for key: ${LAST_KNOWN_AI_KEY.slice(0, 10)}...`);
+        }
+        return USER_CUSTOM_AI_CONFIG;
       }
     }
   } catch (err: any) {
@@ -419,9 +473,9 @@ async function callDeepSeek(msg: string, systemPrompt: string, history: any[], k
 let geminiClientInstance: any = null;
 
 function getGeminiClient(customKey?: string) {
-  // Respect user custom config first if it is set to gemini
+  // Respect user custom config first if it is set to gemini or starts with AIzaSy
   let key = "";
-  if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.type === 'gemini') {
+  if (USER_CUSTOM_AI_CONFIG && (USER_CUSTOM_AI_CONFIG.type === 'gemini' || USER_CUSTOM_AI_CONFIG.key?.startsWith('AIzaSy'))) {
     key = USER_CUSTOM_AI_CONFIG.key;
   }
   
@@ -474,8 +528,9 @@ function getGeminiClient(customKey?: string) {
     
     (client as any)._key = key;
 
-    // Don't overwrite the global singleton if we're using a temporary key from pool
-    if (!customKey) {
+    // Update the global singleton if this is a stable key (e.g. custom key, environment key, or not a pool key)
+    const isPoolKey = API_KEYS.includes(key);
+    if (!isPoolKey) {
       geminiClientInstance = client;
     }
     return client;
@@ -485,10 +540,6 @@ function getGeminiClient(customKey?: string) {
 
 async function callGeminiFallback(msg: string, systemPrompt: string, history: any[], image?: any, audio?: any) {
   try {
-    if (USER_CUSTOM_AI_CONFIG && USER_CUSTOM_AI_CONFIG.type === 'openai') {
-      return { ok: false, error: "using_custom_openai" };
-    }
-
     let key = "";
     if (USER_CUSTOM_AI_CONFIG && (USER_CUSTOM_AI_CONFIG.type === 'gemini' || USER_CUSTOM_AI_CONFIG.key?.startsWith('AIzaSy'))) {
       key = USER_CUSTOM_AI_CONFIG.key;
@@ -1385,6 +1436,156 @@ async function startServer() {
     } catch (error) {
       console.error("Error in play endpoint:", error);
       res.status(200).json({ status: true, player_url: (req.query.url as string) || "" });
+    }
+  });
+
+  // 4.0.1. Extract Embed Metadata (Thumbnail & Duration)
+  app.get("/api/v1/extract-embed-meta", async (req, res) => {
+    try {
+      let { url } = req.query;
+      if (!url) {
+        return res.status(400).json({ error: "Missing URL parameter" });
+      }
+      
+      let targetUrl = url as string;
+      // Decrypt if it is an encrypted proxy URL
+      if (targetUrl.startsWith("/api/v1/3isk-player?url=")) {
+        const parsedUrl = new URL(targetUrl, "http://localhost:3000");
+        const urlParam = parsedUrl.searchParams.get("url");
+        if (urlParam) {
+          targetUrl = decryptValue(urlParam) || urlParam;
+        }
+      } else if (targetUrl.includes("url=")) {
+        try {
+          const parsedUrl = new URL(targetUrl.startsWith("http") ? targetUrl : "http://localhost" + targetUrl);
+          const urlParam = parsedUrl.searchParams.get("url");
+          if (urlParam) {
+            targetUrl = decryptValue(urlParam) || urlParam;
+          }
+        } catch (e) {}
+      }
+
+      if (!targetUrl.startsWith("http")) {
+        targetUrl = decryptValue(targetUrl) || targetUrl;
+      }
+
+      if (!targetUrl.startsWith("http")) {
+        return res.status(400).json({ error: "Invalid URL" });
+      }
+
+      const cacheKey = `embed_meta:${targetUrl}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
+      console.log(`[Embed Meta Extractor] Scraping URL: ${targetUrl}`);
+      const response = await axios.get(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': targetUrl,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
+        },
+        timeout: 8000,
+        httpAgent: new http.Agent({ family: 4 }),
+        httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
+      });
+
+      const html = response.data;
+      if (typeof html !== 'string') {
+        return res.status(500).json({ error: "Invalid response format" });
+      }
+
+      let thumbnail = "";
+      let duration: number | null = null; // in seconds
+      let durationFormatted = "";
+
+      const lowerUrl = targetUrl.toLowerCase();
+
+      // 1. Parsing for OK.ru
+      if (lowerUrl.includes("ok.ru")) {
+        const posterMatch = html.match(/"poster"\s*:\s*"([^"]+)"/);
+        if (posterMatch) {
+          thumbnail = posterMatch[1].replace(/\\u0026/g, '&');
+        }
+
+        const durationMatch = html.match(/"duration"\s*:\s*"(\d+)"/) || html.match(/"duration"\s*:\s*(\d+)/);
+        if (durationMatch) {
+          duration = parseInt(durationMatch[1], 10);
+        }
+
+        // Fallback via class-based parsing
+        if (!thumbnail) {
+          const $ = cheerio.load(html);
+          const img = $('img.vid-card_img').attr('src') || $('img').first().attr('src');
+          if (img) thumbnail = img;
+          const durText = $('.vid-card_duration').text().trim();
+          if (durText) {
+            durationFormatted = durText;
+          }
+        }
+      } 
+      // 2. Parsing for ArabHD / RedHD / EStream / general JWPlayer
+      else {
+        const $ = cheerio.load(html);
+        const vplayerImg = $('#vplayer img').attr('src') || $('div[id*="player"] img').attr('src') || $('.vplayer img').attr('src');
+        if (vplayerImg) {
+          thumbnail = vplayerImg;
+        }
+
+        if (!thumbnail) {
+          const imageMatch = html.match(/"image"\s*:\s*"([^"]+)"/) || html.match(/image\s*:\s*'([^']+)'/) || html.match(/image\s*:\s*"([^"]+)"/);
+          if (imageMatch) {
+            thumbnail = imageMatch[1];
+          }
+        }
+
+        const durationMatch = html.match(/"duration"\s*:\s*(\d+)/) || html.match(/duration\s*:\s*(\d+)/) || html.match(/"duration"\s*:\s*"(\d+)"/);
+        if (durationMatch) {
+          duration = parseInt(durationMatch[1], 10);
+        }
+
+        if (!thumbnail) {
+          $('img').each((i, el) => {
+            const src = $(el).attr('src');
+            if (src && (src.includes('cdnz.online') || src.includes('/i/') || src.includes('preview') || src.includes('thumbnail'))) {
+              thumbnail = src;
+              return false;
+            }
+          });
+        }
+      }
+
+      // Format duration if we have seconds
+      if (duration && !durationFormatted) {
+        const hrs = Math.floor(duration / 3600);
+        const mins = Math.floor((duration % 3600) / 60);
+        const secs = duration % 60;
+        if (hrs > 0) {
+          durationFormatted = `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        } else {
+          durationFormatted = `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+      }
+
+      if (thumbnail && thumbnail.startsWith("//")) {
+        thumbnail = "https:" + thumbnail;
+      }
+
+      const result = {
+        status: true,
+        thumbnail: thumbnail || "",
+        duration: duration || 0,
+        durationFormatted: durationFormatted || (duration ? `${Math.ceil(duration / 60)} دقيقة` : "")
+      };
+
+      setCachedData(cacheKey, result, 24 * 60 * 60 * 1000);
+      return res.json(result);
+
+    } catch (error: any) {
+      console.warn("[Embed Meta Extractor] Error fetching metadata:", error.message);
+      return res.status(200).json({ status: false, thumbnail: "", duration: 0, durationFormatted: "" });
     }
   });
 

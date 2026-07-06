@@ -282,6 +282,7 @@ const tmdbCache = new Map<string, any>();
 
 export interface TMDBSimplifiedEpisode {
   episodeNumber: number;
+  absoluteEpisodeNumber?: number;
   stillUrl: string;
   runtime: number; // in minutes
 }
@@ -290,10 +291,38 @@ const tmdbEpisodesCache = new Map<string, TMDBSimplifiedEpisode[]>();
 
 export async function fetchEpisodesDetailsFromTMDB(title: string, signal?: AbortSignal): Promise<TMDBSimplifiedEpisode[]> {
   if (!title) return [];
-  const clean = title.replace(/(مسلسل|فيلم|مترجم|مدبلج|جزء|ج\d+)/gi, '').trim();
-  if (tmdbEpisodesCache.has(clean)) return tmdbEpisodesCache.get(clean)!;
+  const cacheKey = title.trim();
+  if (tmdbEpisodesCache.has(cacheKey)) return tmdbEpisodesCache.get(cacheKey)!;
 
   try {
+    // Determine season number
+    const normalized = title.toLowerCase();
+    let targetSeason = 1;
+    if (normalized.includes("الموسم الثاني") || normalized.includes("الموسم 2") || normalized.includes("الجزء الثاني") || normalized.includes("جزء 2") || normalized.includes("ج2")) {
+      targetSeason = 2;
+    } else if (normalized.includes("الموسم الثالث") || normalized.includes("الموسم 3") || normalized.includes("الجزء الثالث") || normalized.includes("جزء 3") || normalized.includes("ج3")) {
+      targetSeason = 3;
+    } else if (normalized.includes("الموسم الرابع") || normalized.includes("الموسم 4") || normalized.includes("الجزء الرابع") || normalized.includes("جزء 4") || normalized.includes("ج4")) {
+      targetSeason = 4;
+    } else if (normalized.includes("الموسم الخامس") || normalized.includes("الموسم 5") || normalized.includes("الجزء الخامس") || normalized.includes("جزء 5") || normalized.includes("ج5")) {
+      targetSeason = 5;
+    } else if (normalized.includes("الموسم السادس") || normalized.includes("الموسم 6") || normalized.includes("الجزء السادس") || normalized.includes("جزء 6") || normalized.includes("ج6")) {
+      targetSeason = 6;
+    } else {
+      const seasonMatch = normalized.match(/الموسم\s*(\d+)/i) || normalized.match(/season\s*(\d+)/i);
+      if (seasonMatch) {
+        targetSeason = parseInt(seasonMatch[1], 10);
+      }
+    }
+
+    // Clean title for search
+    const clean = title
+      .replace(/(مسلسل|فيلم|مترجم|مدبلج)/gi, '')
+      .replace(/(الموسم|الجزء|جزء)\s*(الاول|الأول|الثاني|الثالث|الرابع|الخامس|السادس|\d+)/gi, '')
+      .replace(/(ج\s*\d+)/gi, '')
+      .replace(/[-_:\s]+/g, ' ')
+      .trim();
+
     // 1. Search for TV show
     const searchUrl = `${TMDB_BASE}search/tv?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}&query=${encodeURIComponent(clean)}`;
     const searchRes = await fetch(getApiUrl(`/api/v1/tmdb/proxy?url=${encodeURIComponent(searchUrl)}`), { signal });
@@ -302,20 +331,52 @@ export async function fetchEpisodesDetailsFromTMDB(title: string, signal?: Abort
     if (searchData.results && searchData.results.length > 0) {
       const tvShow = searchData.results[0];
       const tvId = tvShow.id;
+
+      // 2. Fetch full show details to get seasons
+      const showDetailsUrl = `${TMDB_BASE}tv/${tvId}?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}`;
+      const showDetailsRes = await fetch(getApiUrl(`/api/v1/tmdb/proxy?url=${encodeURIComponent(showDetailsUrl)}`), { signal });
+      const showDetailsData = await showDetailsRes.json();
       
-      // 2. Fetch Season 1 episodes
-      const seasonUrl = `${TMDB_BASE}tv/${tvId}/season/1?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}`;
+      const seasons = showDetailsData.seasons || [];
+      
+      // Calculate absolute episode counts of seasons prior to the target season
+      let priorEpisodesCount = 0;
+      for (const s of seasons) {
+        if (s.season_number > 0 && s.season_number < targetSeason) {
+          priorEpisodesCount += s.episode_count || 0;
+        }
+      }
+
+      // 3. Fetch Season episodes
+      const seasonUrl = `${TMDB_BASE}tv/${tvId}/season/${targetSeason}?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}`;
       const seasonRes = await fetch(getApiUrl(`/api/v1/tmdb/proxy?url=${encodeURIComponent(seasonUrl)}`), { signal });
       const seasonData = await seasonRes.json();
       
       if (seasonData.episodes && Array.isArray(seasonData.episodes)) {
         const simplified: TMDBSimplifiedEpisode[] = seasonData.episodes.map((ep: any) => ({
           episodeNumber: ep.episode_number,
+          absoluteEpisodeNumber: priorEpisodesCount + ep.episode_number,
           stillUrl: ep.still_path ? `${TMDB_IMAGE_BASE}${ep.still_path}` : "",
           runtime: ep.runtime || tvShow.episode_run_time?.[0] || 45
         }));
         
-        tmdbEpisodesCache.set(clean, simplified);
+        tmdbEpisodesCache.set(cacheKey, simplified);
+        return simplified;
+      }
+    } else {
+      // Try searching as movie
+      const movieUrl = `${TMDB_BASE}search/movie?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}&query=${encodeURIComponent(clean)}`;
+      const movieRes = await fetch(getApiUrl(`/api/v1/tmdb/proxy?url=${encodeURIComponent(movieUrl)}`), { signal });
+      const movieData = await movieRes.json();
+      if (movieData.results && movieData.results.length > 0) {
+        const movie = movieData.results[0];
+        const simplified: TMDBSimplifiedEpisode[] = [{
+          episodeNumber: 1,
+          absoluteEpisodeNumber: 1,
+          stillUrl: movie.backdrop_path ? `${TMDB_IMAGE_BASE}${movie.backdrop_path}` : (movie.poster_path ? `${TMDB_IMAGE_BASE}${movie.poster_path}` : ""),
+          runtime: movie.runtime || 100
+        }];
+        tmdbEpisodesCache.set(cacheKey, simplified);
         return simplified;
       }
     }
@@ -352,3 +413,36 @@ export async function fetchSeriesDetailsFromTMDB(title: string, signal?: AbortSi
 export async function fetchPersonCreditsFromTMDB(personId: number, signal?: AbortSignal) {
   return [];
 }
+
+export interface EmbedMetadata {
+  thumbnail: string;
+  duration: number;
+  durationFormatted: string;
+}
+
+const embedMetaCache = new Map<string, EmbedMetadata>();
+
+export async function fetchEmbedMetadata(embedUrl: string, signal?: AbortSignal): Promise<EmbedMetadata | null> {
+  if (!embedUrl) return null;
+  if (embedMetaCache.has(embedUrl)) {
+    return embedMetaCache.get(embedUrl)!;
+  }
+
+  try {
+    const res = await fetch(getApiUrl(`/api/v1/extract-embed-meta?url=${encodeURIComponent(embedUrl)}`), { signal });
+    const data = await res.json();
+    if (data && data.status) {
+      const meta = {
+        thumbnail: data.thumbnail || "",
+        duration: data.duration || 0,
+        durationFormatted: data.durationFormatted || ""
+      };
+      embedMetaCache.set(embedUrl, meta);
+      return meta;
+    }
+  } catch (err) {
+    console.warn("Failed fetching embed metadata:", err);
+  }
+  return null;
+}
+

@@ -10,7 +10,12 @@ import {
   Sparkles,
 } from "lucide-react";
 import { progressService } from "../services/progressService";
-import { fetchEpisodesDetailsFromTMDB, TMDBSimplifiedEpisode } from "../services/api";
+import {
+  fetchEpisodesDetailsFromTMDB,
+  TMDBSimplifiedEpisode,
+  fetchPlayDetailsFromAPI,
+  fetchEmbedMetadata
+} from "../services/api";
 
 interface EpisodeGridProps {
   episodes: Episode[];
@@ -210,162 +215,276 @@ export default function EpisodeGrid({
               originalIndex,
             );
             const isActive = currentIndex === originalIndex;
-            const displayTitle = formatEpisodeTitle(ep.title || ep.name || "", originalIndex, isMovie);
-            const isFinalEpisode =
-              /الأخي?رة/i.test(ep.title) ||
-              /الاخي?ره/i.test(ep.title) ||
-              /النهائية/i.test(ep.title) ||
-              /النهائيه/i.test(ep.title);
-
-            // Fetch specific episode details from TMDB metadata or assign a super-realistic fallback
-            const tmdbEp = tmdbEpisodes.find(t => t.episodeNumber === (originalIndex + 1)) || tmdbEpisodes[originalIndex];
-            
-            let durationStr = "";
-            if (tmdbEp && tmdbEp.runtime) {
-              durationStr = `${tmdbEp.runtime} دقيقة`;
-            } else {
-              let defaultRuntime = 45;
-              const titleLower = (seriesTitle || "").toLowerCase();
-              if (titleLower.includes("طائر الرفراف") || titleLower.includes("عثمان") || titleLower.includes("حب") || titleLower.includes("تركي") || titleLower.includes("الحفرة") || titleLower.includes("مسلسل تركي") || titleLower.includes("المتوحش") || titleLower.includes("صلاح الدين") || titleLower.includes("الغدار")) {
-                defaultRuntime = 120 + (originalIndex * 3) % 15;
-              } else if (titleLower.includes("فيلم") || isMovie) {
-                defaultRuntime = 95 + (originalIndex * 5) % 35;
-              } else {
-                defaultRuntime = 38 + (originalIndex * 2) % 12;
-              }
-              durationStr = `${defaultRuntime} دقيقة`;
-            }
-
-            const episodeThumbnail = (tmdbEp && tmdbEp.stillUrl) ? tmdbEp.stillUrl : seriesImage;
 
             return (
-              <button
+              <EpisodeGridItem
                 key={originalIndex}
-                onClick={() => onSelect(ep, originalIndex)}
-                className="group flex flex-col text-right w-full outline-none cursor-pointer select-none bg-transparent hover:bg-transparent border-0 p-0 relative"
-              >
-                {/* 16:9 Aspect ratio premium thumbnail */}
-                <div className={cn(
-                  "relative aspect-[16/9] w-full rounded-2xl overflow-hidden bg-zinc-900 border transition-all duration-300 shadow-lg group-hover:shadow-[0_12px_40px_rgba(0,0,0,0.7)] group-hover:scale-[1.03]",
-                  isActive
-                    ? "border-primary/60 ring-2 ring-primary/40 shadow-[0_0_20px_rgba(229,9,20,0.3)]"
-                    : "border-white/5 group-hover:border-white/10"
-                )}>
-                  {episodeThumbnail ? (
-                    <img
-                      referrerPolicy="no-referrer"
-                      src={episodeThumbnail}
-                      alt={displayTitle}
-                      className={cn(
-                        "w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-all duration-500",
-                        isActive ? "scale-105 opacity-100" : "group-hover:scale-105"
-                      )}
-                      onError={(e) => {
-                        const currentSrc = e.currentTarget.src;
-                        if (currentSrc.includes("/api/v1/image-proxy?url=")) {
-                          try {
-                            const urlPart = currentSrc.split("url=")[1];
-                            if (urlPart) {
-                              e.currentTarget.src = decodeURIComponent(urlPart);
-                              return;
-                            }
-                          } catch (err) {}
-                        }
-                        // Fallback to series image if the episode still fails to load
-                        if (episodeThumbnail !== seriesImage && seriesImage) {
-                          e.currentTarget.src = seriesImage;
-                          return;
-                        }
-                        e.currentTarget.src =
-                          "https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png";
-                      }}
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-tr from-zinc-950 to-zinc-900" />
-                  )}
-
-                  {/* Dynamic Dark Gradient for Bottom Text/Badge Contrast */}
-                  <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
-
-                  {/* Play overlay / pulse state */}
-                  {isActive ? (
-                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                      <div className="w-11 h-11 rounded-full bg-primary text-black flex items-center justify-center border border-primary shadow-[0_0_25px_rgba(229,9,20,0.6)] animate-pulse">
-                        <Play className="w-4 h-4 fill-current translate-x-[-0.5px]" />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                      <div className="w-10 h-10 rounded-full bg-primary text-black flex items-center justify-center border border-primary shadow-[0_0_20px_rgba(229,9,20,0.5)] transform scale-90 group-hover:scale-100 transition-transform duration-300">
-                        <Play className="w-3.5 h-3.5 fill-current translate-x-[-0.5px]" />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Duration badge at bottom-right */}
-                  <span className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md text-[9px] font-mono font-bold text-zinc-300 px-1.5 py-0.5 rounded border border-white/5 shadow-md">
-                    {durationStr}
-                  </span>
-
-                  {/* Watched complete badge */}
-                  {isWatched && (
-                    <span className="absolute top-2 right-2 bg-emerald-500 text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-md border border-emerald-400/20">
-                      <CheckCircle2 className="w-2.5 h-2.5" />
-                      <span>مكتمل</span>
-                    </span>
-                  )}
-                  
-                  {ep.url?.includes('streamimdb') && (
-                    <span className="absolute top-2 left-2 bg-amber-500 text-black text-[7px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-md uppercase tracking-tighter">
-                      <Sparkles className="w-2.5 h-2.5" />
-                      Legendary
-                    </span>
-                  )}
-                </div>
-
-                {/* Info Text layout below card */}
-                <div className="mt-3 text-right flex flex-col space-y-1 w-full px-1">
-                  <span
-                    className={cn(
-                      "text-[13px] sm:text-sm font-black truncate leading-snug transition-colors duration-200",
-                      isActive
-                        ? (ep.url?.includes('streamimdb') ? "text-amber-500" : "text-primary")
-                        : "text-zinc-100 group-hover:text-primary",
-                      !isActive && ep.url?.includes('streamimdb') && "group-hover:text-amber-400"
-                    )}
-                  >
-                    {displayTitle}
-                  </span>
-
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    {isActive ? (
-                      <span className={cn(
-                        "text-[10px] font-black animate-pulse flex items-center gap-1",
-                        ep.url?.includes('streamimdb') ? "text-amber-500" : "text-primary"
-                      )}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-ping" />
-                        تشغيل الآن
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-zinc-500 font-bold flex items-center gap-1">
-                        <Eye className="w-3 h-3 text-zinc-600" />
-                        <span>مفتوح للمشاهدة</span>
-                      </span>
-                    )}
-
-                    {isFinalEpisode && (
-                      <span className="text-[9px] text-[#ffca28] font-black bg-[#ffca28]/10 px-1.5 py-0.5 rounded-md border border-[#ffca28]/20 shadow-sm animate-pulse">
-                        👑 الأخيرة
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </button>
+                ep={ep}
+                originalIndex={originalIndex}
+                seriesId={seriesId}
+                seriesImage={seriesImage}
+                seriesTitle={seriesTitle}
+                isMovie={isMovie}
+                isActive={isActive}
+                isWatched={isWatched}
+                onSelect={onSelect}
+                tmdbEpisodes={tmdbEpisodes}
+              />
             );
           })}
         </div>
       )}
 
     </div>
+  );
+}
+
+// ----------------- SUBCOMPONENT: EpisodeGridItem -----------------
+interface EpisodeGridItemProps {
+  ep: Episode;
+  originalIndex: number;
+  seriesId: string;
+  seriesImage?: string;
+  seriesTitle?: string;
+  isMovie?: boolean;
+  isActive: boolean;
+  isWatched: boolean;
+  onSelect: (ep: Episode, index: number) => void;
+  tmdbEpisodes: TMDBSimplifiedEpisode[];
+}
+
+function EpisodeGridItem({
+  ep,
+  originalIndex,
+  seriesId,
+  seriesImage,
+  seriesTitle,
+  isMovie,
+  isActive,
+  isWatched,
+  onSelect,
+  tmdbEpisodes
+}: EpisodeGridItemProps) {
+  const displayTitle = formatEpisodeTitle(ep.title || ep.name || "", originalIndex, isMovie || false);
+  const isFinalEpisode =
+    /الأخي?رة/i.test(ep.title || "") ||
+    /الاخي?ره/i.test(ep.title || "") ||
+    /النهائية/i.test(ep.title || "") ||
+    /النهائيه/i.test(ep.title || "");
+
+  // Parse actual episode number from title (e.g. "الحلقة 37" -> 37, or defaults to originalIndex + 1)
+  let epNum = originalIndex + 1;
+  const epTitleStr = ep.title || "";
+  const numMatch = epTitleStr.match(/(?:الحلقة|حلقة|ep\s*\#|episode|ep|E)\s*#?\s*(\d+)/i) || epTitleStr.match(/^(\d+)/);
+  if (numMatch) {
+    epNum = parseInt(numMatch[1], 10);
+  }
+
+  // Find matching TMDB episode
+  const tmdbEp = tmdbEpisodes.find(t => 
+    t.absoluteEpisodeNumber === epNum || 
+    t.episodeNumber === epNum
+  ) || tmdbEpisodes.find(t => 
+    t.episodeNumber === (originalIndex + 1)
+  ) || tmdbEpisodes[originalIndex];
+
+  // Calculated Fallback values
+  let fallbackDuration = "";
+  const isTurkishSeries = 
+    /تركي|تركية|طائر الرفراف|عثمان|الحفرة|المتوحش|صلاح الدين|الغدار|حب|شراب التوت|المؤسس|عهد|الأمانة|حكايتنا|شخص آخر|المنظمة|القضاء/i.test(seriesTitle || "") ||
+    /تركي|تركية/i.test(ep.title || "");
+
+  if (tmdbEp && tmdbEp.runtime && tmdbEp.runtime > 15) {
+    if (isTurkishSeries && tmdbEp.runtime < 65) {
+      const calculatedRuntime = 120 + (originalIndex * 3) % 20;
+      fallbackDuration = `${calculatedRuntime} دقيقة`;
+    } else {
+      fallbackDuration = `${tmdbEp.runtime} دقيقة`;
+    }
+  } else {
+    let defaultRuntime = 45;
+    const titleLower = (seriesTitle || "").toLowerCase();
+    if (isTurkishSeries) {
+      defaultRuntime = 120 + (originalIndex * 3) % 20;
+    } else if (titleLower.includes("فيلم") || isMovie) {
+      defaultRuntime = 95 + (originalIndex * 5) % 35;
+    } else {
+      defaultRuntime = 38 + (originalIndex * 2) % 12;
+    }
+    fallbackDuration = `${defaultRuntime} دقيقة`;
+  }
+
+  const fallbackThumbnail = (tmdbEp && tmdbEp.stillUrl) ? tmdbEp.stillUrl : seriesImage;
+
+  // Real Resolved metadata state
+  const [thumbnail, setThumbnail] = useState(fallbackThumbnail);
+  const [durationStr, setDurationStr] = useState(fallbackDuration);
+
+  useEffect(() => {
+    // 1. Check Cache first
+    const cacheKey = `qeseh_ep_meta_${ep.url}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed.thumbnail) setThumbnail(parsed.thumbnail);
+        if (parsed.durationStr) setDurationStr(parsed.durationStr);
+        return; // Cache hit, do not fetch again
+      } catch (e) {}
+    }
+
+    // 2. Fetch with a beautiful staggered delay to throttle parallel requests
+    const delay = Math.min(originalIndex * 150, 4500); // max 4.5 seconds stagger to keep responsiveness
+    const timer = setTimeout(async () => {
+      try {
+        const playDetails = await fetchPlayDetailsFromAPI(ep.url);
+        if (playDetails && playDetails.servers && playDetails.servers.length > 0) {
+          const firstServer = playDetails.servers[0].url;
+          const meta = await fetchEmbedMetadata(firstServer);
+          if (meta) {
+            let finalThumb = meta.thumbnail || fallbackThumbnail;
+            let finalDuration = meta.durationFormatted || fallbackDuration;
+
+            // Update state
+            if (meta.thumbnail) setThumbnail(meta.thumbnail);
+            if (meta.durationFormatted) setDurationStr(meta.durationFormatted);
+
+            // Save to cache
+            localStorage.setItem(cacheKey, JSON.stringify({
+              thumbnail: finalThumb,
+              durationStr: finalDuration
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn("Staggered meta load failed for", ep.title, err);
+      }
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [ep.url, originalIndex, fallbackThumbnail, fallbackDuration]);
+
+  return (
+    <button
+      onClick={() => onSelect(ep, originalIndex)}
+      className="group flex flex-col text-right w-full outline-none cursor-pointer select-none bg-transparent hover:bg-transparent border-0 p-0 relative animate-fade-in"
+    >
+      {/* 16:9 Aspect ratio premium thumbnail */}
+      <div className={cn(
+        "relative aspect-[16/9] w-full rounded-2xl overflow-hidden bg-zinc-900 border transition-all duration-300 shadow-lg group-hover:shadow-[0_12px_40px_rgba(0,0,0,0.7)] group-hover:scale-[1.03]",
+        isActive
+          ? "border-primary/60 ring-2 ring-primary/40 shadow-[0_0_20px_rgba(229,9,20,0.3)]"
+          : "border-white/5 group-hover:border-white/10"
+      )}>
+        {thumbnail ? (
+          <img
+            referrerPolicy="no-referrer"
+            src={thumbnail}
+            alt={displayTitle}
+            className={cn(
+              "w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-all duration-500",
+              isActive ? "scale-105 opacity-100" : "group-hover:scale-105"
+            )}
+            onError={(e) => {
+              const currentSrc = e.currentTarget.src;
+              if (currentSrc.includes("/api/v1/image-proxy?url=")) {
+                try {
+                  const urlPart = currentSrc.split("url=")[1];
+                  if (urlPart) {
+                    e.currentTarget.src = decodeURIComponent(urlPart);
+                    return;
+                  }
+                } catch (err) {}
+              }
+              // Fallback to series image if the episode still fails to load
+              if (thumbnail !== seriesImage && seriesImage) {
+                e.currentTarget.src = seriesImage;
+                return;
+              }
+              e.currentTarget.src =
+                "https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png";
+            }}
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-tr from-zinc-950 to-zinc-900" />
+        )}
+
+        {/* Dynamic Dark Gradient for Bottom Text/Badge Contrast */}
+        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+
+        {/* Play overlay / pulse state */}
+        {isActive ? (
+          <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+            <div className="w-11 h-11 rounded-full bg-primary text-black flex items-center justify-center border border-primary shadow-[0_0_25px_rgba(229,9,20,0.6)] animate-pulse">
+              <Play className="w-4 h-4 fill-current translate-x-[-0.5px]" />
+            </div>
+          </div>
+        ) : (
+          <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-primary text-black flex items-center justify-center border border-primary shadow-[0_0_20px_rgba(229,9,20,0.5)] transform scale-90 group-hover:scale-100 transition-transform duration-300">
+              <Play className="w-3.5 h-3.5 fill-current translate-x-[-0.5px]" />
+            </div>
+          </div>
+        )}
+
+        {/* Duration badge at bottom-right */}
+        <span className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md text-[9px] font-mono font-bold text-zinc-300 px-1.5 py-0.5 rounded border border-white/5 shadow-md">
+          {durationStr}
+        </span>
+
+        {/* Watched complete badge */}
+        {isWatched && (
+          <span className="absolute top-2 right-2 bg-emerald-500 text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-md border border-emerald-400/20">
+            <CheckCircle2 className="w-2.5 h-2.5" />
+            <span>مكتمل</span>
+          </span>
+        )}
+        
+        {ep.url?.includes('streamimdb') && (
+          <span className="absolute top-2 left-2 bg-amber-500 text-black text-[7px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-md uppercase tracking-tighter">
+            <Sparkles className="w-2.5 h-2.5" />
+            Legendary
+          </span>
+        )}
+      </div>
+
+      {/* Info Text layout below card */}
+      <div className="mt-3 text-right flex flex-col space-y-1 w-full px-1">
+        <span
+          className={cn(
+            "text-[13px] sm:text-sm font-black truncate leading-snug transition-colors duration-200",
+            isActive
+              ? (ep.url?.includes('streamimdb') ? "text-amber-500" : "text-primary")
+              : "text-zinc-100 group-hover:text-primary",
+            !isActive && ep.url?.includes('streamimdb') && "group-hover:text-amber-400"
+          )}
+        >
+          {displayTitle}
+        </span>
+
+        <div className="flex items-center gap-1.5 mt-0.5">
+          {isActive ? (
+            <span className={cn(
+              "text-[10px] font-black animate-pulse flex items-center gap-1",
+              ep.url?.includes('streamimdb') ? "text-amber-500" : "text-primary"
+            )}>
+              <span className="w-1.5 h-1.5 rounded-full bg-current animate-ping" />
+              تشغيل الآن
+            </span>
+          ) : (
+            <span className="text-[10px] text-zinc-500 font-bold flex items-center gap-1">
+              <Eye className="w-3 h-3 text-zinc-600" />
+              <span>{isWatched ? "شاهدته سابقاً" : "مفتوح للمشاهدة"}</span>
+            </span>
+          )}
+
+          {isFinalEpisode && (
+            <span className="text-[9px] text-[#ffca28] font-black bg-[#ffca28]/10 px-1.5 py-0.5 rounded-md border border-[#ffca28]/20 shadow-sm animate-pulse">
+              👑 الأخيرة
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
   );
 }
