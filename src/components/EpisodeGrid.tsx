@@ -12,10 +12,22 @@ import {
 import { progressService } from "../services/progressService";
 import {
   fetchEpisodesDetailsFromTMDB,
-  TMDBSimplifiedEpisode,
-  fetchPlayDetailsFromAPI,
-  fetchEmbedMetadata
+  TMDBSimplifiedEpisode
 } from "../services/api";
+import { getApiUrl } from "../lib/apiConfig";
+
+export function getProxiedImageUrl(url?: string): string {
+  if (!url) return "https://images.unsplash.com/photo-1542204172-3c1f81edf4a1?q=80&w=400&auto=format&fit=crop";
+  if (
+    url.startsWith("http") &&
+    !url.includes("ibb.co") &&
+    !url.includes("/api/v1/image-proxy") &&
+    !url.includes("unsplash.com")
+  ) {
+    return getApiUrl(`/api/v1/image-proxy?url=${encodeURIComponent(url)}`);
+  }
+  return url;
+}
 
 interface EpisodeGridProps {
   episodes: Episode[];
@@ -137,66 +149,64 @@ export default function EpisodeGrid({
 
   return (
     <div className="space-y-6">
+      {/* 2. Range Selector Tabs (Only if many episodes) - Rendered at top below title */}
+      {!isMovie && !searchQuery && episodes.length > RANGE_SIZE && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar direction-rtl">
+          {Array.from({ length: totalRanges }).map((_, i) => {
+            const startNum = i * RANGE_SIZE + 1;
+            const endNum = Math.min((i + 1) * RANGE_SIZE, episodes.length);
+            const active = jumpToRange === i;
+            
+            return (
+              <button
+                key={i}
+                onClick={() => {
+                  setJumpToRange(i);
+                  window.scrollTo({ top: 400, behavior: 'smooth' });
+                }}
+                className={cn(
+                  "shrink-0 px-6 py-2.5 rounded-xl text-[10px] font-black transition-all border whitespace-nowrap",
+                  active
+                    ? "bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.1)] scale-105"
+                    : "bg-zinc-900/50 text-zinc-500 border-white/5 hover:text-white hover:bg-zinc-900"
+                )}
+              >
+                الحلقات {startNum} - {endNum}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* 1. Header Bar: Search and Sort */}
       {!isMovie && (
-        <>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-950/40 p-4 rounded-3xl border border-white/5">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                dir="rtl"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ابحث برقم الحلقة أو العنوان..."
-                className="w-full bg-zinc-900 border border-white/5 rounded-2xl py-3 pl-4 pr-11 text-xs text-white outline-none focus:border-primary/50 placeholder-zinc-500 font-bold transition-all"
-              />
-            </div>
-
-            <button
-              onClick={() => setIsReversed(!isReversed)}
-              className={cn(
-                "flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-black transition-all border",
-                isReversed 
-                  ? "bg-primary text-white border-primary shadow-[0_0_15px_rgba(229,9,20,0.3)]" 
-                  : "bg-zinc-900 text-zinc-400 border-white/5 hover:text-white"
-              )}
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-              <span>{isReversed ? "من الأحدث" : "من الأقدم"}</span>
-            </button>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-950/40 p-4 rounded-3xl border border-white/5">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              dir="rtl"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="ابحث برقم الحلقة أو العنوان..."
+              className="w-full bg-zinc-900 border border-white/5 rounded-2xl py-3 pl-4 pr-11 text-xs text-white outline-none focus:border-primary/50 placeholder-zinc-500 font-bold transition-all"
+            />
           </div>
 
-          {/* 2. Range Selector Tabs (Only if many episodes) */}
-          {!searchQuery && episodes.length > RANGE_SIZE && (
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar direction-rtl">
-              {Array.from({ length: totalRanges }).map((_, i) => {
-                const startNum = i * RANGE_SIZE + 1;
-                const endNum = Math.min((i + 1) * RANGE_SIZE, episodes.length);
-                const active = jumpToRange === i;
-                
-                return (
-                  <button
-                    key={i}
-                    onClick={() => {
-                      setJumpToRange(i);
-                      window.scrollTo({ top: 400, behavior: 'smooth' });
-                    }}
-                    className={cn(
-                      "shrink-0 px-6 py-2.5 rounded-xl text-[10px] font-black transition-all border whitespace-nowrap",
-                      active
-                        ? "bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.1)] scale-105"
-                        : "bg-zinc-900/50 text-zinc-500 border-white/5 hover:text-white hover:bg-zinc-900"
-                    )}
-                  >
-                    الحلقات {startNum} - {endNum}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </>
+          <button
+            onClick={() => setIsReversed(!isReversed)}
+            className={cn(
+              "flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-black transition-all border",
+              isReversed 
+                ? "bg-primary text-white border-primary shadow-[0_0_15px_rgba(229,9,20,0.3)]" 
+                : "bg-zinc-900 text-zinc-400 border-white/5 hover:text-white"
+            )}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            <span>{isReversed ? "من الأحدث" : "من الأقدم"}</span>
+          </button>
+        </div>
       )}
 
       {/* 3. The Grid display */}
@@ -241,6 +251,7 @@ export default function EpisodeGrid({
 
 // ----------------- SUBCOMPONENT: EpisodeGridItem -----------------
 interface EpisodeGridItemProps {
+  key?: any;
   ep: Episode;
   originalIndex: number;
   seriesId: string;
@@ -265,7 +276,7 @@ function EpisodeGridItem({
   onSelect,
   tmdbEpisodes
 }: EpisodeGridItemProps) {
-  const displayTitle = formatEpisodeTitle(ep.title || ep.name || "", originalIndex, isMovie || false);
+  const displayTitle = formatEpisodeTitle(ep.title || (ep as any).name || "", originalIndex, isMovie || false);
   const isFinalEpisode =
     /الأخي?رة/i.test(ep.title || "") ||
     /الاخي?ره/i.test(ep.title || "") ||
@@ -315,54 +326,7 @@ function EpisodeGridItem({
   }
 
   const fallbackThumbnail = (tmdbEp && tmdbEp.stillUrl) ? tmdbEp.stillUrl : seriesImage;
-
-  // Real Resolved metadata state
-  const [thumbnail, setThumbnail] = useState(fallbackThumbnail);
-  const [durationStr, setDurationStr] = useState(fallbackDuration);
-
-  useEffect(() => {
-    // 1. Check Cache first
-    const cacheKey = `qeseh_ep_meta_${ep.url}`;
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (parsed.thumbnail) setThumbnail(parsed.thumbnail);
-        if (parsed.durationStr) setDurationStr(parsed.durationStr);
-        return; // Cache hit, do not fetch again
-      } catch (e) {}
-    }
-
-    // 2. Fetch with a beautiful staggered delay to throttle parallel requests
-    const delay = Math.min(originalIndex * 150, 4500); // max 4.5 seconds stagger to keep responsiveness
-    const timer = setTimeout(async () => {
-      try {
-        const playDetails = await fetchPlayDetailsFromAPI(ep.url);
-        if (playDetails && playDetails.servers && playDetails.servers.length > 0) {
-          const firstServer = playDetails.servers[0].url;
-          const meta = await fetchEmbedMetadata(firstServer);
-          if (meta) {
-            let finalThumb = meta.thumbnail || fallbackThumbnail;
-            let finalDuration = meta.durationFormatted || fallbackDuration;
-
-            // Update state
-            if (meta.thumbnail) setThumbnail(meta.thumbnail);
-            if (meta.durationFormatted) setDurationStr(meta.durationFormatted);
-
-            // Save to cache
-            localStorage.setItem(cacheKey, JSON.stringify({
-              thumbnail: finalThumb,
-              durationStr: finalDuration
-            }));
-          }
-        }
-      } catch (err) {
-        console.warn("Staggered meta load failed for", ep.title, err);
-      }
-    }, delay);
-
-    return () => clearTimeout(timer);
-  }, [ep.url, originalIndex, fallbackThumbnail, fallbackDuration]);
+  const thumbnail = getProxiedImageUrl(fallbackThumbnail);
 
   return (
     <button
@@ -426,11 +390,6 @@ function EpisodeGridItem({
             </div>
           </div>
         )}
-
-        {/* Duration badge at bottom-right */}
-        <span className="absolute bottom-2 right-2 bg-black/80 backdrop-blur-md text-[9px] font-mono font-bold text-zinc-300 px-1.5 py-0.5 rounded border border-white/5 shadow-md">
-          {durationStr}
-        </span>
 
         {/* Watched complete badge */}
         {isWatched && (

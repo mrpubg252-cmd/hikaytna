@@ -3,7 +3,7 @@ import { Episode } from '../services/firebase';
 import { cn } from '../lib/utils';
 import { CheckCircle2, Play, Sparkles } from 'lucide-react';
 import { progressService } from '../services/progressService';
-import { fetchPlayDetailsFromAPI, fetchEmbedMetadata } from '../services/api';
+import { getProxiedImageUrl } from './EpisodeGrid';
 
 interface HorizontalEpisodeListProps {
   episodes: Episode[];
@@ -68,6 +68,7 @@ export default memo(function HorizontalEpisodeList({
 
 // ----------------- SUBCOMPONENT: HorizontalEpisodeItem -----------------
 interface HorizontalEpisodeItemProps {
+  key?: any;
   ep: Episode;
   originalIndex: number;
   seriesId: string;
@@ -89,49 +90,7 @@ function HorizontalEpisodeItem({
   const displayTitle = `الحلقة ${originalIndex + 1}`;
 
   // Default fallback values
-  const [thumbnail, setThumbnail] = useState(seriesImage);
-  const [durationStr, setDurationStr] = useState("");
-
-  useEffect(() => {
-    const cacheKey = `qeseh_ep_meta_${ep.url}`;
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (parsed.thumbnail) setThumbnail(parsed.thumbnail);
-        if (parsed.durationStr) setDurationStr(parsed.durationStr);
-        return;
-      } catch (e) {}
-    }
-
-    // Throttle sequential background fetching to keep API latency minimal
-    const delay = Math.min(originalIndex * 150, 4500);
-    const timer = setTimeout(async () => {
-      try {
-        const playDetails = await fetchPlayDetailsFromAPI(ep.url);
-        if (playDetails && playDetails.servers && playDetails.servers.length > 0) {
-          const firstServer = playDetails.servers[0].url;
-          const meta = await fetchEmbedMetadata(firstServer);
-          if (meta) {
-            let finalThumb = meta.thumbnail || seriesImage;
-            let finalDuration = meta.durationFormatted || "";
-
-            if (meta.thumbnail) setThumbnail(meta.thumbnail);
-            if (meta.durationFormatted) setDurationStr(meta.durationFormatted);
-
-            localStorage.setItem(cacheKey, JSON.stringify({
-              thumbnail: finalThumb,
-              durationStr: finalDuration
-            }));
-          }
-        }
-      } catch (err) {
-        console.warn("CustomPlayer list meta load failed:", err);
-      }
-    }, delay);
-
-    return () => clearTimeout(timer);
-  }, [ep.url, originalIndex, seriesImage]);
+  const thumbnail = getProxiedImageUrl(seriesImage);
 
   return (
     <button
@@ -199,10 +158,10 @@ function HorizontalEpisodeItem({
           </div>
         )}
 
-        {/* Duration badge or HD badge */}
+        {/* HD badge */}
         <div className="absolute bottom-1.5 left-1.5 bg-black/70 backdrop-blur-md text-[7px] font-extrabold text-white px-1.5 py-0.5 rounded-full flex items-center gap-1 shadow border border-white/5 select-none font-sans">
           <Play className={cn("w-1.5 h-1.5 fill-current", ep.url?.includes('streamimdb') ? "text-amber-500" : "text-primary")} />
-          <span>{durationStr || "HD"}</span>
+          <span>HD</span>
         </div>
       </div>
 
