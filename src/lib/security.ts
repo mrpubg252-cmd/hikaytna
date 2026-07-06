@@ -29,12 +29,16 @@ export function encryptValue(text: string): string {
   for (let i = 0; i < text.length; i++) {
     result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
   }
-  return btoa(result);
+  try {
+    return btoa(unescape(encodeURIComponent(result)));
+  } catch (e) {
+    return btoa(result.replace(/[^\x00-\xFF]/g, ""));
+  }
 }
 
 export function decryptValue(encoded: string): string {
   try {
-    const text = atob(encoded);
+    const text = decodeURIComponent(escape(atob(encoded)));
     const key = SECRET_SALT;
     let result = "";
     for (let i = 0; i < text.length; i++) {
@@ -42,6 +46,16 @@ export function decryptValue(encoded: string): string {
     }
     return result;
   } catch (e) {
-    return "";
+    try {
+      const text = atob(encoded);
+      const key = SECRET_SALT;
+      let result = "";
+      for (let i = 0; i < text.length; i++) {
+        result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+      }
+      return result;
+    } catch (err) {
+      return "";
+    }
   }
 }
