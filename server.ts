@@ -1212,40 +1212,62 @@ async function startServer() {
         });
         const $ = cheerio.load(response.data);
 
-        // Parse list of servers if available on the watch page
-        $('.serversList li').each((i, el) => {
-          const rawName = $(el).find('span').text().trim() || $(el).attr('data-name') || `سيرفر ${i + 1}`;
-          const emText = $(el).find('em').text().trim();
-          const fullName = emText ? `${rawName} (${emText})` : rawName;
-          
-          const serverId = $(el).attr('data-server') || '';
-          let embedUrl = '';
-          
-          // Check if there is a code tag with a direct link inside
-          const embeddedA = $(el).find('code a').attr('href') || $(el).find('a').attr('href');
-          if (embeddedA) {
-            embedUrl = embeddedA;
-          } else if (serverId) {
-            embedUrl = getEmbedUrl($(el).attr('data-name') || rawName, serverId);
-          }
-          
-          if (embedUrl) {
-            if (embedUrl.startsWith('//')) {
-              embedUrl = 'https:' + embedUrl;
+        // Parse list of servers if available on the watch page using a robust list of selectors
+        const selectors = [
+          '.serversList li',
+          '.servers-list li',
+          'ul.servers li',
+          '.player-servers li',
+          '.video-servers li',
+          '.server-item',
+          '.watch-servers li',
+          '.player-option',
+          '.server-btn'
+        ];
+
+        selectors.forEach(sel => {
+          $(sel).each((i, el) => {
+            const rawName = $(el).find('span').text().trim() || 
+                            $(el).find('a').text().trim() || 
+                            $(el).attr('data-name') || 
+                            $(el).attr('title') || 
+                            $(el).text().trim() || 
+                            `سيرفر ${i + 1}`;
+            const emText = $(el).find('em').text().trim();
+            const fullName = emText ? `${rawName} (${emText})` : rawName;
+            
+            const serverId = $(el).attr('data-server') || $(el).attr('data-id') || $(el).attr('data-link') || '';
+            let embedUrl = $(el).attr('data-url') || $(el).attr('data-src') || $(el).attr('data-href') || $(el).attr('data-embed') || '';
+            
+            // Check if there is a code tag or direct anchor with a link inside
+            const embeddedA = $(el).find('code a').attr('href') || $(el).find('a').attr('href');
+            if (embeddedA) {
+              embedUrl = embeddedA;
+            } else if (serverId && !embedUrl) {
+              embedUrl = getEmbedUrl($(el).attr('data-name') || rawName, serverId);
             }
             
-            // Wrap the server URL in our player proxy to defeat iframe security limitations
-            let proxyUrl = embedUrl;
-            if (!embedUrl.includes('thenextstop.net')) {
-              const encryptedTarget = encryptValue(embedUrl);
-              proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
+            if (embedUrl) {
+              if (embedUrl.startsWith('//')) {
+                embedUrl = 'https:' + embedUrl;
+              }
+              
+              // Wrap the server URL in our player proxy to defeat iframe security limitations
+              let proxyUrl = embedUrl;
+              if (!embedUrl.includes('thenextstop.net')) {
+                const encryptedTarget = encryptValue(embedUrl);
+                proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
+              }
+              
+              const exists = parsedServers.some(p => p.url === proxyUrl);
+              if (!exists) {
+                parsedServers.push({ name: fullName, url: proxyUrl });
+              }
             }
-            
-            parsedServers.push({ name: fullName, url: proxyUrl });
-          }
+          });
         });
 
-        // Try Qeseh style embedded player with post parameter for main fallback
+        // Try Qeseh style embedded player with post parameter for main fallback & additional servers
         let playerLink = $('.modern-player-container a.fullscreen-clickable').attr('href') || $('a[href*="post="]').attr('href') || '';
         
         if (playerLink) {
@@ -1271,7 +1293,26 @@ async function startServer() {
                 if (postData && postData.servers && postData.servers.length > 0) {
                   const firstServer = postData.servers[0];
                   iframeSrc = getEmbedUrl(firstServer.name, firstServer.id);
-                  console.log(`[Qeseh Play Resolver] Decoded embed URL: ${iframeSrc}`);
+                  
+                  postData.servers.forEach((srv: any, idx: number) => {
+                    const embedUrl = getEmbedUrl(srv.name, srv.id);
+                    if (embedUrl) {
+                      let proxyUrl = embedUrl;
+                      if (!embedUrl.includes('thenextstop.net')) {
+                        const encryptedTarget = encryptValue(embedUrl);
+                        proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
+                      }
+                      
+                      const exists = parsedServers.some(p => p.url === proxyUrl);
+                      if (!exists) {
+                        parsedServers.push({
+                          name: srv.name || `سيرفر ${idx + 1}`,
+                          url: proxyUrl
+                        });
+                      }
+                    }
+                  });
+                  console.log(`[Qeseh Play Resolver] Decoded ${postData.servers.length} servers from post parameter JSON`);
                 }
               }
             }
@@ -1392,22 +1433,34 @@ async function startServer() {
       }
 
       // 2. Inject our elite window.top / window.parent spoofing script
+      // Each step is safely wrapped in its own try-catch so that if window.parent/window.top cannot
+      // be redefined (e.g. non-configurable window property in browser engine), the other steps still execute!
       const spoofScript = `
         <script id="bypass-script">
           (function() {
+            // Safe independent wrappers
             try {
-              // Block top level navigation changes & domain checks
-              Object.defineProperty(window, 'parent', { get: function() { return window; } });
-              Object.defineProperty(window, 'top', { get: function() { return window; } });
-              Object.defineProperty(document, 'referrer', { get: function() { return 'https://3iskk.xyz/'; } });
-              
+              Object.defineProperty(window, 'parent', { get: function() { return window; }, configurable: true });
+            } catch(e) { console.warn('[Proxy Player] Could not redefine parent'); }
+
+            try {
+              Object.defineProperty(window, 'top', { get: function() { return window; }, configurable: true });
+            } catch(e) { console.warn('[Proxy Player] Could not redefine top'); }
+
+            try {
+              Object.defineProperty(document, 'referrer', { get: function() { return 'https://3iskk.xyz/'; }, configurable: true });
+            } catch(e) {}
+
+            try {
               // Prevent setting window.location.href or calling replace
               const originalReplace = window.location.replace;
               window.location.replace = function(url) {
                 console.warn('[Proxy Player] Blocked frame redirect:', url);
                 return;
               };
-              
+            } catch(e) {}
+
+            try {
               // Safeguard window.location setter
               const loc = window.location;
               const originalAssign = loc.assign;
@@ -1415,9 +1468,7 @@ async function startServer() {
                 console.warn('[Proxy Player] Blocked loc.assign redirect:', url);
                 return;
               };
-            } catch(e) {
-              console.error('[Proxy Player] Spoof error:', e);
-            }
+            } catch(e) {}
           })();
         </script>
       `;
@@ -1438,10 +1489,28 @@ async function startServer() {
         }
       });
 
+      let finalHtml = $.html();
+
+      // Find any direct video stream link (http... .mp4 or .m3u8) and wrap it in our stream proxy
+      // We exclude links that are already stream-proxied. This completely bypasses referer/origin restrictions on video tag sources.
+      const videoStreamRegex = /(https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}(?:\/[^\s"']*)?\.(?:mp4|m3u8|webm)(?:\?[^\s"']*)?)/gi;
+      finalHtml = finalHtml.replace(videoStreamRegex, (match) => {
+        // Skip if already proxied
+        if (match.includes('/api/v1/stream-proxy/') || match.includes('/api/v1/stream-range-proxy')) {
+          return match;
+        }
+        try {
+          const encrypted = encodeURIComponent(encryptValue(match));
+          return `/api/v1/stream-proxy/${encrypted}`;
+        } catch (e) {
+          return match;
+        }
+      });
+
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('X-Frame-Options', 'ALLOWALL');
       res.setHeader('Content-Security-Policy', "frame-ancestors *");
-      res.send($.html());
+      res.send(finalHtml);
 
     } catch (error: any) {
       console.error("[3isk Player Proxy Error] Failed proxying player page:", error.message);
@@ -1615,8 +1684,16 @@ async function startServer() {
         };
 
         // Match known AlooyTV servers and archive.org video hosts
-        const hostMatch = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive/i);
-        if (hostMatch) {
+        const hostMatch = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive|arabhd|alooytv|thenextstop|qeseh|sayyarh|fitnur|bshra/i);
+        const isQesehSource = currentUrl.includes('qeseh') || currentUrl.includes('sayyarh');
+
+        if (isQesehSource) {
+           headersOptions['Referer'] = 'https://qeseh.net/';
+           headersOptions['Origin'] = 'https://qeseh.net';
+           headersOptions['Sec-Fetch-Dest'] = 'video';
+           headersOptions['Sec-Fetch-Mode'] = 'no-cors';
+           headersOptions['Sec-Fetch-Site'] = 'cross-site';
+        } else if (hostMatch) {
            headersOptions['Referer'] = 'https://3iskk.xyz/';
            headersOptions['Origin'] = 'https://3iskk.xyz';
            headersOptions['Sec-Fetch-Dest'] = 'video';
