@@ -1,5 +1,4 @@
 import { decryptValue, encryptValue } from "../lib/security";
-import { getApiUrl } from "../lib/apiConfig";
 
 export function getProxiedImageUrl(url: string | undefined): string {
   if (!url) return "";
@@ -18,10 +17,11 @@ export function getProxiedImageUrl(url: string | undefined): string {
 import { fetchAllFromFirebase, db } from "./firebase";
 import { ref, onValue } from "firebase/database";
 import { hasNewEpisode, getEpisodeUpdatedAt } from "../lib/episodeHistory";
+import { getApiUrl } from "../lib/apiConfig";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db as firestoreDb } from "../lib/firebase";
 
-// Dynamic Admin Category Pins & Slider Selections Map (Pruned to resolve black screen)
+// Dynamic Admin Category Pins Map
 export let categoryPins: Record<string, any> = {};
 let serverPins: Record<string, any> = {};
 
@@ -32,6 +32,50 @@ const sortCache = new Map<string, any[]>();
 export let sliderSelections: Record<string, any> = {};
 let serverSliderSelections: Record<string, any> = {};
 
+// Register Firestore Real-time Listeners
+try {
+  onSnapshot(collection(firestoreDb, "category_pins"), (snapshot) => {
+    const pins: Record<string, any> = {};
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data) {
+        pins[doc.id] = data;
+      }
+    });
+    // Firestore acts as the ultimate master source of truth, taking priority
+    categoryPins = { ...serverPins, ...categoryPins, ...pins };
+    sortCache.clear();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('category-pins-updated'));
+    }
+  }, (err) => {
+    console.warn("Firestore category_pins listener deferred:", err);
+  });
+} catch (e) {
+  console.warn("Could not register Firestore category_pins listener on startup:", e);
+}
+
+try {
+  onSnapshot(collection(firestoreDb, "slider_selections"), (snapshot) => {
+    const selections: Record<string, any> = {};
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data) {
+        selections[doc.id] = data;
+      }
+    });
+    // Firestore takes top priority for slider selections
+    sliderSelections = { ...serverSliderSelections, ...sliderSelections, ...selections };
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('slider-selections-updated'));
+    }
+  }, (err) => {
+    console.warn("Firestore slider_selections listener deferred:", err);
+  });
+} catch (e) {
+  console.warn("Could not register Firestore slider_selections list tracker on startup:", e);
+}
+
 export interface ApiCategory {
   name: string;
   url: string;
@@ -41,8 +85,80 @@ export interface ApiCategory {
 let categoriesCache: ApiCategory[] | null = null;
 const CAT_CACHE_KEY = "serene_categories_cache";
 
-export async function syncSliderSelections() {}
-export async function syncCategoryPins() {}
+// Resilient API sync for slider selections
+export async function syncSliderSelections() {
+  try {
+    const res = await fetch(getApiUrl("/api/v1/slider-selections"));
+    const data = await res.json();
+    if (data && typeof data === 'object') {
+      serverSliderSelections = data;
+      sliderSelections = { ...sliderSelections, ...data };
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('slider-selections-updated'));
+      }
+    }
+  } catch (err) {
+    console.warn("Server-side slider selections fetch deferred:", err);
+  }
+}
+
+// Initial sync
+syncSliderSelections();
+
+// Realtime Database subscription listener
+try {
+  const sliderRef = ref(db, 'slider_selections');
+  onValue(sliderRef, (snapshot) => {
+    const val = snapshot.val();
+    if (val && typeof val === 'object') {
+      sliderSelections = { ...serverSliderSelections, ...val };
+    } else {
+      sliderSelections = { ...serverSliderSelections };
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('slider-selections-updated'));
+    }
+  }, { onlyOnce: false });
+} catch (e) {
+  console.warn("Firebase Realtime Database slider selections registration deferred.", e);
+}
+
+// Resilient API sync for category pins
+export async function syncCategoryPins() {
+  try {
+    const res = await fetch(getApiUrl("/api/v1/pins"));
+    const data = await res.json();
+    if (data && typeof data === 'object') {
+      serverPins = data;
+      categoryPins = { ...categoryPins, ...data };
+      sortCache.clear();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('category-pins-updated'));
+      }
+    }
+  } catch (err) {
+    console.warn("Server-side pins fetch deferred:", err);
+  }
+}
+
+syncCategoryPins();
+
+try {
+  const pinsRef = ref(db, 'category_pins');
+  onValue(pinsRef, (snapshot) => {
+    const val = snapshot.val();
+    const newPins = (val && typeof val === 'object') ? { ...serverPins, ...val } : { ...serverPins };
+    if (JSON.stringify(newPins) !== JSON.stringify(categoryPins)) {
+      categoryPins = newPins;
+      sortCache.clear();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('category-pins-updated'));
+      }
+    }
+  });
+} catch (e) {
+  console.warn("Firebase Realtime Database pins registration deferred.", e);
+}
 
 const API_BASE = "/api/v1";
 
@@ -115,13 +231,10 @@ export async function fetchCategories(): Promise<ApiCategory[]> {
       data.data.forEach((cat: any) => {
         const baseName = cat.name.replace(/\s+صفحة\s+\d+/gi, '').replace(/\s+page\s+\d+/gi, '').trim();
         if (!mergedMap.has(baseName)) {
-          mergedMap.set(baseName, { name: baseName, url: cat.url, pages: cat.pages || [cat.url] });
+          mergedMap.set(baseName, { name: baseName, url: cat.url, pages: [cat.url] });
         } else {
           const ex = mergedMap.get(baseName)!;
-          const incomingPages = cat.pages || [cat.url];
-          incomingPages.forEach((p: string) => {
-            if (!ex.pages?.includes(p)) ex.pages?.push(p);
-          });
+          if (!ex.pages?.includes(cat.url)) ex.pages?.push(cat.url);
         }
       });
       categoriesCache = Array.from(mergedMap.values());
@@ -218,56 +331,19 @@ export async function fetchPlayUrlFromAPI(episodeUrl: string, signal?: AbortSign
   return null;
 }
 
-export async function fetchPlayDetailsFromAPI(episodeUrl: string, signal?: AbortSignal) {
-  try {
-    const res = await resilientFetch(getApiUrl(API_BASE + "/play?url=" + encodeURIComponent(episodeUrl)), { signal });
-    const data = await res.json();
-    if (data.status) {
-      let resolvedUrl = data.player_url || "";
-      if (resolvedUrl && !resolvedUrl.startsWith('/api/v1/')) {
-        resolvedUrl = decryptValue(resolvedUrl);
-      }
-      return {
-        player_url: resolvedUrl,
-        servers: data.servers || []
-      };
-    }
-  } catch (error) { console.error("Play details error", error); }
-  return null;
-}
-
 export async function fetchAllFromAPI(isBackground = false) {
   const allCats = await fetchCategories();
   if (allCats.length === 0) return [];
   const allMap = new Map<string, any>();
   const chunk = allCats.slice(0, 20);
-
-  // Flatten all page URLs we want to fetch across all categories
-  const pageUrls: { url: string; catName: string }[] = [];
-  chunk.forEach(c => {
-    // Limit to first 15 pages for "جميع المسلسلات", 6 pages for others to keep it fast yet highly comprehensive
-    const maxPages = c.name.includes("جميع المسلسلات") ? 15 : 6;
-    const pagesToFetch = (c.pages || [c.url]).slice(0, maxPages);
-    pagesToFetch.forEach(p => {
-      pageUrls.push({ url: p, catName: c.name });
-    });
+  const results = await Promise.allSettled(chunk.map(c => fetchSeriesByCategory(c.url)));
+  results.forEach((r, idx) => {
+    if (r.status === "fulfilled") {
+      r.value.forEach((s: any, i: number) => {
+        if (!allMap.has(s.title)) allMap.set(s.title, { ...s, category: chunk[idx].name, rank: i });
+      });
+    }
   });
-
-  // Fetch page series in batches of 5 to protect server resources
-  const batchSize = 5;
-  for (let i = 0; i < pageUrls.length; i += batchSize) {
-    const batch = pageUrls.slice(i, i + batchSize);
-    const results = await Promise.allSettled(batch.map(item => fetchSeriesByCategory(item.url)));
-    results.forEach((r, idx) => {
-      if (r.status === "fulfilled") {
-        r.value.forEach((s: any, iRank: number) => {
-          if (!allMap.has(s.title)) {
-            allMap.set(s.title, { ...s, category: batch[idx].catName, rank: iRank });
-          }
-        });
-      }
-    });
-  }
 
   const firebaseData = await fetchAllFromFirebase();
   const merged = [...Array.from(allMap.values()), ...firebaseData];

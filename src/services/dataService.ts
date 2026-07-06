@@ -101,6 +101,7 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
     firebaseData = firebaseResult.value;
   }
 
+  // Combine sources... (rest of the logic remains same)
   const mergedMap = new Map<string, Series>();
 
   const getNormalizedTitle = (title: string): string => {
@@ -114,50 +115,133 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
       .replace(/\s+/g, "");
   };
 
-  // Merge API and Firebase
   apiData.forEach((s) => {
-    const key = getNormalizedTitle(s.title);
-    if (key) mergedMap.set(key, s);
+    const norm = getNormalizedTitle(s.title);
+    if (norm) mergedMap.set(norm, s);
+    else mergedMap.set(s.id, s);
   });
 
   firebaseData.forEach((s) => {
     if (!s) return;
-    const key = getNormalizedTitle(s.title);
-    const existing = key ? mergedMap.get(key) : null;
+    const norm = getNormalizedTitle(s.title);
+    
+    let existingKey = null;
+    if (norm && mergedMap.has(norm)) {
+      existingKey = norm;
+    } else if (s.id && mergedMap.has(s.id)) {
+      existingKey = s.id;
+    } else if (s.id) {
+      for (const [k, v] of mergedMap.entries()) {
+        if (v.id === s.id) {
+          existingKey = k;
+          break;
+        }
+      }
+    }
+
+    const existing = existingKey ? mergedMap.get(existingKey) : null;
+
     if (existing) {
-      mergedMap.set(key, {
+      mergedMap.set(existingKey!, {
         ...existing,
         ...s,
         id: s.id || existing.id,
-        title: s.title || existing.title,
-        image: s.image || existing.image,
-        category: s.category || existing.category,
-        episodes: s.episodes || existing.episodes
+        title: s.title && s.title.trim() !== "" ? s.title : existing.title,
+        image: s.image && s.image.trim() !== "" ? s.image : existing.image,
+        category: s.category && s.category.trim() !== "" ? s.category : existing.category,
+        episodes: s.episodes && s.episodes.length > 0 ? s.episodes : existing.episodes,
+        trailer: s.trailer && s.trailer.trim() !== "" ? s.trailer : existing.trailer,
       });
-    } else if (key) {
-      mergedMap.set(key, s);
+    } else {
+      if (s.title && s.title.trim() !== "") {
+        mergedMap.set(norm || s.id, { ...s, id: s.id || norm });
+      }
     }
   });
 
-  const merged = Array.from(mergedMap.values());
-  const sorted = applyPrioritySort(merged);
+  let allData = Array.from(mergedMap.values());
 
-  cachedSeriesList = sorted.map(s => ({
-    ...s,
-    image: fixImageUrl(s.image, s.title)
-  }));
+  // Inject "Titanic" movie manually if not present
+  const titanicExists = allData.some(s => s.id === "movie_titanic_999");
+  if (!titanicExists) {
+    allData.unshift({
+      id: "movie_titanic_999",
+      title: "تايتانك (Titanic)",
+      image: "https://j.top4top.io/p_3822gpygf1.jpg",
+      category: "أفلام",
+      rating: 9.8,
+      isPriority: true,
+      trailer: "/api/v1/titanic-player",
+      episodes: [
+        { title: "الفيلم كامل", url: "/api/v1/titanic-player", link1: "/api/v1/titanic-player", link2: "", link3: "" }
+      ]
+    });
+  }
+
+  // Inject "Breaking Bad" manually
+  const bbExists = allData.some(s => s.id === "tv_breaking_bad_999");
+  if (!bbExists) {
+    allData.unshift({
+      id: "tv_breaking_bad_999",
+      title: "Breaking Bad",
+      image: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ6Cn9C6QxDKqzTTAOSkIcuILr3ANfSsQvIMco_pEtsjGAp_rHizjS0-eBloO_rHOUGlTmBMHBKV8rvBx4rqRWQTzv0ndVhAZwVS67aPLu65w&s=10",
+      category: "أجنبي",
+      rating: 9.5,
+      isPriority: true,
+      trailer: "https://streamimdb.ru/embed/tv/tt0903747",
+      episodes: [
+        { title: "المسلسل كامل", url: "https://streamimdb.ru/embed/tv/tt0903747", link1: "https://streamimdb.ru/embed/tv/tt0903747", link2: "", link3: "" }
+      ]
+    });
+  }
+
+  // Fetch custom series from Firestore if possible
+  try {
+    const q = firestoreQuery(collection(firestore, "custom_series"), orderBy("createdAt", "desc"));
+    const customSnap = await getDocs(q);
+    customSnap.forEach((docSnap) => {
+      const data = docSnap.data() as Series;
+      const finalData = { ...data, id: data.id || docSnap.id };
+      // Check if already in allData by ID
+      const index = allData.findIndex(s => s.id === finalData.id);
+      if (index !== -1) {
+        allData[index] = finalData;
+      } else {
+        allData.unshift(finalData);
+      }
+    });
+  } catch (err) {
+    console.error("Error fetching custom series from Firestore:", err);
+  }
+
+  allData = allData.map((s) => ({ ...s, image: fixImageUrl(s.image, s.title) }));
+
+  // Apply centralized priority sort and exclusions
+  allData = applyPrioritySort(allData);
+
+  cachedSeriesList = allData;
   lastFetchTime = Date.now();
 
+  // Persist to localStorage
   if (typeof window !== "undefined") {
     try {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
-        data: cachedSeriesList,
+        data: allData,
         timestamp: lastFetchTime
       }));
-    } catch (e) {}
+    } catch (e) {
+      console.warn("Failed to save cache to localStorage", e);
+    }
   }
 
-  return cachedSeriesList;
+  // Ensure background synchronization is triggered if cache was cleared
+  if (isBackground) {
+    // Already forced or background
+  } else {
+    triggerBackgroundFetch();
+  }
+
+  return allData;
 }
 
 function triggerBackgroundFetch() {
@@ -189,14 +273,63 @@ export function clearCache() {
 }
 
 export async function fetchAllSeries(forceRefresh = false): Promise<Series[]> {
-  if (!forceRefresh && cachedSeriesList && cachedSeriesList.length > 0 && Date.now() - lastFetchTime < CACHE_DURATION_MS) {
-    // If cache is older than 15 minutes, trigger a background refresh quietly
-    if (Date.now() - lastFetchTime > 15 * 60 * 1000) {
-      triggerBackgroundFetch();
+  const now = Date.now();
+
+  // Ensure Titanic and Breaking Bad are present in the cache even before refreshing
+  if (cachedSeriesList) {
+    const titanicExists = cachedSeriesList.some(s => s.id === "movie_titanic_999");
+    if (!titanicExists) {
+      cachedSeriesList.unshift({
+        id: "movie_titanic_999",
+        title: "تايتانك (Titanic)",
+        image: "https://m.media-amazon.com/images/M/MV5BMDdmZGU3NDQtY2E5My00ZTliLWIzOTUtMTY4ZGI1YjdiNjk3XkEyXkFqcGdeQXVyNTA4NzY1MzY@._V1_QL75_UX380_CR0,0,380,562_.jpg",
+        category: "أفلام",
+        rating: 9.8,
+        isPriority: true,
+        trailer: "",
+        episodes: [
+          { title: "الفيلم كامل", url: "/api/v1/titanic-player", link1: "/api/v1/titanic-player", link2: "", link3: "" }
+        ]
+      });
     }
+    const bbExists = cachedSeriesList.some(s => s.id === "tv_breaking_bad_999");
+    if (!bbExists) {
+      cachedSeriesList.unshift({
+        id: "tv_breaking_bad_999",
+        title: "Breaking Bad",
+        image: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ6Cn9C6QxDKqzTTAOSkIcuILr3ANfSsQvIMco_pEtsjGAp_rHizjS0-eBloO_rHOUGlTmBMHBKV8rvBx4rqRWQTzv0ndVhAZwVS67aPLu65w&s=10",
+        category: "أجنبي",
+        rating: 9.5,
+        isPriority: true,
+        trailer: "",
+        episodes: [
+          { title: "المسلسل كامل", url: "https://streamimdb.ru/embed/tv/tt0903747", link1: "https://streamimdb.ru/embed/tv/tt0903747", link2: "", link3: "" }
+        ]
+      });
+    }
+  }
+
+  // If forceRefresh is false, we have a cache, and it's younger than CACHE_DURATION_MS, return immediately
+  if (
+    !forceRefresh &&
+    cachedSeriesList &&
+    now - lastFetchTime < CACHE_DURATION_MS
+  ) {
     return cachedSeriesList;
   }
-  return doFetchAndMerge();
+
+  // If we have a cache but it's older than CACHE_DURATION_MS, we could refresh, but for now just return it
+  if (!forceRefresh && cachedSeriesList) {
+    return cachedSeriesList;
+  }
+
+  // No cache or force refresh: blocking fetch first fast page
+  const fastInitialData = await doFetchAndMerge(false);
+  
+  // Trigger a full background fetch silently to populate the remaining 10 pages per category
+  triggerBackgroundFetch();
+  
+  return fastInitialData;
 }
 
 // Subscribe to real-time updates from Firebase Series for metadata overlays (like Trailers added by Admin!)
@@ -267,6 +400,7 @@ export function updateCachedSeriesTrailer(seriesId: string, trailerUrl: string) 
         timestamp: lastFetchTime
       }));
     } catch (e) {}
+    
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("series-data-updated", { detail: cachedSeriesList }));
     }
@@ -279,10 +413,14 @@ export function getCachedSeriesByCategory(categoryName: string): Series[] {
   
   const target = normalizeArabic(categoryName);
   
+  // Use a simple startsWith or includes check on pre-normalized strings if possible, 
+  // but for now just optimize the inner loop.
   return cachedSeriesList.filter(s => {
     const sCat = s.category || "";
     if (!sCat) return false;
+    // Fast path: exact match
     if (sCat === categoryName) return true;
+    // Normalized check
     return normalizeArabic(sCat).includes(target);
   });
 }
@@ -307,34 +445,79 @@ export async function fetchCategoryPage(
   // Special case for 'All' category
   if (categoryName === "الكل") {
     const all = await fetchAllSeries(false);
+    // Return a 'page' slice for All to keep logic consistent
     const start = pageIndex * 50;
     return all.slice(start, start + 50);
   }
 
-  try {
-    const rawList = await fetchCategoryPageFromAPI(categoryName, pageIndex, signal);
-    const formatted = rawList.map(s => ({
-      ...s,
-      image: fixImageUrl(s.image, s.title)
-    }));
+  const [rawApiData, firebaseData] = await Promise.all([
+    fetchCategoryPageFromAPI(categoryName, pageIndex, signal),
+    fetchAllFromFirebase()
+  ]);
 
-    // Update RAM cache
-    if (!cachedSeriesList) {
-      cachedSeriesList = formatted;
-    } else {
-      const existingIds = new Map(cachedSeriesList.map((s, i) => [s.id, i]));
-      formatted.forEach(s => {
-        if (existingIds.has(s.id)) {
-          cachedSeriesList![existingIds.get(s.id)!] = s;
-        } else {
-          cachedSeriesList!.push(s);
-        }
-      });
+  if (rawApiData.length === 0) return [];
+
+  // Extract firebase overlays to a quick map
+  const fbOverrides = new Map<string, any>();
+  firebaseData.forEach(s => {
+    if (s.id) fbOverrides.set(s.id, s);
+    // Try to map by normalized title as well
+    if (s.title) {
+       const norm = s.title.toLowerCase().trim().replace(/^(المسلسل التركي|المسلسل الكوري|المسلسل المكسيكي|المسلسل الاسيوي|المسلسل|الفيلم|البرنامج|مسلسل|برنامج|فيلم)\s+/g, "").replace(/^ال/g, "").replace(/ـ/g, "").replace(/\s+/g, "");
+       if (norm) fbOverrides.set(norm, s);
     }
+  });
 
-    return formatted;
-  } catch (error) {
-    console.error("fetchCategoryPage error:", error);
-    return [];
+  // Format the returned data using the same fixImageUrl
+  const processedSeries = rawApiData.map((s) => {
+    const norm = s.title ? s.title.toLowerCase().trim().replace(/^(المسلسل التركي|المسلسل الكوري|المسلسل المكسيكي|المسلسل الاسيوي|المسلسل|الفيلم|البرنامج|مسلسل|برنامج|فيلم)\s+/g, "").replace(/^ال/g, "").replace(/ـ/g, "").replace(/\s+/g, "") : '';
+    const override = fbOverrides.get(s.id) || (norm ? fbOverrides.get(norm) : null);
+    
+    return {
+      ...s,
+      id: override?.id || s.id,
+      trailer: override?.trailer || s.trailer,
+      image: fixImageUrl(override?.image || s.image, s.title),
+    };
+  });
+
+  // Apply centralized priority sort and exclusions for this page
+  let newSeries = applyPrioritySort(processedSeries);
+
+  // Manual Injection for specific high-value content (Titanic)
+  const titanicExists = newSeries.some(s => s.title && s.title.includes("تايتانك"));
+  const catNorm = normalizeArabic(categoryName);
+  const isTargetCat = catNorm.includes("افلام") || catNorm === "الكل";
+  
+  if (!titanicExists && isTargetCat) {
+    newSeries.unshift({
+      id: "movie_titanic_999",
+      title: "تايتانك (Titanic)",
+      image: "https://j.top4top.io/p_3822gpygf1.jpg",
+      category: "أفلام",
+      rating: 9.8,
+      isPriority: true,
+      trailer: "/api/v1/titanic-player",
+      episodes: [
+        { title: "الفيلم كامل", url: "/api/v1/titanic-player", link1: "/api/v1/titanic-player", link2: "", link3: "" }
+      ]
+    });
   }
+
+  // Merge into our RAM cache to avoid losing it if they switch tabs and come back
+  if (!cachedSeriesList) {
+    cachedSeriesList = newSeries;
+  } else {
+    // Merge deeply into cache (overlaying existing IDs to ensure trailer updates propagate locally)
+    const existingIds = new Map(cachedSeriesList.map((s, i) => [s.id, i]));
+    newSeries.forEach(s => {
+      if (existingIds.has(s.id)) {
+        cachedSeriesList![existingIds.get(s.id)!] = s;
+      } else {
+        cachedSeriesList!.push(s);
+      }
+    });
+  }
+
+  return newSeries;
 }

@@ -4,7 +4,7 @@ import { ChevronRight, Share2, Heart, History, MessageSquare, X, ChevronDown, Ch
 import EpisodeGrid, { formatEpisodeTitle } from '../components/EpisodeGrid';
 import CustomPlayer from '../components/CustomPlayer';
 import Header from '../components/Header';
-import { fetchEpisodesFromAPI, fetchPlayUrlFromAPI, fetchPlayDetailsFromAPI, fetchSeriesDetailsFromTMDB, fetchPersonCreditsFromTMDB, getProxiedImageUrl } from '../services/api';
+import { fetchEpisodesFromAPI, fetchPlayUrlFromAPI, fetchSeriesDetailsFromTMDB, fetchPersonCreditsFromTMDB, getProxiedImageUrl } from '../services/api';
 import { fetchAllSeries } from '../services/dataService';
 import { Episode, Series } from '../services/firebase';
 import { db } from '../services/firebase';
@@ -666,7 +666,7 @@ export default function WatchScreen() {
   const playerRef = useRef<HTMLDivElement>(null);
   const playerControlRef = useRef<any>(null);
   const chatRef = useRef<HTMLDivElement>(null);
-  const resolvedUrlsCache = useRef<Record<string, any>>({});
+  const resolvedUrlsCache = useRef<Record<string, string>>({});
 
   // Always scroll to the absolute top of the page immediately on mount and whenever the series changes
   useEffect(() => {
@@ -861,8 +861,7 @@ export default function WatchScreen() {
     
     // Check local memory cache first for instant resolution with 0ms delay!
     if (resolvedUrlsCache.current[rawUrl]) {
-      const cached = resolvedUrlsCache.current[rawUrl];
-      return typeof cached === 'string' ? cached : cached.player_url;
+      return resolvedUrlsCache.current[rawUrl];
     }
     
     let targetUrl = rawUrl;
@@ -996,36 +995,21 @@ export default function WatchScreen() {
     setVideoUrl(''); // Reset for loader
     
     let rawUrl = ep.link1 || ep.url;
-    let finalUrl = '';
-    let fetchedServers: { name: string; url: string }[] = [];
-
-    if (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be') || rawUrl.startsWith('/api/v1/')) {
-      finalUrl = rawUrl;
-      fetchedServers = [{ name: 'سيرفر رئيسي', url: rawUrl }];
-    } else {
-      // Check local cache
-      const cached = resolvedUrlsCache.current[rawUrl];
-      if (cached && typeof cached === 'object' && cached.player_url) {
-        finalUrl = cached.player_url;
-        fetchedServers = cached.servers || [];
-      } else {
-        const playDetails = await fetchPlayDetailsFromAPI(rawUrl, controller.signal);
-        if (playDetails) {
-          finalUrl = playDetails.player_url;
-          fetchedServers = playDetails.servers || [];
-          resolvedUrlsCache.current[rawUrl] = playDetails;
-        } else {
-          finalUrl = rawUrl;
-          fetchedServers = [{ name: 'سيرفر رئيسي', url: rawUrl }];
-        }
-      }
-    }
+    let url = await getSecuredUrl(rawUrl, controller.signal);
     
     if (controller.signal.aborted) return;
     
-    setVideoUrl(finalUrl);
-    setActiveServerUrl(finalUrl);
-    setServers(fetchedServers);
+    setVideoUrl(url);
+    setActiveServerUrl(rawUrl);
+    
+    // Setup servers
+    const srv = [
+      { name: 'سيرفر رئيسي', url: ep.link1 || ep.url },
+      { name: 'سيرفر احتياطي 1', url: ep.link2 || '' },
+      { name: 'سيرفر احتياطي 2', url: ep.link3 || '' },
+    ].filter(s => s.url);
+    
+    setServers(srv);
 
     // Dynamic initial check to see if THIS episode is already downloaded
     try {

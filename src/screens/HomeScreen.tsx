@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
+import Slider from "../components/Slider";
 import CategoryBar from "../components/CategoryBar";
 import SeriesCard from "../components/SeriesCard";
 import BottomNav from "../components/BottomNav";
 import { fetchCategoryPage, getCachedSeriesByCategory, getAllCachedSeries, fetchAllSeries } from "../services/dataService";
-import { applyPrioritySort } from "../services/api";
+import { applyPrioritySort, sliderSelections, syncSliderSelections } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { Series } from "../services/firebase";
 import { motion, AnimatePresence } from "motion/react";
@@ -25,7 +26,7 @@ import {
 export default function HomeScreen() {
   const [allSeriesRaw, setAllSeriesRaw] = useState<Series[]>([]);
   const [globalCache, setGlobalCache] = useState<Series[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState("الكل");
+  const [selectedCategory, setSelectedCategory] = useState("تركي");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -62,6 +63,7 @@ export default function HomeScreen() {
     const adminAccess = localStorage.getItem('short_admin_access') === 'true' || 
                         localStorage.getItem('guest_chat_name') === 'المدير 🛡️';
     setIsAdmin(adminAccess);
+    syncSliderSelections();
   }, []);
 
   // 2. Optimized Category Loading
@@ -82,32 +84,23 @@ export default function HomeScreen() {
       }
 
       try {
-        if (selectedCategory === "الكل") {
-          const allFetched = await fetchAllSeries(false);
-          if (isMounted && allFetched && allFetched.length > 0) {
-            initializeEpisodeTracking(allFetched);
-            setAllSeriesRaw(allFetched);
-            setLoading(false);
+        // Fetch the first 4 pages for thorough coverage (especially for Turkish series)
+        const pagePromises = [0, 1, 2, 3].map(page => 
+          fetchCategoryPage(selectedCategory, page, controller.signal)
+        );
+        
+        const results = await Promise.allSettled(pagePromises);
+        let allFetched: Series[] = [];
+        results.forEach(res => {
+          if (res.status === 'fulfilled' && res.value.length > 0) {
+            allFetched = [...allFetched, ...res.value];
           }
-        } else {
-          // Fetch the first 4 pages for thorough coverage (especially for Turkish series)
-          const pagePromises = [0, 1, 2, 3].map(page => 
-            fetchCategoryPage(selectedCategory, page, controller.signal)
-          );
-          
-          const results = await Promise.allSettled(pagePromises);
-          let allFetched: Series[] = [];
-          results.forEach(res => {
-            if (res.status === 'fulfilled' && res.value.length > 0) {
-              allFetched = [...allFetched, ...res.value];
-            }
-          });
+        });
 
-          if (isMounted && allFetched.length > 0) {
-            initializeEpisodeTracking(allFetched);
-            setAllSeriesRaw(allFetched);
-            setLoading(false);
-          }
+        if (isMounted && allFetched.length > 0) {
+          initializeEpisodeTracking(allFetched);
+          setAllSeriesRaw(allFetched);
+          setLoading(false);
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
@@ -133,12 +126,14 @@ export default function HomeScreen() {
 
     window.addEventListener("series-data-updated", handleSync);
     window.addEventListener("category-pins-updated", handleSync);
+    window.addEventListener("slider-selections-updated", handleSync);
 
     return () => {
       isMounted = false;
       controller.abort();
       window.removeEventListener("series-data-updated", handleSync);
       window.removeEventListener("category-pins-updated", handleSync);
+      window.removeEventListener("slider-selections-updated", handleSync);
     };
   }, [selectedCategory]);
 
@@ -167,13 +162,6 @@ export default function HomeScreen() {
         list = allSeriesRaw;
       }
 
-      // Filter out individual episode posters so only the main series show up
-      list = list.filter(s => {
-        const title = s.title || "";
-        const isEpisode = /الحلقة|الحلقه|حلقة|حلقه/.test(title);
-        return !isEpisode;
-      });
-
       // Step B: Apply Universal Professional Sort (handled by API service for consistency)
       return applyPrioritySort(list);
     } catch (err) {
@@ -192,6 +180,22 @@ export default function HomeScreen() {
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedCategory, query]);
+
+  // 5. Slider logic (Global and stable)
+  const sliderSeries = useMemo(() => {
+    const pool = globalCache.length > 0 ? globalCache : allSeriesRaw;
+    const selected = (pool || []).filter(s => s && sliderSelections[s.id]?.selected === true);
+
+    if (selected.length > 0) {
+      // Match the sorting in api.ts
+      return selected.sort((a, b) => (sliderSelections[b.id]?.selectedAt || 0) - (sliderSelections[a.id]?.selectedAt || 0));
+    }
+    
+    // Fallback: Use Global Pins (top 5) - Exclude Titanic from fallback
+    return applyPrioritySort(pool)
+      .filter(s => s.id !== "movie_titanic_999")
+      .slice(0, 6);
+  }, [globalCache, allSeriesRaw, sliderSelections]);
 
   function handleCategoryChange(category: string) {
     if (category !== selectedCategory) {
@@ -287,15 +291,27 @@ export default function HomeScreen() {
       </AnimatePresence>
 
       <main className="pb-20">
-        <div className="relative z-10 pt-4">
+        <Slider 
+          series={sliderSeries} 
+          isAdmin={isAdmin}
+          allSeriesForManager={globalCache.length > 0 ? globalCache : allSeriesRaw}
+        />
+
+        <div className="relative z-10 -mt-10 sm:-mt-20">
+          <CategoryBar
+            selected={selectedCategory}
+            onSelect={handleCategoryChange}
+          />
 
           <div className="px-4 sm:px-8 py-8 sm:py-12 pb-32">
             <div className="flex items-center justify-between mb-8 sm:mb-10">
               <div className="flex flex-col gap-1">
-                <h2 className="text-xl sm:text-3xl font-black border-r-4 border-primary pr-4 sm:pr-6 text-white tracking-tight">
+                <h2 className="text-xl sm:text-3xl font-black-italic border-r-4 border-primary pr-4 sm:pr-6">
                   {query
-                    ? "نتائج البحث"
-                    : "جميع المسلسلات"}
+                    ? "SEARCH RESULTS"
+                    : selectedCategory === "الكل"
+                    ? "NEW SERIES"
+                    : `${selectedCategory.toUpperCase()} SERIES`}
                 </h2>
                 {query && (
                   <button
@@ -307,8 +323,8 @@ export default function HomeScreen() {
                   </button>
                 )}
               </div>
-              <span className="text-zinc-500 font-black text-xs">
-                {processedSeries.length} عمل فني
+              <span className="text-zinc-600 font-bold text-[8px] sm:text-[10px] tracking-widest uppercase italic">
+                {processedSeries.length} TITLES
               </span>
             </div>
 

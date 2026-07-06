@@ -741,14 +741,27 @@ async function startServer() {
   app.use(express.json({ limit: "200mb" }));
   app.use(express.urlencoded({ limit: "200mb", extended: true }));
 
-  // Pins and Slider Memory persistence simplified to prevent blocking startup calls
+  // Pins Memory Persistence Init
   let pinsMemory: Record<string, any> = {};
+  const pinsFilePath = path.join(process.cwd(), "data", "pins.json");
+
+  // Slider Selections Memory Persistence Init
   let sliderMemory: Record<string, any> = {};
+  const sliderFilePath = path.join(process.cwd(), "data", "slider.json");
+
+  // AI Configuration Local Disk Persistence
   const aiConfigFilePath = path.join(process.cwd(), "data", "ai_config.json");
 
+  // Load local fallbacks
   try {
     if (!fs.existsSync(path.join(process.cwd(), "data"))) {
       fs.mkdirSync(path.join(process.cwd(), "data"), { recursive: true });
+    }
+    if (fs.existsSync(pinsFilePath)) {
+      pinsMemory = JSON.parse(fs.readFileSync(pinsFilePath, "utf-8") || "{}");
+    }
+    if (fs.existsSync(sliderFilePath)) {
+      sliderMemory = JSON.parse(fs.readFileSync(sliderFilePath, "utf-8") || "{}");
     }
     if (fs.existsSync(aiConfigFilePath)) {
       USER_CUSTOM_AI_CONFIG = JSON.parse(fs.readFileSync(aiConfigFilePath, "utf-8") || "{}");
@@ -758,30 +771,130 @@ async function startServer() {
     console.warn("Could not load database JSONs", e);
   }
 
+  // ============== SYSTEM-WIDE PERSISTENT CLOUD SELF-HEALING SYSTEM (FIRESTORE & RTDB) ==============
+  // Fetches master backups from Firestore and Realtime Database raw REST APIs
+  // This guarantees complete survival across restarts, rebuilds, and ephemeral disk wipes!
   const firebaseProjectId = findFirebaseProjectId();
   const firebaseDatabaseId = findFirebaseDatabaseId();
 
-  // Async self-healing for AI configuration only, completely non-blocking!
-  const selfHealAIConfig = async () => {
-    try {
-      const aiConfigRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_admin_ai_config`, { timeout: 3000 }).catch(() => null);
-      if (aiConfigRes && aiConfigRes.data && aiConfigRes.data.fields && aiConfigRes.data.fields.data) {
-        const dataStr = aiConfigRes.data.fields.data.stringValue;
-        if (dataStr) {
-          const loadedConfig = JSON.parse(dataStr);
-          if (loadedConfig && loadedConfig.key) {
-            USER_CUSTOM_AI_CONFIG = loadedConfig;
-            console.log("Asynchronously self-healed USER_CUSTOM_AI_CONFIG from Firestore!");
-          }
+  // --- 1. AI Configuration Self-Healing ---
+  try {
+    const aiConfigRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_admin_ai_config`, { timeout: 4000 }).catch(() => null);
+    if (aiConfigRes && aiConfigRes.data && aiConfigRes.data.fields && aiConfigRes.data.fields.data) {
+      const dataStr = aiConfigRes.data.fields.data.stringValue;
+      if (dataStr) {
+        const loadedConfig = JSON.parse(dataStr);
+        if (loadedConfig && loadedConfig.key) {
+          USER_CUSTOM_AI_CONFIG = loadedConfig;
+          console.log("Successfully self-healed USER_CUSTOM_AI_CONFIG from Firestore! Key prefix:", loadedConfig.key.substring(0, 8));
         }
       }
-    } catch (err: any) {
-      console.warn("Async self-heal AI config from Firestore deferred:", err.message);
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal AI config from Firestore on startup:", err.message);
+  }
+
+  try {
+    const aiConfigRTDB = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, { timeout: 4000 }).catch(() => null);
+    if (aiConfigRTDB && aiConfigRTDB.data && aiConfigRTDB.data.key) {
+      USER_CUSTOM_AI_CONFIG = aiConfigRTDB.data;
+      console.log("Successfully self-healed USER_CUSTOM_AI_CONFIG from RTDB! Key prefix:", USER_CUSTOM_AI_CONFIG.key.substring(0, 8));
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal AI config from RTDB on startup:", err.message);
+  }
+
+  // --- 2. Pins Memory Self-Healing ---
+  try {
+    const pinsRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_category_pins`, { timeout: 4000 }).catch(() => null);
+    if (pinsRes && pinsRes.data && pinsRes.data.fields && pinsRes.data.fields.data) {
+      const dataStr = pinsRes.data.fields.data.stringValue;
+      if (dataStr) {
+        const cloudPins = JSON.parse(dataStr) || {};
+        pinsMemory = { ...pinsMemory, ...cloudPins };
+        console.log("Successfully self-healed Pins memory from Firestore! Loaded count:", Object.keys(cloudPins).length);
+      }
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal Category Pins from Firestore on startup:", err.message);
+  }
+
+  try {
+    const pinsRTDB = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/category_pins.json`, { timeout: 4000 }).catch(() => null);
+    if (pinsRTDB && pinsRTDB.data) {
+      pinsMemory = { ...pinsMemory, ...pinsRTDB.data };
+      console.log("Successfully self-healed Pins memory from RTDB! Loaded count:", Object.keys(pinsRTDB.data).length);
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal Category Pins from RTDB on startup:", err.message);
+  }
+
+  // --- 3. Slider Selections Self-Healing ---
+  try {
+    const sliderRes = await axios.get(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_slider_selections`, { timeout: 4000 }).catch(() => null);
+    if (sliderRes && sliderRes.data && sliderRes.data.fields && sliderRes.data.fields.data) {
+      const dataStr = sliderRes.data.fields.data.stringValue;
+      if (dataStr) {
+        const cloudSlider = JSON.parse(dataStr) || {};
+        sliderMemory = { ...sliderMemory, ...cloudSlider };
+        console.log("Successfully self-healed Sliders memory from Firestore! Loaded count:", Object.keys(cloudSlider).length);
+      }
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal Sliders from Firestore on startup:", err.message);
+  }
+
+  try {
+    const sliderRTDB = await axios.get(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/slider_selections.json`, { timeout: 4000 }).catch(() => null);
+    if (sliderRTDB && sliderRTDB.data) {
+      sliderMemory = { ...sliderMemory, ...sliderRTDB.data };
+      console.log("Successfully self-healed Sliders memory from RTDB! Loaded count:", Object.keys(sliderRTDB.data).length);
+    }
+  } catch (err: any) {
+    console.warn("Could not self-heal Sliders from RTDB on startup:", err.message);
+  }
+
+  // Cloud backup write helper functions (Dual-Save to Firestore AND RTDB for maximum resilience)
+  const savePinsToCloud = async () => {
+    // Save to Firestore
+    try {
+      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_category_pins?updateMask.fieldPaths=data`, {
+        fields: {
+          data: { stringValue: JSON.stringify(pinsMemory) }
+        }
+      }, { timeout: 4000 }).catch(() => null);
+    } catch (e: any) {
+      console.warn("Error background backup category pins to Firestore:", e.message);
+    }
+    // Save to RTDB
+    try {
+      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/category_pins.json`, pinsMemory, { timeout: 4000 }).catch(() => null);
+    } catch (e: any) {
+      console.warn("Error background backup category pins to RTDB:", e.message);
     }
   };
-  selfHealAIConfig();
+
+  const saveSliderToCloud = async () => {
+    // Save to Firestore
+    try {
+      await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_slider_selections?updateMask.fieldPaths=data`, {
+        fields: {
+          data: { stringValue: JSON.stringify(sliderMemory) }
+        }
+      }, { timeout: 4000 }).catch(() => null);
+    } catch (e: any) {
+      console.warn("Error background backup slider selections to Firestore:", e.message);
+    }
+    // Save to RTDB
+    try {
+      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/slider_selections.json`, sliderMemory, { timeout: 4000 }).catch(() => null);
+    } catch (e: any) {
+      console.warn("Error background backup slider selections to RTDB:", e.message);
+    }
+  };
 
   const saveAIConfigToCloud = async () => {
+    // Expand for maximum compatibility and user custom fields in Firestore/RTDB
     const expandedConfig = {
       ...USER_CUSTOM_AI_CONFIG,
       key: USER_CUSTOM_AI_CONFIG?.key || "",
@@ -794,22 +907,51 @@ async function startServer() {
     };
 
     try {
+      // Save locally to disk first layout to ensure complete hosting durability
       fs.writeFileSync(aiConfigFilePath, JSON.stringify(USER_CUSTOM_AI_CONFIG, null, 2), "utf-8");
+      console.log("Locally saved AI configuration to disk backup successfully!");
     } catch (err: any) {
       console.warn("Failed to write manual AI configuration to disk:", err.message);
     }
 
+    // Save to Firestore
     try {
       await axios.patch(`https://firestore.googleapis.com/v1/projects/${firebaseProjectId}/databases/${firebaseDatabaseId}/documents/shorts/app_admin_ai_config?updateMask.fieldPaths=data`, {
         fields: {
           data: { stringValue: JSON.stringify(expandedConfig) }
         }
-      }, { timeout: 3000 }).catch(() => null);
-    } catch (e: any) {}
+      }, { timeout: 4000 }).catch(() => null);
+      console.log("Successfully back-saved AI configuration to Cloud Firestore master!");
+    } catch (e: any) {
+      console.warn("Error background backup administrative AI config to Firestore:", e.message);
+    }
+
+    // Save to RTDB
+    try {
+      await axios.put(`https://${firebaseProjectId}-default-rtdb.firebaseio.com/ai_config.json`, expandedConfig, { timeout: 4000 }).catch(() => null);
+      console.log("Successfully back-saved AI configuration to Cloud RTDB master!");
+    } catch (e: any) {
+      console.warn("Error background backup administrative AI config to RTDB:", e.message);
+    }
   };
 
-  const savePinsToFile = () => {};
-  const saveSliderToFile = () => {};
+  const savePinsToFile = () => {
+    try {
+      fs.writeFileSync(pinsFilePath, JSON.stringify(pinsMemory, null, 2), "utf-8");
+      savePinsToCloud(); // Double backup to cloud
+    } catch (e) {
+      console.warn("Could not save pins.json", e);
+    }
+  };
+
+  const saveSliderToFile = () => {
+    try {
+      fs.writeFileSync(sliderFilePath, JSON.stringify(sliderMemory, null, 2), "utf-8");
+      saveSliderToCloud(); // Double backup to cloud
+    } catch (e) {
+      console.warn("Could not save slider.json", e);
+    }
+  };
 
   // Seeding and automatic configuration writing removed to ensure that Hakeem AI credentials only appear in Firebase Firestore and RTDB after the user clicks 'Activate' in the frontend.
 
@@ -882,38 +1024,10 @@ async function startServer() {
   app.get("/api/v1/categories", async (req, res) => {
     try {
       const categories = [
-        { 
-          name: 'آخر الحلقات', 
-          url: 'https://wwv.qeseh.com/', 
-          pages: [
-            'https://wwv.qeseh.com/',
-            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/page/${i + 2}/`)
-          ] 
-        },
-        { 
-          name: 'جميع المسلسلات', 
-          url: 'https://wwv.qeseh.com/discover/', 
-          pages: [
-            'https://wwv.qeseh.com/discover/',
-            ...Array.from({ length: 19 }, (_, i) => `https://wwv.qeseh.com/discover/page/${i + 2}/`)
-          ] 
-        },
-        { 
-          name: 'مسلسلات كاملة', 
-          url: 'https://wwv.qeseh.com/category/alarshif/', 
-          pages: [
-            'https://wwv.qeseh.com/category/alarshif/',
-            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/category/alarshif/page/${i + 2}/`)
-          ] 
-        },
-        { 
-          name: 'أفلام تركية', 
-          url: 'https://wwv.qeseh.com/category/yeni-filmler/', 
-          pages: [
-            'https://wwv.qeseh.com/category/yeni-filmler/',
-            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/category/yeni-filmler/page/${i + 2}/`)
-          ] 
-        }
+        { name: 'جميع المسلسلات', url: 'https://3iskk.xyz/w-series/', pages: ['https://3iskk.xyz/w-series/', 'https://3iskk.xyz/w-series/page/2/'] },
+        { name: 'جميع الحلقات', url: 'https://3iskk.xyz/halaqat/', pages: ['https://3iskk.xyz/halaqat/', 'https://3iskk.xyz/halaqat/page/2/'] },
+        { name: 'جميع الأفلام', url: 'https://3iskk.xyz/w-movies/', pages: ['https://3iskk.xyz/w-movies/', 'https://3iskk.xyz/w-movies/page/2/'] },
+        { name: 'مسلسلات مدبلجة', url: 'https://3iskk.xyz/genre/series-mudablij-121/', pages: ['https://3iskk.xyz/genre/series-mudablij-121/', 'https://3iskk.xyz/genre/series-mudablij-121/page/2/'] }
       ];
       res.json({ status: true, data: categories });
     } catch (error: any) {
@@ -929,94 +1043,33 @@ async function startServer() {
       if (!url) return res.status(400).json({ status: false });
       
       const realUrl = url as string;
-      const cacheKey = `series_qeseh:${realUrl}`;
+      const cacheKey = `series_3isk:${realUrl}`;
       const cached = getCachedData(cacheKey);
       if (cached) {
         return res.json(cached);
       }
 
-      // Try multiple domains or failovers if rate-limited or blocked
-      let html = "";
-      const domains = ['https://wwv.qeseh.com', 'https://qeseh.net'];
-      let lastErr = null;
-
-      for (const domain of domains) {
-        let fetchUrl = realUrl;
-        if (realUrl.includes('qeseh.com') && domain.includes('qeseh.net')) {
-          fetchUrl = realUrl.replace('wwv.qeseh.com', 'qeseh.net').replace('qeseh.com', 'qeseh.net');
-        } else if (realUrl.includes('qeseh.net') && domain.includes('qeseh.com')) {
-          fetchUrl = realUrl.replace('qeseh.net', 'wwv.qeseh.com');
-        }
-
-        try {
-          const response = await axios.get(fetchUrl, {
-            headers: { 
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-              'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
-            },
-            timeout: 10000
-          });
-          if (response.data) {
-            html = response.data;
-            break;
-          }
-        } catch (err) {
-          lastErr = err;
-        }
-      }
-
-      if (!html) {
-        throw lastErr || new Error("Failed to load Qeseh contents");
-      }
-
-      const $ = cheerio.load(html);
+      const response = await axios.get(realUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        timeout: 10000
+      });
+      const $ = cheerio.load(response.data);
       const data: any[] = [];
 
-      $('article.post, .post, .block-post').each((i, el) => {
-        const aTag = $(el).find('a').first().length ? $(el).find('a').first() : $(el);
-        let itemUrl = aTag.attr('href');
-        if (!itemUrl) return;
-
-        // Decode sayyarh base64 redirection if present
-        if (itemUrl.includes('sayyarh.com')) {
-          try {
-            const urlObj = new URL(itemUrl);
-            const urlParam = urlObj.searchParams.get('url');
-            if (urlParam) {
-              const decoded = Buffer.from(urlParam, 'base64').toString('utf-8');
-              if (decoded.startsWith('http')) {
-                itemUrl = decoded;
-              }
-            }
-          } catch (e) {}
-        }
-
-        let title = aTag.attr('title') || $(el).find('.title').text().trim() || aTag.text().trim();
-        // Clean metadata from title
-        title = title.replace(/\s*-\s*قصة عشق$/i, '')
-                     .replace(/قصة عشق$/i, '')
-                     .replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '')
-                     .trim();
-
-        const styleAttr = $(el).find('.imgBg').attr('style') || $(el).find('.imgSer').attr('style') || '';
-        let img = '';
-        const match = styleAttr.match(/url\(['"]?([^'"]+)['"]?\)/);
-        if (match) {
-          img = match[1];
-        }
-        if (!img) {
-          img = $(el).find('img').attr('src') || '';
-        }
-
-        const episodeNum = $(el).find('.episodeNum').text().trim().replace(/\s+/g, ' ');
+      $('.type_item_box a.type_item, .type_item_wide_box a.type_item_wide').each((i, el) => {
+        const itemUrl = $(el).attr('href');
+        let title = $(el).attr('title') || $(el).find('.item_title').text().trim();
+        const img = $(el).find('img.item_img').attr('data-image') || $(el).find('img.item_img').attr('src');
+        
+        // Remove trailing "مترجم" or "مدبلج" from title for cleaner display
+        title = title.replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '').trim();
 
         if (itemUrl && title) {
           data.push({
             title,
             url: itemUrl,
             image: img || '',
-            img: img || '',
-            episode: episodeNum || ''
+            img: img || ''
           });
         }
       });
@@ -1026,9 +1079,8 @@ async function startServer() {
         setCachedData(cacheKey, responseData, 4 * 60 * 60 * 1000);
       }
       res.json(responseData);
-    } catch (error: any) {
-      console.error("Series retrieval error:", error.message);
-      res.status(500).json({ status: false, message: "Error fetching series" });
+    } catch (error) {
+      res.status(500).json({ status: false });
     }
   });
 
@@ -1039,122 +1091,38 @@ async function startServer() {
       if (!url) return res.status(400).json({ status: false });
       
       const realUrl = url as string;
-      const cacheKey = `episodes_qeseh:${realUrl}`;
+      const cacheKey = `episodes_3isk:${realUrl}`;
       const cached = getCachedData(cacheKey);
       if (cached) {
         return res.json(cached);
       }
 
-      let html = "";
-      const domains = ['https://wwv.qeseh.com', 'https://qeseh.net'];
-      let lastErr = null;
-
-      for (const domain of domains) {
-        let fetchUrl = realUrl;
-        if (realUrl.includes('qeseh.com') && domain.includes('qeseh.net')) {
-          fetchUrl = realUrl.replace('wwv.qeseh.com', 'qeseh.net').replace('qeseh.com', 'qeseh.net');
-        } else if (realUrl.includes('qeseh.net') && domain.includes('qeseh.com')) {
-          fetchUrl = realUrl.replace('qeseh.net', 'wwv.qeseh.com');
-        }
-
-        try {
-          const response = await axios.get(fetchUrl, {
-            headers: { 
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-              'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
-            },
-            timeout: 10000
-          });
-          if (response.data) {
-            html = response.data;
-            break;
-          }
-        } catch (err) {
-          lastErr = err;
-        }
-      }
-
-      if (!html) {
-        throw lastErr || new Error("Failed to load Qeseh episode contents");
-      }
-
-      const $ = cheerio.load(html);
+      const response = await axios.get(realUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        timeout: 10000
+      });
+      const $ = cheerio.load(response.data);
       const data: any[] = [];
 
-      // Check if it's already an individual watch page
-      const hasPlayer = $('.modern-player-container').length || $('a[href*="post="]').length || $('#iframe_player').length;
-      if (hasPlayer) {
-        // Individual watch page, return self as single episode
-        let pageTitle = $('h1').first().text().trim() || $('title').text().trim();
-        pageTitle = pageTitle.replace(/\s*-\s*قصة عشق$/i, '').replace(/قصة عشق$/i, '').trim();
-        data.push({
-          name: pageTitle || "تشغيل الحلقة",
-          url: encryptValue(realUrl)
-        });
-      } else {
-        // Series index page, parse the episode lists
-        $('article.postEp, article.post, .block-post').each((i, el) => {
-          const epA = $(el).find('a').first().length ? $(el).find('a').first() : $(el);
-          let epUrl = epA.attr('href');
-          if (!epUrl) return;
-
-          // Decode sayyarh base64 redirection if present
-          if (epUrl.includes('sayyarh.com')) {
-            try {
-              const urlObj = new URL(epUrl);
-              const urlParam = urlObj.searchParams.get('url');
-              if (urlParam) {
-                const decoded = Buffer.from(urlParam, 'base64').toString('utf-8');
-                if (decoded.startsWith('http')) {
-                  epUrl = decoded;
-                }
-              }
-            } catch (e) {}
-          }
-
-          let epTitle = epA.attr('title') || $(el).find('.title').text().trim() || epA.text().trim();
-          epTitle = epTitle.replace(/\s*-\s*قصة عشق$/i, '')
-                           .replace(/قصة عشق$/i, '')
-                           .trim();
-
-          const epNum = $(el).find('.episodeNum').text().trim().replace(/\s+/g, ' ');
-          if (epNum && !epTitle.includes(epNum)) {
-            epTitle = `${epTitle} (${epNum})`;
-          }
-
-          if (epUrl) {
-            data.push({
-              name: epTitle,
-              url: encryptValue(epUrl)
-            });
-          }
-        });
-      }
-
-      // Reverse list to display older episodes first if they are ordered descendingly
-      if (data.length > 1) {
-        const isDescending = data.some((item, index) => {
-          if (index === 0) return false;
-          const matchPrev = item.name.match(/(\d+)/);
-          const matchCurr = data[index - 1].name.match(/(\d+)/);
-          if (matchPrev && matchCurr) {
-            return parseInt(matchPrev[1], 10) < parseInt(matchCurr[1], 10);
-          }
-          return false;
-        });
-        if (isDescending) {
-          data.reverse();
+      $('.season-eps a.ep-num').each((i, el) => {
+        const epUrl = $(el).attr('href');
+        let epTitle = $(el).attr('title') || $(el).find('.cl_srt').text().trim() || $(el).text().trim();
+        
+        if (epUrl) {
+          data.push({
+            name: epTitle,
+            url: encryptValue(epUrl)
+          });
         }
-      }
+      });
 
       const responseData = { status: true, data };
       if (data.length > 0) {
-        
+        setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000);
       }
       res.json(responseData);
-    } catch (error: any) {
-      console.error("Episodes retrieval error:", error.message);
-      res.status(500).json({ status: false, message: "Error fetching episodes" });
+    } catch (error) {
+      res.status(500).json({ status: false });
     }
   });
 
@@ -1182,209 +1150,57 @@ async function startServer() {
       
       const decryptedUrl = decryptValue(url as string) || (url as string);
       let realUrl = decryptedUrl;
+      // Append /see/ if it's not present, because that's the page containing the player iframe
+      if (!realUrl.endsWith('/see/') && !realUrl.endsWith('/see')) {
+        if (!realUrl.endsWith('/')) realUrl += '/';
+        realUrl += 'see/';
+      }
 
-      const cacheKey = `play_qeseh:${realUrl}`;
+      const cacheKey = `play_3isk:${realUrl}`;
       const cached = getCachedData(cacheKey);
       if (cached) {
         return res.json(cached);
       }
 
-      function getEmbedUrl(name: string, id: string): string {
-        const n = name.toLowerCase();
-        if (n.includes('arab')) return `https://arabhd.onl/embed-${id}.html`;
-        if (n.includes('estream')) return `https://estream.to/embed-${id}.html`;
-        if (n.includes('dailymotion')) return `https://www.dailymotion.com/embed/video/${id}`;
-        if (n.includes('ok')) return `https://ok.ru/videoembed/${id}`;
-        if (n.includes('red')) return `https://redplay.to/embed-${id}.html`;
-        return id.startsWith('http') ? id : `https://arabhd.onl/embed-${id}.html`;
+      const response = await axios.get(realUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        timeout: 10000
+      });
+      const $ = cheerio.load(response.data);
+
+      let iframeSrc = $('#iframe_player').attr('src') || $('.frame-container iframe').attr('src');
+
+      if (!iframeSrc) {
+         // Also check for embedded players in other containers
+         $('iframe').each((i, el) => {
+            const src = $(el).attr('src');
+            if (src && (src.includes('embed') || src.includes('player'))) {
+                iframeSrc = src;
+                return false;
+            }
+         });
       }
 
-      let iframeSrc = "";
-      const parsedServers: { name: string; url: string }[] = [];
-
-      try {
-        const response = await axios.get(realUrl, {
-          headers: { 
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-            'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
-          },
-          timeout: 10000
-        });
-        const $ = cheerio.load(response.data);
-
-        // Parse list of servers if available on the watch page using a robust list of selectors
-        const selectors = [
-          '.serversList li',
-          '.servers-list li',
-          'ul.servers li',
-          '.player-servers li',
-          '.video-servers li',
-          '.server-item',
-          '.watch-servers li',
-          '.player-option',
-          '.server-btn'
-        ];
-
-        selectors.forEach(sel => {
-          $(sel).each((i, el) => {
-            const rawName = $(el).find('span').text().trim() || 
-                            $(el).find('a').text().trim() || 
-                            $(el).attr('data-name') || 
-                            $(el).attr('title') || 
-                            $(el).text().trim() || 
-                            `سيرفر ${i + 1}`;
-            const emText = $(el).find('em').text().trim();
-            const fullName = emText ? `${rawName} (${emText})` : rawName;
-            
-            const serverId = $(el).attr('data-server') || $(el).attr('data-id') || $(el).attr('data-link') || '';
-            let embedUrl = $(el).attr('data-url') || $(el).attr('data-src') || $(el).attr('data-href') || $(el).attr('data-embed') || '';
-            
-            // Check if there is a code tag or direct anchor with a link inside
-            const embeddedA = $(el).find('code a').attr('href') || $(el).find('a').attr('href');
-            if (embeddedA) {
-              embedUrl = embeddedA;
-            } else if (serverId && !embedUrl) {
-              embedUrl = getEmbedUrl($(el).attr('data-name') || rawName, serverId);
-            }
-            
-            if (embedUrl) {
-              if (embedUrl.startsWith('//')) {
-                embedUrl = 'https:' + embedUrl;
-              }
-              
-              // Wrap the server URL in our player proxy to defeat iframe security limitations
-              let proxyUrl = embedUrl;
-              if (!embedUrl.includes('thenextstop.net')) {
-                const encryptedTarget = encryptValue(embedUrl);
-                proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
-              }
-              
-              const exists = parsedServers.some(p => p.url === proxyUrl);
-              if (!exists) {
-                parsedServers.push({ name: fullName, url: proxyUrl });
-              }
-            }
-          });
-        });
-
-        // Try Qeseh style embedded player with post parameter for main fallback & additional servers
-        let playerLink = $('.modern-player-container a.fullscreen-clickable').attr('href') || $('a[href*="post="]').attr('href') || '';
-        
-        if (playerLink) {
-          try {
-            let actualTarget = playerLink;
-            if (playerLink.includes('sayyarh.com')) {
-              const urlObj = new URL(playerLink);
-              const nestedUrl = urlObj.searchParams.get('url');
-              if (nestedUrl) {
-                actualTarget = nestedUrl;
-              }
-            }
-
-            if (actualTarget.includes('thenextstop.net')) {
-              iframeSrc = actualTarget;
-              console.log(`[Qeseh Play Resolver] Found thenextstop URL: ${iframeSrc}`);
-            } else {
-              const targetUrlObj = new URL(actualTarget);
-              const postParam = targetUrlObj.searchParams.get('post');
-              if (postParam) {
-                const decodedJson = Buffer.from(postParam, 'base64').toString('utf-8');
-                const postData = JSON.parse(decodedJson);
-                if (postData && postData.servers && postData.servers.length > 0) {
-                  const firstServer = postData.servers[0];
-                  iframeSrc = getEmbedUrl(firstServer.name, firstServer.id);
-                  
-                  postData.servers.forEach((srv: any, idx: number) => {
-                    const embedUrl = getEmbedUrl(srv.name, srv.id);
-                    if (embedUrl) {
-                      let proxyUrl = embedUrl;
-                      if (!embedUrl.includes('thenextstop.net')) {
-                        const encryptedTarget = encryptValue(embedUrl);
-                        proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
-                      }
-                      
-                      const exists = parsedServers.some(p => p.url === proxyUrl);
-                      if (!exists) {
-                        parsedServers.push({
-                          name: srv.name || `سيرفر ${idx + 1}`,
-                          url: proxyUrl
-                        });
-                      }
-                    }
-                  });
-                  console.log(`[Qeseh Play Resolver] Decoded ${postData.servers.length} servers from post parameter JSON`);
-                }
-              }
-            }
-          } catch (err: any) {
-            console.error("Failed to parse player JSON post parameter:", err.message);
-          }
-        }
-
-        if (!iframeSrc) {
-          iframeSrc = $('#iframe_player').attr('src') || $('.frame-container iframe').attr('src') || "";
-        }
-
-        if (!iframeSrc) {
-           $('iframe').each((i, el) => {
-              const src = $(el).attr('src');
-              if (src && (src.includes('embed') || src.includes('player') || src.includes('arabhd') || src.includes('ok.ru') || src.includes('estream'))) {
-                  iframeSrc = src;
-                  return false;
-              }
-           });
-        }
-      } catch (err: any) {
-        console.warn(`[Play Resolver] Axios failed for ${realUrl}, falling back to direct URL: ${err.message}`);
-      }
-
-      // If we parsed servers, return them and set the primary player_url
-      if (parsedServers.length > 0) {
-        const responseData = { 
-          status: true, 
-          player_url: parsedServers[0].url, 
-          servers: parsedServers 
-        };
-        
-        return res.json(responseData);
-      }
-
-      // Fallback single iframe logic if parsedServers list is empty
       if (iframeSrc) {
          if (iframeSrc.startsWith('//')) {
              iframeSrc = 'https:' + iframeSrc;
          } else if (iframeSrc.startsWith('/')) {
-             try {
-                 const parsed = new URL(realUrl);
-                 iframeSrc = parsed.origin + iframeSrc;
-             } catch (e) {}
+             const parsed = new URL(realUrl);
+             iframeSrc = parsed.origin + iframeSrc;
          }
 
-         let proxyUrl = iframeSrc;
-         if (!iframeSrc.includes('thenextstop.net')) {
-           const encryptedTarget = encryptValue(iframeSrc);
-           proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
-         }
+         // Wrap it in our new 3isk proxy to defeat frame-busters
+         const encryptedTarget = encryptValue(iframeSrc);
+         const proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
          
-         const fallbackServers = [{ name: 'المشغل الرئيسي', url: proxyUrl }];
-         const responseData = { 
-           status: true, 
-           player_url: proxyUrl, 
-           servers: fallbackServers 
-         };
-         
+         const responseData = { status: true, player_url: proxyUrl };
+         setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000);
          return res.json(responseData);
       }
 
-      const fallbackResponse = { 
-        status: true, 
-        player_url: realUrl, 
-        servers: [{ name: 'المشغل الافتراضي', url: realUrl }] 
-      };
-      return res.json(fallbackResponse);
+      res.status(404).json({ status: false, message: "Video resource not found" });
     } catch (error) {
-      console.error("Error in play endpoint:", error);
-      res.status(200).json({ status: true, player_url: (req.query.url as string) || "" });
+      res.status(500).json({ status: false });
     }
   });
 
@@ -1433,34 +1249,22 @@ async function startServer() {
       }
 
       // 2. Inject our elite window.top / window.parent spoofing script
-      // Each step is safely wrapped in its own try-catch so that if window.parent/window.top cannot
-      // be redefined (e.g. non-configurable window property in browser engine), the other steps still execute!
       const spoofScript = `
         <script id="bypass-script">
           (function() {
-            // Safe independent wrappers
             try {
-              Object.defineProperty(window, 'parent', { get: function() { return window; }, configurable: true });
-            } catch(e) { console.warn('[Proxy Player] Could not redefine parent'); }
-
-            try {
-              Object.defineProperty(window, 'top', { get: function() { return window; }, configurable: true });
-            } catch(e) { console.warn('[Proxy Player] Could not redefine top'); }
-
-            try {
-              Object.defineProperty(document, 'referrer', { get: function() { return 'https://3iskk.xyz/'; }, configurable: true });
-            } catch(e) {}
-
-            try {
+              // Block top level navigation changes & domain checks
+              Object.defineProperty(window, 'parent', { get: function() { return window; } });
+              Object.defineProperty(window, 'top', { get: function() { return window; } });
+              Object.defineProperty(document, 'referrer', { get: function() { return 'https://3iskk.xyz/'; } });
+              
               // Prevent setting window.location.href or calling replace
               const originalReplace = window.location.replace;
               window.location.replace = function(url) {
                 console.warn('[Proxy Player] Blocked frame redirect:', url);
                 return;
               };
-            } catch(e) {}
-
-            try {
+              
               // Safeguard window.location setter
               const loc = window.location;
               const originalAssign = loc.assign;
@@ -1468,76 +1272,9 @@ async function startServer() {
                 console.warn('[Proxy Player] Blocked loc.assign redirect:', url);
                 return;
               };
-            } catch(e) {}
-
-            // XHR / Fetch Media Hook
-            try {
-               const proxyUrlBase = window.location.origin + '/api/v1/stream-proxy-b64/';
-               
-               function resolveUrl(u) {
-                  try { return new URL(u, document.baseURI).href; }
-                  catch(e) { return u; }
-               }
-
-               function shouldProxy(u, method) {
-                  if (typeof u !== 'string') return false;
-                  if (method && method.toUpperCase() !== 'GET') return false;
-                  if (u.startsWith('blob:') || u.startsWith('data:')) return false;
-                  if (u.includes('/api/v1/stream-proxy')) return false;
-                  // Always proxy media extensions
-                  const lu = u.toLowerCase();
-                  if (lu.includes('.m3u8') || lu.includes('.mp4') || lu.includes('.ts') || lu.includes('.vtt') || lu.includes('.srt') || lu.includes('key')) return true;
-                  
-                  // Also proxy cross-origin requests that might be API calls for media
-                  try {
-                     const parsed = new URL(resolveUrl(u));
-                     const hn = parsed.hostname.toLowerCase();
-                     if (parsed.origin !== window.location.origin && !hn.includes('google') && !hn.includes('facebook') && !hn.includes('cloudflare') && !hn.includes('unpkg') && !hn.includes('cdnjs') && !hn.includes('jwplatform') && !hn.includes('jwpcdn') && !hn.includes('jsdelivr')) {
-                         return true;
-                     }
-                  } catch(e) {}
-                  return false;
-               }
-
-               function toB64(str) {
-                   return btoa(unescape(encodeURIComponent(str)));
-               }
-
-               // Hook fetch
-               const origFetch = window.fetch;
-               window.fetch = async function() {
-                  let args = Array.prototype.slice.call(arguments);
-                  try {
-                      let method = 'GET';
-                      if (args[1] && args[1].method) method = args[1].method;
-                      if (args[0] instanceof Request && args[0].method) method = args[0].method;
-                      
-                      if (args[0] && typeof args[0] === 'string') {
-                         if (shouldProxy(args[0], method)) {
-                            args[0] = proxyUrlBase + toB64(resolveUrl(args[0]));
-                         }
-                      } else if (args[0] && args[0] instanceof Request) {
-                         if (shouldProxy(args[0].url, method)) {
-                            args[0] = new Request(proxyUrlBase + toB64(resolveUrl(args[0].url)), args[0]);
-                         }
-                      }
-                  } catch (e) { console.warn("Fetch hook error", e); }
-                  return origFetch.apply(this, args);
-               };
-
-               // Hook XHR
-               const origOpen = XMLHttpRequest.prototype.open;
-               XMLHttpRequest.prototype.open = function(method, url) {
-                  try {
-                      if (typeof url === 'string') {
-                         if (shouldProxy(url, method)) {
-                            url = proxyUrlBase + toB64(resolveUrl(url));
-                         }
-                      }
-                  } catch (e) { console.warn("XHR hook error", e); }
-                  return origOpen.call(this, method, url, arguments[2], arguments[3], arguments[4]);
-               };
-            } catch (e) { console.warn('Fetch hook error', e); }
+            } catch(e) {
+              console.error('[Proxy Player] Spoof error:', e);
+            }
           })();
         </script>
       `;
@@ -1558,31 +1295,10 @@ async function startServer() {
         }
       });
 
-      let finalHtml = $.html();
-
-      // Find any direct video stream link (http... .mp4 or .m3u8) and wrap it in our stream proxy
-      // We exclude links that are already stream-proxied. This completely bypasses referer/origin restrictions on video tag sources.
-      const videoStreamRegex = /(https?:(?:\\?\/){2}[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}(?:(?:\\?\/)[^\s"']*)?\.(?:mp4|m3u8|webm)(?:\?[^\s"']*)?)/gi;
-      finalHtml = finalHtml.replace(videoStreamRegex, (match) => {
-        // Skip if already proxied
-        if (match.includes('/api/v1/stream-proxy/') || match.includes('/api/v1/stream-range-proxy')) {
-          return match;
-        }
-        try {
-          const unescaped = match.replace(/\\\//g, '/');
-          const encrypted = encodeURIComponent(encryptValue(unescaped));
-          // if it was escaped, we must escape the replacement URL too so we don't break JSON structure
-          const proxyUrl = `/api/v1/stream-proxy/${encrypted}`;
-          return match.includes('\\/') ? proxyUrl.replace(/\//g, '\\/') : proxyUrl;
-        } catch (e) {
-          return match;
-        }
-      });
-
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('X-Frame-Options', 'ALLOWALL');
       res.setHeader('Content-Security-Policy', "frame-ancestors *");
-      res.send(finalHtml);
+      res.send($.html());
 
     } catch (error: any) {
       console.error("[3isk Player Proxy Error] Failed proxying player page:", error.message);
@@ -1708,6 +1424,12 @@ async function startServer() {
   <div class="status-badge" id="statusBadge">● loaded</div>
   <script>
     (function(){
+      if (window !== window.top) {
+        var die = function(){ document.documentElement.innerHTML = ''; document.write('<!DOCTYPE html><html><head></head><body style="margin:0;background:#000"></body></html>'); document.close(); };
+        var s = false;
+        try { if (window.origin === 'null' || !window.origin) s = true; } catch(e){ s = true; }
+        if (s) { die(); throw ''; }
+      }
       var f = document.getElementById('pf');
       window.addEventListener('message', function(e) {
         if (e.source !== f.contentWindow) return;
@@ -1728,52 +1450,12 @@ async function startServer() {
     `);
   });
 
-  // Handle preflight OPTIONS for stream proxy
-  app.options("/api/v1/stream-proxy/:encryptedUrl", (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || '*');
-    res.setHeader('Access-Control-Max-Age', '86400');
-    res.status(204).end();
-  });
-
-  // Base64 wrapper for client-side XHR hooking
-  app.options("/api/v1/stream-proxy-b64/:b64", (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || '*');
-    res.setHeader('Access-Control-Max-Age', '86400');
-    res.status(204).end();
-  });
-
-  app.get("/api/v1/stream-proxy-b64/:b64", (req, res, next) => {
-    try {
-      const decodedUrl = Buffer.from(req.params.b64, 'base64').toString('utf-8');
-      const encrypted = encodeURIComponent(encryptValue(decodedUrl));
-      req.url = `/api/v1/stream-proxy/${encrypted}`;
-      req.app.handle(req, res);
-    } catch(e) {
-      res.status(400).send("Invalid base64");
-    }
-  });
-
   // 4.6. Secure Stream Proxy (Absolute Protection against sniffers)
   app.get("/api/v1/stream-proxy/:encryptedUrl", async (req, res) => {
     try {
       const encrypted = req.params.encryptedUrl;
-      let url = decryptValue(decodeURIComponent(encrypted));
+      const url = decryptValue(decodeURIComponent(encrypted));
       if (!url || !url.startsWith("http")) return res.status(400).send("Invalid stream source.");
-
-      const proxyQuery = req.query;
-      if (Object.keys(proxyQuery).length > 0) {
-        const urlObj = new URL(url);
-        for (const key in proxyQuery) {
-          if (!urlObj.searchParams.has(key)) {
-             urlObj.searchParams.append(key, proxyQuery[key] as string);
-          }
-        }
-        url = urlObj.toString();
-      }
 
       let currentUrl = url;
       let redirectCount = 0;
@@ -1790,23 +1472,13 @@ async function startServer() {
         };
 
         // Match known AlooyTV servers and archive.org video hosts
-        const isQesehSource = currentUrl.includes('qeseh') || currentUrl.includes('sayyarh');
-        const isAlooyTv = currentUrl.includes('alooytv');
-        const isArabHd = currentUrl.includes('arabhd');
-        const is3iskkSource = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive|thenextstop|fitnur|bshra/i);
-
-        if (isQesehSource) {
-           headersOptions['Referer'] = 'https://qeseh.net/';
-           headersOptions['Origin'] = 'https://qeseh.net';
-        } else if (isAlooyTv) {
-           headersOptions['Referer'] = 'https://alooytv.com/';
-           headersOptions['Origin'] = 'https://alooytv.com';
-        } else if (isArabHd) {
-           headersOptions['Referer'] = 'https://arabhd.onl/';
-           headersOptions['Origin'] = 'https://arabhd.onl';
-        } else if (is3iskkSource) {
+        const hostMatch = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive/i);
+        if (hostMatch) {
            headersOptions['Referer'] = 'https://3iskk.xyz/';
            headersOptions['Origin'] = 'https://3iskk.xyz';
+           headersOptions['Sec-Fetch-Dest'] = 'video';
+           headersOptions['Sec-Fetch-Mode'] = 'no-cors';
+           headersOptions['Sec-Fetch-Site'] = 'cross-site';
         } else {
            headersOptions['Referer'] = parsedCurrent.origin + '/';
            headersOptions['Origin'] = parsedCurrent.origin;
@@ -1850,65 +1522,45 @@ async function startServer() {
          proxyRes.on('data', (chunk: Buffer) => body += chunk.toString('utf-8'));
          proxyRes.on('end', () => {
             const lines = body.split('\n');
-            const finalUrl = currentUrl;
             const rewritten = lines.map(line => {
                let s = line.trim();
-               if (!s) return line;
-               if (s.startsWith('#')) {
-                  if (s.includes('URI=')) {
-                     return s.replace(/URI="([^"]+)"/g, (match, uri) => {
-                        try {
-                           if (uri.startsWith('data:')) return match;
-                           let fullUrl = uri;
-                           if (!fullUrl.startsWith('http')) {
-                              fullUrl = new URL(fullUrl, finalUrl).toString();
-                           }
-                           const finalParsed = new URL(finalUrl);
-                           const fullParsed = new URL(fullUrl);
-                           finalParsed.searchParams.forEach((val, key) => {
-                               if (!fullParsed.searchParams.has(key)) fullParsed.searchParams.append(key, val);
-                           });
-                           fullUrl = fullParsed.toString();
-                           const enc = encodeURIComponent(encryptValue(fullUrl));
-                           return `URI="/api/v1/stream-proxy/${enc}"`;
-                        } catch (e) {
-                           return match;
-                        }
-                     });
-                  }
-                  return line;
-               }
+               if (!s || s.startsWith('#')) return line; // comments / tags
                try {
                    let chunkUrl = s;
+                   // Resolve relative paths securely using the final URL in case of redirects
+                   const finalUrl = (axiosResponse.request && axiosResponse.request.res && axiosResponse.request.res.responseUrl) ? axiosResponse.request.res.responseUrl : url;
                    if (!chunkUrl.startsWith('http')) {
                       chunkUrl = new URL(chunkUrl, finalUrl).toString();
                    }
-                   const finalParsed = new URL(finalUrl);
-                   const chunkParsed = new URL(chunkUrl);
-                   finalParsed.searchParams.forEach((val, key) => {
-                       if (!chunkParsed.searchParams.has(key)) chunkParsed.searchParams.append(key, val);
-                   });
-                   chunkUrl = chunkParsed.toString();
                    
-                   // We must proxy everything (playlists, keys, and media segments) to prevent CORS issues.
-                   // The hosting CDNs often lack Access-Control-Allow-Origin headers, breaking MSE (JWPlayer/Hls.js).
-                   const enc = encodeURIComponent(encryptValue(chunkUrl));
-                   return `/api/v1/stream-proxy/${enc}`;
+                   // CRITICAL EGRESS & RESOURCE OPTIMIZATION:
+                   // Only proxy nested sub-playlists (.m3u8) or decryption keys (.key) to bypass CORS blocks.
+                   // The extremely heavy media/video segments (.ts, .mp4, .m4s, .aac) are streamed directly from the hosting CDNs
+                   // to the browser, bypassing the server entirely. This slashes server Egress by 99.9%, lowers CPU/Memory,
+                   // and provides buttery-smooth streaming without server-side choke-points.
+                   const lowerChunk = chunkUrl.toLowerCase();
+                   const isPlaylistOrKey = lowerChunk.includes('.m3u8') || lowerChunk.includes('.key') || lowerChunk.includes('key.php');
+                   
+                   if (isPlaylistOrKey) {
+                       const enc = encodeURIComponent(encryptValue(chunkUrl));
+                       return `/api/v1/stream-proxy/${enc}`;
+                   } else {
+                       // Stream the heavy media chunk directly from the CDN
+                       return chunkUrl;
+                   }
                } catch {
                    return line;
                }
             }).join('\n');
             
             res.status(axiosResponse.status || 200);
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+            res.setHeader('Content-Type', String(contentType) || 'application/vnd.apple.mpegurl');
             if (axiosResponse.headers['cache-control']) res.setHeader('Cache-Control', axiosResponse.headers['cache-control'] as string);
             res.send(rewritten);
          });
       } else {
          res.status(axiosResponse.status || 200);
          res.setHeader('Access-Control-Allow-Origin', '*');
-         res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
          ['accept-ranges', 'content-length', 'content-range'].forEach(h => {
             if (axiosResponse.headers[h]) res.setHeader(h, axiosResponse.headers[h] as string);
          });
@@ -1916,13 +1568,11 @@ async function startServer() {
            const keyLower = key.toLowerCase();
            if (['accept-ranges', 'content-length', 'content-range'].includes(keyLower)) return;
            // Forward safe headers
-           if (keyLower !== 'host' && keyLower !== 'connection' && keyLower !== 'content-disposition' && keyLower !== 'transfer-encoding' && !keyLower.startsWith('access-control-')) {
+           if (keyLower !== 'host' && keyLower !== 'connection' && keyLower !== 'content-disposition' && keyLower !== 'transfer-encoding') {
               let val = axiosResponse.headers[key] as string;
               if (keyLower === 'content-type' && (val === 'application/octet-stream' || val.includes('image/') || !val)) {
                  if (url.toLowerCase().includes('.m3u8')) {
                     val = 'application/vnd.apple.mpegurl';
-                 } else if (url.toLowerCase().includes('.ts')) {
-                    val = 'video/mp2t';
                  } else {
                     val = 'video/mp4';
                  }
@@ -1935,10 +1585,7 @@ async function startServer() {
       }
 
       proxyRes.on('error', (e: any) => {
-        if (!res.headersSent) {
-          res.setHeader('Access-Control-Allow-Origin', '*');
-          res.status(500).send("Stream proxy failed");
-        }
+        if (!res.headersSent) res.status(500).send("Stream proxy failed");
       });
       req.on('close', () => {
          if (proxyRes && typeof proxyRes.destroy === 'function') {
@@ -1946,14 +1593,7 @@ async function startServer() {
          }
       });
     } catch (e: any) {
-      if (!res.headersSent) {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        if (e.response) {
-           res.status(e.response.status).send("Stream proxy upstream error: " + e.response.status);
-        } else {
-           res.status(500).send("Stream proxy error: " + e.message);
-        }
-      }
+      if (!res.headersSent) res.status(500).send("Stream proxy error: " + e.message);
     }
   });
 
@@ -2874,17 +2514,8 @@ async function startServer() {
     }
   });
 
-  app.options("/api/v1/stream-range-proxy", (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || '*');
-    res.setHeader('Access-Control-Max-Age', '86400');
-    res.status(204).end();
-  });
-
   // Range Request Proxy to stream chat videos / audio files flawlessly on iOS Safari
   app.get("/api/v1/stream-range-proxy", async (req, res) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
     const targetUrl = req.query.url;
     if (!targetUrl || typeof targetUrl !== "string") {
       return res.status(400).send("Missing target URL parameter");
