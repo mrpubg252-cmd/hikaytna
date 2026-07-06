@@ -1216,6 +1216,32 @@ export default function WatchScreen() {
                 >
                   {series.title}
                 </motion.h1>
+
+                {/* Servers Section - Centered cleanly */}
+                {servers && servers.length > 0 && (
+                  <div className="mt-4 bg-zinc-900/40 p-4 rounded-2xl border border-white/5 flex flex-col items-center justify-center gap-3">
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                      <span className="text-xs font-black text-zinc-400">سيرفرات المشاهدة المتوفرة:</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-center justify-center">
+                      {servers.map((srv, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleServerSelect(srv.url)}
+                          className={cn(
+                            "px-4 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm active:scale-95 cursor-pointer",
+                            srv.url === activeServerUrl
+                              ? "bg-primary border-primary text-white font-extrabold shadow-[0_0_15px_rgba(229,9,20,0.2)]"
+                              : "bg-zinc-800/30 border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                          )}
+                        >
+                          سيرفر {idx + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }}
@@ -1248,116 +1274,6 @@ export default function WatchScreen() {
                   <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                   {episodes[currentEpisode] ? formatEpisodeTitle(episodes[currentEpisode].title || "", currentEpisode, false) : `الحلقة ${currentEpisode + 1}`}
                 </p>
-
-                {/* Servers Section - Labeled cleanly as Server 1, Server 2... */}
-                {servers && servers.length > 0 && (
-                  <div className="mt-5 bg-zinc-900/40 p-4 rounded-2xl border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-right">
-                    <div className="flex items-center gap-2 shrink-0 justify-end sm:justify-start">
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                      <span className="text-xs font-black text-zinc-400">سيرفرات المشاهدة المتوفرة:</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2 justify-end">
-                      {servers.map((srv, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => handleServerSelect(srv.url)}
-                          className={cn(
-                            "px-4 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm active:scale-95 cursor-pointer",
-                            srv.url === activeServerUrl
-                              ? "bg-primary border-primary text-white font-extrabold shadow-[0_0_15px_rgba(229,9,20,0.2)]"
-                              : "bg-zinc-800/30 border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-800"
-                          )}
-                        >
-                          سيرفر {idx + 1}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Watch Progress Assistant Card */}
-                <div className="mt-5 bg-gradient-to-br from-[#0a0a0f] to-[#12121c] p-5 rounded-2xl border border-white/5 shadow-xl space-y-4 text-right">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-3">
-                    <div className="flex items-center gap-2 justify-end sm:justify-start">
-                      <History className="w-4 h-4 text-primary animate-pulse" />
-                      <h3 className="text-xs sm:text-sm font-black text-white">مساعد متابعة وحفظ موضع المشاهدة ⏱️</h3>
-                    </div>
-                    <span className="text-[10px] text-zinc-400 font-bold bg-zinc-900 border border-white/5 px-2.5 py-1 rounded-full self-start sm:self-auto">
-                      مزامنة تلقائية ويدوية بالكامل
-                    </span>
-                  </div>
-
-                  <p className="text-[11px] text-zinc-400 font-medium leading-relaxed">
-                    هذا السيرفر قد لا يدعم الحفظ التلقائي لموضعك بسبب قيود البث الخارجية. يمكنك تعديل وحفظ موضع مشاهدتك الحالي يدوياً لاستئناف المتابعة لاحقاً بسهولة تامة!
-                  </p>
-
-                  <div className="flex flex-col sm:flex-row items-center gap-4 bg-zinc-950/60 p-4 rounded-xl border border-white/5">
-                    {/* Time display */}
-                    <div className="flex flex-col items-center justify-center bg-zinc-900 border border-white/5 rounded-xl px-4 py-2.5 min-w-[100px] shrink-0">
-                      <span className="text-[9px] text-zinc-500 font-black uppercase">الموضع الحالي</span>
-                      <span className="text-sm font-mono font-black text-primary">
-                        {Math.floor(watchProgressSeconds / 60)}:{(watchProgressSeconds % 60).toString().padStart(2, '0')}
-                      </span>
-                    </div>
-
-                    {/* Progress slider and controls */}
-                    <div className="flex-1 w-full space-y-3">
-                      <div className="flex items-center justify-between text-[10px] text-zinc-500 font-bold">
-                        <span>البداية</span>
-                        <span className="text-zinc-400 font-black">تحريك لتعديل الدقيقة</span>
-                        <span>120 دقيقة</span>
-                      </div>
-                      
-                      <input 
-                        type="range"
-                        min="0"
-                        max="7200" // 120 minutes in seconds
-                        step="10"
-                        value={watchProgressSeconds}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value, 10);
-                          setWatchProgressSeconds(val);
-                        }}
-                        className="w-full accent-primary h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
-                      />
-
-                      {/* Quick adjust buttons */}
-                      <div className="flex flex-wrap gap-2 justify-end sm:justify-start">
-                        <button 
-                          onClick={() => adjustProgressSeconds(-600)} // -10 mins
-                          className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-white/5 hover:bg-zinc-800 text-[10px] font-black text-zinc-300 transition-colors"
-                        >
-                          -10 د
-                        </button>
-                        <button 
-                          onClick={() => adjustProgressSeconds(-300)} // -5 mins
-                          className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-white/5 hover:bg-zinc-800 text-[10px] font-black text-zinc-300 transition-colors"
-                        >
-                          -5 د
-                        </button>
-                        <button 
-                          onClick={() => adjustProgressSeconds(300)} // +5 mins
-                          className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-white/5 hover:bg-zinc-800 text-[10px] font-black text-zinc-300 transition-colors"
-                        >
-                          +5 د
-                        </button>
-                        <button 
-                          onClick={() => adjustProgressSeconds(600)} // +10 mins
-                          className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-white/5 hover:bg-zinc-800 text-[10px] font-black text-zinc-300 transition-colors"
-                        >
-                          +10 د
-                        </button>
-
-                        <button 
-                          onClick={saveWatchProgressManually}
-                          className="mr-auto px-4 py-1.5 rounded-lg bg-primary hover:bg-primary-hover text-white text-[10px] font-black transition-all flex items-center gap-1.5 shadow-md shadow-primary/10"
-                        >
-                          <span>حفظ الموضع الحالي 💾</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
 
                 {isAdmin && (
                   <motion.div 
