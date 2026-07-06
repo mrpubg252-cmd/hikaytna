@@ -269,6 +269,44 @@ export default function WatchScreen() {
   const [playerTime, setPlayerTime] = useState(0);
   const [viewportHeight, setViewportHeight] = useState('100dvh');
 
+  const [showPlayerNotice, setShowPlayerNotice] = useState(true);
+  const [watchProgressSeconds, setWatchProgressSeconds] = useState(0);
+
+  useEffect(() => {
+    setShowPlayerNotice(true);
+    const timer = setTimeout(() => {
+      setShowPlayerNotice(false);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [currentEpisode]);
+
+  useEffect(() => {
+    if (series?.id) {
+      const saved = progressService.getProgress(series.id, currentEpisode);
+      setWatchProgressSeconds(saved || 0);
+    }
+  }, [series?.id, currentEpisode]);
+
+  const adjustProgressSeconds = (amount: number) => {
+    setWatchProgressSeconds(prev => {
+      const next = Math.max(0, prev + amount);
+      if (series?.id) {
+        progressService.saveProgress(series.id, currentEpisode, next);
+      }
+      return next;
+    });
+  };
+
+  const saveWatchProgressManually = () => {
+    if (series?.id) {
+      progressService.saveProgress(series.id, currentEpisode, watchProgressSeconds);
+      showToast('تم حفظ موضع المشاهدة يدوياً بنجاح! ⏱️💾', 'success');
+      try {
+        playerControlRef.current?.seekTo(watchProgressSeconds);
+      } catch (e) {}
+    }
+  };
+
   const [selectedActor, setSelectedActor] = useState<any | null>(null);
   const [actorWorks, setActorWorks] = useState<Series[]>([]);
   const [loadingActorWorks, setLoadingActorWorks] = useState(false);
@@ -1093,6 +1131,32 @@ export default function WatchScreen() {
           </div>
         </div>
 
+        {/* Animated notice above player */}
+        <AnimatePresence>
+          {showPlayerNotice && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, y: -10 }}
+              animate={{ opacity: 1, height: 'auto', y: 0 }}
+              exit={{ opacity: 0, height: 0, y: -10 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              className="w-full px-4 sm:px-8 mb-4 overflow-hidden"
+            >
+              <div className="bg-primary/10 border border-primary/20 rounded-2xl p-3 flex items-center justify-between gap-3 text-primary text-xs sm:text-sm font-bold shadow-lg shadow-primary/5">
+                <div className="flex items-center gap-2.5 flex-1 justify-center">
+                  <Sparkles className="w-4 h-4 text-primary animate-pulse shrink-0" />
+                  <span>إذا لم تعمل الحلقة، يرجى تغيير السيرفر من قائمة السيرفرات الإضافية بالأسفل 🍿</span>
+                </div>
+                <button 
+                  onClick={() => setShowPlayerNotice(false)}
+                  className="p-1 hover:bg-primary/20 rounded-full transition-colors shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Professional Video Player Section */}
         {loading ? (
           <div className="w-full aspect-video flex items-center justify-center bg-black">
@@ -1121,7 +1185,10 @@ export default function WatchScreen() {
               onSelectServer={handleServerSelect}
               isMaximized={isMaximized}
               onToggleMaximize={() => setIsMaximized(!isMaximized)}
-              onTimeUpdate={(t) => setPlayerTime(t)}
+              onTimeUpdate={(t) => {
+                setPlayerTime(t);
+                setWatchProgressSeconds(Math.floor(t));
+              }}
               seriesCategory={series.category}
               seriesTitle={series.title}
             />
@@ -1181,6 +1248,116 @@ export default function WatchScreen() {
                   <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                   {episodes[currentEpisode] ? formatEpisodeTitle(episodes[currentEpisode].title || "", currentEpisode, false) : `الحلقة ${currentEpisode + 1}`}
                 </p>
+
+                {/* Servers Section - Labeled cleanly as Server 1, Server 2... */}
+                {servers && servers.length > 0 && (
+                  <div className="mt-5 bg-zinc-900/40 p-4 rounded-2xl border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-right">
+                    <div className="flex items-center gap-2 shrink-0 justify-end sm:justify-start">
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                      <span className="text-xs font-black text-zinc-400">سيرفرات المشاهدة المتوفرة:</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      {servers.map((srv, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleServerSelect(srv.url)}
+                          className={cn(
+                            "px-4 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm active:scale-95 cursor-pointer",
+                            srv.url === activeServerUrl
+                              ? "bg-primary border-primary text-white font-extrabold shadow-[0_0_15px_rgba(229,9,20,0.2)]"
+                              : "bg-zinc-800/30 border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-800"
+                          )}
+                        >
+                          سيرفر {idx + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Watch Progress Assistant Card */}
+                <div className="mt-5 bg-gradient-to-br from-[#0a0a0f] to-[#12121c] p-5 rounded-2xl border border-white/5 shadow-xl space-y-4 text-right">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-3">
+                    <div className="flex items-center gap-2 justify-end sm:justify-start">
+                      <History className="w-4 h-4 text-primary animate-pulse" />
+                      <h3 className="text-xs sm:text-sm font-black text-white">مساعد متابعة وحفظ موضع المشاهدة ⏱️</h3>
+                    </div>
+                    <span className="text-[10px] text-zinc-400 font-bold bg-zinc-900 border border-white/5 px-2.5 py-1 rounded-full self-start sm:self-auto">
+                      مزامنة تلقائية ويدوية بالكامل
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-zinc-400 font-medium leading-relaxed">
+                    هذا السيرفر قد لا يدعم الحفظ التلقائي لموضعك بسبب قيود البث الخارجية. يمكنك تعديل وحفظ موضع مشاهدتك الحالي يدوياً لاستئناف المتابعة لاحقاً بسهولة تامة!
+                  </p>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-4 bg-zinc-950/60 p-4 rounded-xl border border-white/5">
+                    {/* Time display */}
+                    <div className="flex flex-col items-center justify-center bg-zinc-900 border border-white/5 rounded-xl px-4 py-2.5 min-w-[100px] shrink-0">
+                      <span className="text-[9px] text-zinc-500 font-black uppercase">الموضع الحالي</span>
+                      <span className="text-sm font-mono font-black text-primary">
+                        {Math.floor(watchProgressSeconds / 60)}:{(watchProgressSeconds % 60).toString().padStart(2, '0')}
+                      </span>
+                    </div>
+
+                    {/* Progress slider and controls */}
+                    <div className="flex-1 w-full space-y-3">
+                      <div className="flex items-center justify-between text-[10px] text-zinc-500 font-bold">
+                        <span>البداية</span>
+                        <span className="text-zinc-400 font-black">تحريك لتعديل الدقيقة</span>
+                        <span>120 دقيقة</span>
+                      </div>
+                      
+                      <input 
+                        type="range"
+                        min="0"
+                        max="7200" // 120 minutes in seconds
+                        step="10"
+                        value={watchProgressSeconds}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          setWatchProgressSeconds(val);
+                        }}
+                        className="w-full accent-primary h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                      />
+
+                      {/* Quick adjust buttons */}
+                      <div className="flex flex-wrap gap-2 justify-end sm:justify-start">
+                        <button 
+                          onClick={() => adjustProgressSeconds(-600)} // -10 mins
+                          className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-white/5 hover:bg-zinc-800 text-[10px] font-black text-zinc-300 transition-colors"
+                        >
+                          -10 د
+                        </button>
+                        <button 
+                          onClick={() => adjustProgressSeconds(-300)} // -5 mins
+                          className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-white/5 hover:bg-zinc-800 text-[10px] font-black text-zinc-300 transition-colors"
+                        >
+                          -5 د
+                        </button>
+                        <button 
+                          onClick={() => adjustProgressSeconds(300)} // +5 mins
+                          className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-white/5 hover:bg-zinc-800 text-[10px] font-black text-zinc-300 transition-colors"
+                        >
+                          +5 د
+                        </button>
+                        <button 
+                          onClick={() => adjustProgressSeconds(600)} // +10 mins
+                          className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-white/5 hover:bg-zinc-800 text-[10px] font-black text-zinc-300 transition-colors"
+                        >
+                          +10 د
+                        </button>
+
+                        <button 
+                          onClick={saveWatchProgressManually}
+                          className="mr-auto px-4 py-1.5 rounded-lg bg-primary hover:bg-primary-hover text-white text-[10px] font-black transition-all flex items-center gap-1.5 shadow-md shadow-primary/10"
+                        >
+                          <span>حفظ الموضع الحالي 💾</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
                 {isAdmin && (
                   <motion.div 
@@ -1346,120 +1523,6 @@ export default function WatchScreen() {
                 </div>
               </div>
             </div>
-
-            {/* Servers Section */}
-            <section className="bg-zinc-900/30 px-5 py-4 rounded-2xl border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-2.5 shrink-0">
-                <div className="w-1 h-4 bg-primary rounded-full animate-pulse" />
-                <h2 className="text-xs sm:text-sm font-black text-zinc-400 font-sans">سيرفرات المشاهدة الإضافية:</h2>
-              </div>
-              
-              <div className="flex flex-wrap gap-2 justify-end">
-                {servers.map((srv, idx) => (
-                  <button 
-                    key={idx} 
-                    onClick={() => handleServerSelect(srv.url)} 
-                    className={cn(
-                      "px-3.5 py-1.5 rounded-full text-xs font-bold transition-all border shadow-sm active:scale-95 cursor-pointer",
-                      srv.url === activeServerUrl 
-                        ? "bg-primary border-primary text-white font-extrabold shadow-primary/20" 
-                        : "bg-zinc-800/40 border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-800 hover:border-white/20"
-                    )}
-                  >
-                    {srv.name}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            {/* المشاهدة والتحميل بدون إنترنت (سيرفر خارجي وداخلي) */}
-            <section className="bg-gradient-to-r from-[#0d0d12]/90 to-[#12121e]/90 p-5 sm:p-6 rounded-3xl border border-white/5 relative overflow-hidden group shadow-xl">
-              {/* Decorative premium ambient glow */}
-              <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-all duration-300" />
-              
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 relative z-10">
-                <div className="space-y-1.5 text-right flex-1">
-                  <div className="flex items-center gap-2 justify-end md:justify-start">
-                    <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded text-[8px] sm:text-[9px] font-black italic uppercase tracking-wider">OFFLINE MODE</span>
-                    <Sparkles className="w-4 h-4 text-primary animate-pulse" />
-                    <h2 className="text-sm sm:text-base font-black text-white">نظام المتابعة والتحميل بدون إنترنت 📥</h2>
-                  </div>
-                  <p className="text-[11px] sm:text-xs text-zinc-400 font-medium leading-relaxed">
-                    حمّل الحلقات مباشرة إلى جهازك وبسيرفر محلي فائق السرعة، لتستمتع بمتابعة مسلسلاتك المفضلة في أي مكان دون استهلاك باقة الإنترنت!
-                  </p>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 shrink-0 self-end md:self-auto w-full md:w-auto">
-                  {downloadProgress !== null ? (
-                    <div className="w-full sm:w-64 bg-zinc-950/95 border border-white/5 p-4 rounded-2xl flex flex-col items-center gap-2 relative">
-                      <div className="w-full flex items-center justify-between text-[10px] sm:text-[11px] font-bold text-zinc-400">
-                        <span>جاري حفظ الحلقة محلياً...</span>
-                        <span className="text-primary font-black">{downloadProgress}%</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-primary transition-all duration-200" 
-                          style={{ width: `${downloadProgress}%` }}
-                        />
-                      </div>
-                      <div className="flex items-center gap-1.5 text-[10px] text-zinc-500">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
-                        <span>يرجى عدم إغلاق الصفحة لحين الانتهاء</span>
-                      </div>
-                    </div>
-                  ) : isDownloaded ? (
-                    <div className="flex flex-wrap gap-2 w-full justify-end sm:justify-start">
-                      {isPlayingOffline ? (
-                        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-xs font-bold leading-none select-none">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                          <WifiOff className="w-3.5 h-3.5" />
-                          <span>وضع تشغيل الأوفلاين نشط الآن</span>
-                        </div>
-                      ) : (
-                        <button 
-                          onClick={playOfflineEpisode}
-                          className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black transition-all active:scale-95 shadow-lg shadow-emerald-500/10 cursor-pointer"
-                        >
-                          <Play className="w-3.5 h-3.5 fill-current" />
-                          <span>تشغيل أوفلاين (بدون نت)</span>
-                        </button>
-                      )}
-
-                      <button 
-                        onClick={saveToDeviceExternally}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-zinc-800/80 hover:bg-zinc-700 hover:text-white text-zinc-300 text-xs font-bold border border-white/5 transition-all active:scale-95 cursor-pointer"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        <span>حفظ في الهاتف (خارجي)</span>
-                      </button>
-
-                      <button 
-                        onClick={deleteOfflineEpisode}
-                        className="flex items-center justify-center p-2 rounded-full bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 transition-all active:scale-95 cursor-pointer"
-                        title="حذف من الذاكرة"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <button 
-                      onClick={() => startDownloadFlow(false)}
-                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-primary hover:bg-primary-hover text-white text-xs font-black transition-all active:scale-95 shadow-md shadow-primary/15 cursor-pointer"
-                    >
-                      <Download className="w-4 h-4 animate-bounce" />
-                      <span>بدء تحميل الحلقة الحالية ⚡</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-              
-              {downloadError && (
-                <div className="mt-3 flex items-center gap-1.5 text-xs text-red-400 bg-red-500/5 border border-red-500/10 p-2.5 rounded-xl">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span>{downloadError}</span>
-                </div>
-              )}
-            </section>
 
             {/* Episodes Grid Section */}
             <section className="bg-zinc-900/30 p-5 sm:p-8 rounded-3xl border border-white/5">

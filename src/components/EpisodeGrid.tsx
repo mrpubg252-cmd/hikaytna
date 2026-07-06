@@ -18,9 +18,14 @@ import { getApiUrl } from "../lib/apiConfig";
 
 export function getProxiedImageUrl(url?: string): string {
   if (!url) return "https://images.unsplash.com/photo-1542204172-3c1f81edf4a1?q=80&w=400&auto=format&fit=crop";
+  
+  // Directly load fast, CORS-compliant major CDNs without proxying to maximize speed
   if (
     url.startsWith("http") &&
     !url.includes("ibb.co") &&
+    !url.includes("tmdb.org") &&
+    !url.includes("image.tmdb.org") &&
+    !url.includes("cloudinary.com") &&
     !url.includes("/api/v1/image-proxy") &&
     !url.includes("unsplash.com")
   ) {
@@ -240,6 +245,35 @@ export default function EpisodeGrid({
                 onSelect={onSelect}
                 tmdbEpisodes={tmdbEpisodes}
               />
+            );
+          })}
+        </div>
+      )}
+
+      {/* 4. Range Selector Tabs (Repeated at bottom if many episodes) */}
+      {!isMovie && !searchQuery && episodes.length > RANGE_SIZE && (
+        <div className="flex items-center justify-center gap-2 overflow-x-auto pt-6 border-t border-white/5 no-scrollbar direction-rtl mt-6">
+          {Array.from({ length: totalRanges }).map((_, i) => {
+            const startNum = i * RANGE_SIZE + 1;
+            const endNum = Math.min((i + 1) * RANGE_SIZE, episodes.length);
+            const active = jumpToRange === i;
+            
+            return (
+              <button
+                key={i}
+                onClick={() => {
+                  setJumpToRange(i);
+                  window.scrollTo({ top: 400, behavior: 'smooth' });
+                }}
+                className={cn(
+                  "shrink-0 px-6 py-2.5 rounded-xl text-[10px] font-black transition-all border whitespace-nowrap",
+                  active
+                    ? "bg-white text-black border-white shadow-[0_0_20px_rgba(255,255,255,0.1)] scale-105"
+                    : "bg-zinc-900/50 text-zinc-500 border-white/5 hover:text-white hover:bg-zinc-900"
+                )}
+              >
+                الحلقات {startNum} - {endNum}
+              </button>
             );
           })}
         </div>
