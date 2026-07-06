@@ -1491,11 +1491,15 @@ async function startServer() {
                   // Also proxy cross-origin requests that might be API calls for media
                   try {
                      const parsed = new URL(resolveUrl(u));
-                     if (parsed.origin !== window.location.origin && !parsed.hostname.includes('google') && !parsed.hostname.includes('facebook') && !parsed.hostname.includes('cloudflare')) {
+                     if (parsed.origin !== window.location.origin && !parsed.hostname.includes('google') && !parsed.hostname.includes('facebook') && !parsed.hostname.includes('cloudflare') && !parsed.hostname.includes('unpkg.com') && !parsed.hostname.includes('cdnjs')) {
                          return true;
                      }
                   } catch(e) {}
                   return false;
+               }
+
+               function toB64(str) {
+                   return btoa(unescape(encodeURIComponent(str)));
                }
 
                // Hook fetch
@@ -1508,11 +1512,11 @@ async function startServer() {
 
                   if (args[0] && typeof args[0] === 'string') {
                      if (shouldProxy(args[0], method)) {
-                        args[0] = proxyUrlBase + btoa(resolveUrl(args[0]));
+                        args[0] = proxyUrlBase + toB64(resolveUrl(args[0]));
                      }
                   } else if (args[0] && args[0] instanceof Request) {
                      if (shouldProxy(args[0].url, method)) {
-                        args[0] = new Request(proxyUrlBase + btoa(resolveUrl(args[0].url)), args[0]);
+                        args[0] = new Request(proxyUrlBase + toB64(resolveUrl(args[0].url)), args[0]);
                      }
                   }
                   return origFetch.apply(this, args);
@@ -1523,7 +1527,7 @@ async function startServer() {
                XMLHttpRequest.prototype.open = function(method, url) {
                   if (typeof url === 'string') {
                      if (shouldProxy(url, method)) {
-                        url = proxyUrlBase + btoa(resolveUrl(url));
+                        url = proxyUrlBase + toB64(resolveUrl(url));
                      }
                   }
                   return origOpen.call(this, method, url, arguments[2], arguments[3], arguments[4]);
@@ -1758,8 +1762,19 @@ async function startServer() {
   app.get("/api/v1/stream-proxy/:encryptedUrl", async (req, res) => {
     try {
       const encrypted = req.params.encryptedUrl;
-      const url = decryptValue(decodeURIComponent(encrypted));
+      let url = decryptValue(decodeURIComponent(encrypted));
       if (!url || !url.startsWith("http")) return res.status(400).send("Invalid stream source.");
+
+      const proxyQuery = req.query;
+      if (Object.keys(proxyQuery).length > 0) {
+        const urlObj = new URL(url);
+        for (const key in proxyQuery) {
+          if (!urlObj.searchParams.has(key)) {
+             urlObj.searchParams.append(key, proxyQuery[key] as string);
+          }
+        }
+        url = urlObj.toString();
+      }
 
       let currentUrl = url;
       let redirectCount = 0;
@@ -1792,8 +1807,8 @@ async function startServer() {
            headersOptions['Sec-Fetch-Mode'] = 'no-cors';
            headersOptions['Sec-Fetch-Site'] = 'cross-site';
         } else {
-           headersOptions['Referer'] = parsedCurrent.origin + '/';
-           headersOptions['Origin'] = parsedCurrent.origin;
+           headersOptions['Referer'] = 'https://3iskk.xyz/';
+           headersOptions['Origin'] = 'https://3iskk.xyz';
         }
 
         if (req.headers.range) {
@@ -1834,21 +1849,36 @@ async function startServer() {
          proxyRes.on('data', (chunk: Buffer) => body += chunk.toString('utf-8'));
          proxyRes.on('end', () => {
             const lines = body.split('\n');
+            const finalUrl = currentUrl;
             const rewritten = lines.map(line => {
                let s = line.trim();
-               if (!s || s.startsWith('#')) return line; // comments / tags
+               if (!s) return line;
+               if (s.startsWith('#')) {
+                  if (s.includes('URI=')) {
+                     return s.replace(/URI="([^"]+)"/g, (match, uri) => {
+                        try {
+                           if (uri.startsWith('data:')) return match;
+                           let fullUrl = uri;
+                           if (!fullUrl.startsWith('http')) {
+                              fullUrl = new URL(fullUrl, finalUrl).toString();
+                           }
+                           const enc = encodeURIComponent(encryptValue(fullUrl));
+                           return `URI="/api/v1/stream-proxy/${enc}"`;
+                        } catch (e) {
+                           return match;
+                        }
+                     });
+                  }
+                  return line;
+               }
                try {
                    let chunkUrl = s;
-                   // Resolve relative paths securely using the final URL in case of redirects
-                   const finalUrl = (axiosResponse.request && axiosResponse.request.res && axiosResponse.request.res.responseUrl) ? axiosResponse.request.res.responseUrl : url;
                    if (!chunkUrl.startsWith('http')) {
                       chunkUrl = new URL(chunkUrl, finalUrl).toString();
                    }
                    
                    // We must proxy everything (playlists, keys, and media segments) to prevent CORS issues.
                    // The hosting CDNs often lack Access-Control-Allow-Origin headers, breaking MSE (JWPlayer/Hls.js).
-                   const lowerChunk = chunkUrl.toLowerCase();
-                   
                    const enc = encodeURIComponent(encryptValue(chunkUrl));
                    return `/api/v1/stream-proxy/${enc}`;
                } catch {
@@ -1865,6 +1895,7 @@ async function startServer() {
       } else {
          res.status(axiosResponse.status || 200);
          res.setHeader('Access-Control-Allow-Origin', '*');
+         res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
          ['accept-ranges', 'content-length', 'content-range'].forEach(h => {
             if (axiosResponse.headers[h]) res.setHeader(h, axiosResponse.headers[h] as string);
          });
@@ -2828,8 +2859,17 @@ async function startServer() {
     }
   });
 
+  app.options("/api/v1/stream-range-proxy", (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || '*');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    res.status(204).end();
+  });
+
   // Range Request Proxy to stream chat videos / audio files flawlessly on iOS Safari
   app.get("/api/v1/stream-range-proxy", async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     const targetUrl = req.query.url;
     if (!targetUrl || typeof targetUrl !== "string") {
       return res.status(400).send("Missing target URL parameter");
