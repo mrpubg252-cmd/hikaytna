@@ -1200,6 +1200,8 @@ async function startServer() {
       }
 
       let iframeSrc = "";
+      const parsedServers: { name: string; url: string }[] = [];
+
       try {
         const response = await axios.get(realUrl, {
           headers: { 
@@ -1210,7 +1212,40 @@ async function startServer() {
         });
         const $ = cheerio.load(response.data);
 
-        // Try Qeseh style embedded player with post parameter
+        // Parse list of servers if available on the watch page
+        $('.serversList li').each((i, el) => {
+          const rawName = $(el).find('span').text().trim() || $(el).attr('data-name') || `سيرفر ${i + 1}`;
+          const emText = $(el).find('em').text().trim();
+          const fullName = emText ? `${rawName} (${emText})` : rawName;
+          
+          const serverId = $(el).attr('data-server') || '';
+          let embedUrl = '';
+          
+          // Check if there is a code tag with a direct link inside
+          const embeddedA = $(el).find('code a').attr('href') || $(el).find('a').attr('href');
+          if (embeddedA) {
+            embedUrl = embeddedA;
+          } else if (serverId) {
+            embedUrl = getEmbedUrl($(el).attr('data-name') || rawName, serverId);
+          }
+          
+          if (embedUrl) {
+            if (embedUrl.startsWith('//')) {
+              embedUrl = 'https:' + embedUrl;
+            }
+            
+            // Wrap the server URL in our player proxy to defeat iframe security limitations
+            let proxyUrl = embedUrl;
+            if (!embedUrl.includes('thenextstop.net')) {
+              const encryptedTarget = encryptValue(embedUrl);
+              proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
+            }
+            
+            parsedServers.push({ name: fullName, url: proxyUrl });
+          }
+        });
+
+        // Try Qeseh style embedded player with post parameter for main fallback
         let playerLink = $('.modern-player-container a.fullscreen-clickable').attr('href') || $('a[href*="post="]').attr('href') || '';
         
         if (playerLink) {
@@ -1262,6 +1297,18 @@ async function startServer() {
         console.warn(`[Play Resolver] Axios failed for ${realUrl}, falling back to direct URL: ${err.message}`);
       }
 
+      // If we parsed servers, return them and set the primary player_url
+      if (parsedServers.length > 0) {
+        const responseData = { 
+          status: true, 
+          player_url: parsedServers[0].url, 
+          servers: parsedServers 
+        };
+        setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000);
+        return res.json(responseData);
+      }
+
+      // Fallback single iframe logic if parsedServers list is empty
       if (iframeSrc) {
          if (iframeSrc.startsWith('//')) {
              iframeSrc = 'https:' + iframeSrc;
@@ -1272,23 +1319,27 @@ async function startServer() {
              } catch (e) {}
          }
 
-         // If the resolved URL is thenextstop.net, serve it directly to prevent referrer blocks from breaking ArabHD
-         if (iframeSrc.includes('thenextstop.net')) {
-           const responseData = { status: true, player_url: iframeSrc };
-           setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000);
-           return res.json(responseData);
+         let proxyUrl = iframeSrc;
+         if (!iframeSrc.includes('thenextstop.net')) {
+           const encryptedTarget = encryptValue(iframeSrc);
+           proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
          }
-
-         // Wrap it in our player proxy to defeat frame-busters
-         const encryptedTarget = encryptValue(iframeSrc);
-         const proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
          
-         const responseData = { status: true, player_url: proxyUrl };
+         const fallbackServers = [{ name: 'المشغل الرئيسي', url: proxyUrl }];
+         const responseData = { 
+           status: true, 
+           player_url: proxyUrl, 
+           servers: fallbackServers 
+         };
          setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000);
          return res.json(responseData);
       }
 
-      const fallbackResponse = { status: true, player_url: realUrl };
+      const fallbackResponse = { 
+        status: true, 
+        player_url: realUrl, 
+        servers: [{ name: 'المشغل الافتراضي', url: realUrl }] 
+      };
       return res.json(fallbackResponse);
     } catch (error) {
       console.error("Error in play endpoint:", error);

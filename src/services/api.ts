@@ -218,6 +218,24 @@ export async function fetchPlayUrlFromAPI(episodeUrl: string, signal?: AbortSign
   return null;
 }
 
+export async function fetchPlayDetailsFromAPI(episodeUrl: string, signal?: AbortSignal) {
+  try {
+    const res = await resilientFetch(getApiUrl(API_BASE + "/play?url=" + encodeURIComponent(episodeUrl)), { signal });
+    const data = await res.json();
+    if (data.status) {
+      let resolvedUrl = data.player_url || "";
+      if (resolvedUrl && !resolvedUrl.startsWith('/api/v1/')) {
+        resolvedUrl = decryptValue(resolvedUrl);
+      }
+      return {
+        player_url: resolvedUrl,
+        servers: data.servers || []
+      };
+    }
+  } catch (error) { console.error("Play details error", error); }
+  return null;
+}
+
 export async function fetchAllFromAPI(isBackground = false) {
   const allCats = await fetchCategories();
   if (allCats.length === 0) return [];
