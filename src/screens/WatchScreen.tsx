@@ -270,7 +270,6 @@ export default function WatchScreen() {
   const [viewportHeight, setViewportHeight] = useState('100dvh');
 
   const [showPlayerNotice, setShowPlayerNotice] = useState(true);
-  const [watchProgressSeconds, setWatchProgressSeconds] = useState(0);
 
   useEffect(() => {
     setShowPlayerNotice(true);
@@ -279,33 +278,6 @@ export default function WatchScreen() {
     }, 6000);
     return () => clearTimeout(timer);
   }, [currentEpisode]);
-
-  useEffect(() => {
-    if (series?.id) {
-      const saved = progressService.getProgress(series.id, currentEpisode);
-      setWatchProgressSeconds(saved || 0);
-    }
-  }, [series?.id, currentEpisode]);
-
-  const adjustProgressSeconds = (amount: number) => {
-    setWatchProgressSeconds(prev => {
-      const next = Math.max(0, prev + amount);
-      if (series?.id) {
-        progressService.saveProgress(series.id, currentEpisode, next);
-      }
-      return next;
-    });
-  };
-
-  const saveWatchProgressManually = () => {
-    if (series?.id) {
-      progressService.saveProgress(series.id, currentEpisode, watchProgressSeconds);
-      showToast('تم حفظ موضع المشاهدة يدوياً بنجاح! ⏱️💾', 'success');
-      try {
-        playerControlRef.current?.seekTo(watchProgressSeconds);
-      } catch (e) {}
-    }
-  };
 
   const [selectedActor, setSelectedActor] = useState<any | null>(null);
   const [actorWorks, setActorWorks] = useState<Series[]>([]);
@@ -1187,7 +1159,6 @@ export default function WatchScreen() {
               onToggleMaximize={() => setIsMaximized(!isMaximized)}
               onTimeUpdate={(t) => {
                 setPlayerTime(t);
-                setWatchProgressSeconds(Math.floor(t));
               }}
               seriesCategory={series.category}
               seriesTitle={series.title}
@@ -1199,12 +1170,12 @@ export default function WatchScreen() {
           {/* Main Content (Player + Info) */}
           <div className="flex-1 space-y-8 sm:space-y-12">
             {/* Info Section */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6">
-              <div>
+            <div className="flex flex-col items-center justify-center text-center gap-4 sm:gap-6">
+              <div className="flex flex-col items-center justify-center">
                 <motion.div 
                    initial={{ x: 20, opacity: 0 }}
                    animate={{ x: 0, opacity: 1 }}
-                   className="flex items-center gap-2 mb-2"
+                   className="flex items-center justify-center gap-2 mb-2"
                 >
                   <span className="bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded text-[8px] sm:text-[10px] font-black italic uppercase">Now Playing</span>
                 </motion.div>
@@ -1212,7 +1183,7 @@ export default function WatchScreen() {
                   initial={{ x: 20, opacity: 0 }}
                   animate={{ x: 0, opacity: 1 }}
                   transition={{ delay: 0.1 }}
-                  className="text-3xl sm:text-5xl font-black-italic text-white"
+                  className="text-3xl sm:text-5xl font-black-italic text-white text-center"
                 >
                   {series.title}
                 </motion.h1>
@@ -1247,13 +1218,13 @@ export default function WatchScreen() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 }}
-                  className="mt-4 max-w-2xl"
+                  className="mt-4 max-w-2xl flex flex-col items-center justify-center text-center mx-auto"
                 >
                   <p className="text-zinc-400 text-xs sm:text-sm leading-relaxed font-medium line-clamp-3 hover:line-clamp-none transition-all duration-300 cursor-pointer">
                     {tmdbData?.description || series.description || "لا يوجد وصف متوفر لهذا العمل حالياً."}
                   </p>
                   {(tmdbData?.year || (tmdbData?.rating && tmdbData.rating > 0)) && (
-                    <div className="flex items-center gap-4 mt-3">
+                    <div className="flex items-center justify-center gap-4 mt-3">
                       {tmdbData.year && (
                         <span className="flex items-center gap-1.5 text-[10px] sm:text-xs font-black text-zinc-500 uppercase">
                           <History className="w-3.5 h-3.5" />
@@ -1270,7 +1241,7 @@ export default function WatchScreen() {
                   )}
                 </motion.div>
 
-                <p className="text-zinc-500 font-bold text-xs sm:text-sm mt-4 flex items-center gap-2">
+                <p className="text-zinc-500 font-bold text-xs sm:text-sm mt-4 flex items-center justify-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                   {episodes[currentEpisode] ? formatEpisodeTitle(episodes[currentEpisode].title || "", currentEpisode, false) : `الحلقة ${currentEpisode + 1}`}
                 </p>
