@@ -1149,7 +1149,7 @@ async function startServer() {
 
       const responseData = { status: true, data };
       if (data.length > 0) {
-        setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000);
+        
       }
       res.json(responseData);
     } catch (error: any) {
@@ -1345,7 +1345,7 @@ async function startServer() {
           player_url: parsedServers[0].url, 
           servers: parsedServers 
         };
-        setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000);
+        
         return res.json(responseData);
       }
 
@@ -1372,7 +1372,7 @@ async function startServer() {
            player_url: proxyUrl, 
            servers: fallbackServers 
          };
-         setCachedData(cacheKey, responseData, 2 * 60 * 60 * 1000);
+         
          return res.json(responseData);
       }
 
@@ -1491,7 +1491,8 @@ async function startServer() {
                   // Also proxy cross-origin requests that might be API calls for media
                   try {
                      const parsed = new URL(resolveUrl(u));
-                     if (parsed.origin !== window.location.origin && !parsed.hostname.includes('google') && !parsed.hostname.includes('facebook') && !parsed.hostname.includes('cloudflare') && !parsed.hostname.includes('unpkg.com') && !parsed.hostname.includes('cdnjs')) {
+                     const hn = parsed.hostname.toLowerCase();
+                     if (parsed.origin !== window.location.origin && !hn.includes('google') && !hn.includes('facebook') && !hn.includes('cloudflare') && !hn.includes('unpkg') && !hn.includes('cdnjs') && !hn.includes('jwplatform') && !hn.includes('jwpcdn') && !hn.includes('jsdelivr')) {
                          return true;
                      }
                   } catch(e) {}
@@ -1506,30 +1507,34 @@ async function startServer() {
                const origFetch = window.fetch;
                window.fetch = async function() {
                   let args = Array.prototype.slice.call(arguments);
-                  let method = 'GET';
-                  if (args[1] && args[1].method) method = args[1].method;
-                  if (args[0] instanceof Request && args[0].method) method = args[0].method;
-
-                  if (args[0] && typeof args[0] === 'string') {
-                     if (shouldProxy(args[0], method)) {
-                        args[0] = proxyUrlBase + toB64(resolveUrl(args[0]));
-                     }
-                  } else if (args[0] && args[0] instanceof Request) {
-                     if (shouldProxy(args[0].url, method)) {
-                        args[0] = new Request(proxyUrlBase + toB64(resolveUrl(args[0].url)), args[0]);
-                     }
-                  }
+                  try {
+                      let method = 'GET';
+                      if (args[1] && args[1].method) method = args[1].method;
+                      if (args[0] instanceof Request && args[0].method) method = args[0].method;
+                      
+                      if (args[0] && typeof args[0] === 'string') {
+                         if (shouldProxy(args[0], method)) {
+                            args[0] = proxyUrlBase + toB64(resolveUrl(args[0]));
+                         }
+                      } else if (args[0] && args[0] instanceof Request) {
+                         if (shouldProxy(args[0].url, method)) {
+                            args[0] = new Request(proxyUrlBase + toB64(resolveUrl(args[0].url)), args[0]);
+                         }
+                      }
+                  } catch (e) { console.warn("Fetch hook error", e); }
                   return origFetch.apply(this, args);
                };
 
                // Hook XHR
                const origOpen = XMLHttpRequest.prototype.open;
                XMLHttpRequest.prototype.open = function(method, url) {
-                  if (typeof url === 'string') {
-                     if (shouldProxy(url, method)) {
-                        url = proxyUrlBase + toB64(resolveUrl(url));
-                     }
-                  }
+                  try {
+                      if (typeof url === 'string') {
+                         if (shouldProxy(url, method)) {
+                            url = proxyUrlBase + toB64(resolveUrl(url));
+                         }
+                      }
+                  } catch (e) { console.warn("XHR hook error", e); }
                   return origOpen.call(this, method, url, arguments[2], arguments[3], arguments[4]);
                };
             } catch (e) { console.warn('Fetch hook error', e); }
@@ -1703,12 +1708,6 @@ async function startServer() {
   <div class="status-badge" id="statusBadge">● loaded</div>
   <script>
     (function(){
-      if (window !== window.top) {
-        var die = function(){ document.documentElement.innerHTML = ''; document.write('<!DOCTYPE html><html><head></head><body style="margin:0;background:#000"></body></html>'); document.close(); };
-        var s = false;
-        try { if (window.origin === 'null' || !window.origin) s = true; } catch(e){ s = true; }
-        if (s) { die(); throw ''; }
-      }
       var f = document.getElementById('pf');
       window.addEventListener('message', function(e) {
         if (e.source !== f.contentWindow) return;
@@ -1791,24 +1790,26 @@ async function startServer() {
         };
 
         // Match known AlooyTV servers and archive.org video hosts
-        const hostMatch = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive|arabhd|alooytv|thenextstop|qeseh|sayyarh|fitnur|bshra/i);
         const isQesehSource = currentUrl.includes('qeseh') || currentUrl.includes('sayyarh');
+        const isAlooyTv = currentUrl.includes('alooytv');
+        const isArabHd = currentUrl.includes('arabhd');
+        const is3iskkSource = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive|thenextstop|fitnur|bshra/i);
 
         if (isQesehSource) {
            headersOptions['Referer'] = 'https://qeseh.net/';
            headersOptions['Origin'] = 'https://qeseh.net';
-           headersOptions['Sec-Fetch-Dest'] = 'video';
-           headersOptions['Sec-Fetch-Mode'] = 'no-cors';
-           headersOptions['Sec-Fetch-Site'] = 'cross-site';
-        } else if (hostMatch) {
+        } else if (isAlooyTv) {
+           headersOptions['Referer'] = 'https://alooytv.com/';
+           headersOptions['Origin'] = 'https://alooytv.com';
+        } else if (isArabHd) {
+           headersOptions['Referer'] = 'https://arabhd.onl/';
+           headersOptions['Origin'] = 'https://arabhd.onl';
+        } else if (is3iskkSource) {
            headersOptions['Referer'] = 'https://3iskk.xyz/';
            headersOptions['Origin'] = 'https://3iskk.xyz';
-           headersOptions['Sec-Fetch-Dest'] = 'video';
-           headersOptions['Sec-Fetch-Mode'] = 'no-cors';
-           headersOptions['Sec-Fetch-Site'] = 'cross-site';
         } else {
-           headersOptions['Referer'] = 'https://3iskk.xyz/';
-           headersOptions['Origin'] = 'https://3iskk.xyz';
+           headersOptions['Referer'] = parsedCurrent.origin + '/';
+           headersOptions['Origin'] = parsedCurrent.origin;
         }
 
         if (req.headers.range) {
@@ -1862,6 +1863,12 @@ async function startServer() {
                            if (!fullUrl.startsWith('http')) {
                               fullUrl = new URL(fullUrl, finalUrl).toString();
                            }
+                           const finalParsed = new URL(finalUrl);
+                           const fullParsed = new URL(fullUrl);
+                           finalParsed.searchParams.forEach((val, key) => {
+                               if (!fullParsed.searchParams.has(key)) fullParsed.searchParams.append(key, val);
+                           });
+                           fullUrl = fullParsed.toString();
                            const enc = encodeURIComponent(encryptValue(fullUrl));
                            return `URI="/api/v1/stream-proxy/${enc}"`;
                         } catch (e) {
@@ -1876,6 +1883,12 @@ async function startServer() {
                    if (!chunkUrl.startsWith('http')) {
                       chunkUrl = new URL(chunkUrl, finalUrl).toString();
                    }
+                   const finalParsed = new URL(finalUrl);
+                   const chunkParsed = new URL(chunkUrl);
+                   finalParsed.searchParams.forEach((val, key) => {
+                       if (!chunkParsed.searchParams.has(key)) chunkParsed.searchParams.append(key, val);
+                   });
+                   chunkUrl = chunkParsed.toString();
                    
                    // We must proxy everything (playlists, keys, and media segments) to prevent CORS issues.
                    // The hosting CDNs often lack Access-Control-Allow-Origin headers, breaking MSE (JWPlayer/Hls.js).
@@ -1888,7 +1901,7 @@ async function startServer() {
             
             res.status(axiosResponse.status || 200);
             res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Content-Type', String(contentType) || 'application/vnd.apple.mpegurl');
+            res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
             if (axiosResponse.headers['cache-control']) res.setHeader('Cache-Control', axiosResponse.headers['cache-control'] as string);
             res.send(rewritten);
          });
@@ -1903,11 +1916,13 @@ async function startServer() {
            const keyLower = key.toLowerCase();
            if (['accept-ranges', 'content-length', 'content-range'].includes(keyLower)) return;
            // Forward safe headers
-           if (keyLower !== 'host' && keyLower !== 'connection' && keyLower !== 'content-disposition' && keyLower !== 'transfer-encoding') {
+           if (keyLower !== 'host' && keyLower !== 'connection' && keyLower !== 'content-disposition' && keyLower !== 'transfer-encoding' && !keyLower.startsWith('access-control-')) {
               let val = axiosResponse.headers[key] as string;
               if (keyLower === 'content-type' && (val === 'application/octet-stream' || val.includes('image/') || !val)) {
                  if (url.toLowerCase().includes('.m3u8')) {
                     val = 'application/vnd.apple.mpegurl';
+                 } else if (url.toLowerCase().includes('.ts')) {
+                    val = 'video/mp2t';
                  } else {
                     val = 'video/mp4';
                  }
