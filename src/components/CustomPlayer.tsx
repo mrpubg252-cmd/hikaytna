@@ -457,7 +457,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   }, [seriesTitle, episodeIndex, episodes, currentTime, duration, seriesImage]);
 
   const [isVolumeAdjustMode, setIsVolumeAdjustMode] = useState(false);
-  const [showRescuePanel, setShowRescuePanel] = useState(false);
   const [blockPopups, setBlockPopups] = useState(true);
   const [isReporting, setIsReporting] = useState(false);
   const [reportSuccess, setReportSuccess] = useState(false);
@@ -2530,16 +2529,6 @@ const SafariNotification = () => {
             {!isLocalOfflineVideo && (
               <>
                 <button
-                  onClick={(e) => { e.stopPropagation(); setShowRescuePanel(true); }}
-                  tabIndex={showControls ? 0 : -1}
-                  data-tv-focusable={showControls ? "true" : "false"}
-                  className="flex items-center gap-1 sm:gap-1.5 bg-amber-600/35 hover:bg-amber-600/50 px-2 py-1 sm:px-3 sm:py-2 rounded-xl border border-amber-500/40 text-amber-300 font-black text-[9px] sm:text-xs tracking-tight shadow-xl focus:ring-4 focus:ring-amber-500 focus:outline-none shrink-0"
-                  title="أداة الإنقاذ وتشخيص البث"
-                >
-                  <Shield className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400 animate-pulse" />
-                  <span>الإنقاذ ⚡</span>
-                </button>
-                <button
                   onClick={(e) => { e.stopPropagation(); setShowEpisodeMenu(!showEpisodeMenu); setShowSpeedMenu(false); setIsVolumeAdjustMode(false); }}
                   tabIndex={showControls ? 0 : -1}
                   data-tv-focusable={showControls ? "true" : "false"}
@@ -3031,13 +3020,6 @@ const SafariNotification = () => {
               {isIframeFallback && (
                 <div className="absolute top-4 right-4 z-[1000] flex items-center gap-2 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)]">
                   <button
-                    onClick={(e) => { e.stopPropagation(); setShowRescuePanel(true); }}
-                    className="flex items-center gap-1.5 bg-amber-600/95 hover:bg-amber-700 px-3 py-2 rounded-xl border border-amber-500/40 text-amber-100 text-[10px] font-black uppercase tracking-wider shadow-2xl pointer-events-auto transition-all hover:scale-105 active:scale-95"
-                  >
-                    <Shield className="w-4 h-4 text-amber-300 animate-pulse" />
-                    الإنقاذ ⚡
-                  </button>
-                  <button
                     onClick={(e) => { e.stopPropagation(); setShowEpisodeMenu(!showEpisodeMenu); }}
                     className="flex items-center gap-2 bg-black/85 px-3 py-2 rounded-xl border border-white/10 text-white text-[10px] font-black uppercase tracking-wider shadow-2xl pointer-events-auto"
                   >
@@ -3186,222 +3168,6 @@ const SafariNotification = () => {
                             resetControlsTimeout(true);
                           }}
                         />
-                      </div>
-                    </motion.div>
-                  </div>
-                )}
-              </AnimatePresence>
-
-              {/* GLOWING FALLBACK BANNER WHEN LOADING HANGS OR FAILS */}
-              <AnimatePresence>
-                {showTimeoutOptions && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 20 }}
-                    className="absolute bottom-16 inset-x-4 z-[4000] flex items-center justify-center animate-fade-in pointer-events-auto"
-                  >
-                    <button
-                      onClick={() => {
-                        setShowRescuePanel(true);
-                        setShowTimeoutOptions(false);
-                      }}
-                      className="bg-gradient-to-r from-amber-600 via-red-600 to-amber-600 text-white border border-amber-500/40 px-5 py-3 rounded-2xl shadow-[0_0_35px_rgba(239,68,68,0.4)] hover:scale-105 active:scale-95 transition-all flex items-center gap-2 text-xs font-black animate-pulse cursor-pointer"
-                    >
-                      <AlertTriangle className="w-4 h-4 text-white animate-bounce shrink-0" />
-                      <span>⚠️ واجهت مشكلة في تشغيل السيرفر؟ انقر فوراً لتفعيل نظام الإنقاذ وتخطي القيود!</span>
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* SMART RESCUE AND STEEL BYPASS PANEL */}
-              <AnimatePresence>
-                {showRescuePanel && (
-                  <div className="absolute inset-0 z-[6000] flex items-center justify-center p-4">
-                    {/* Backdrop */}
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      onClick={() => setShowRescuePanel(false)}
-                      className="absolute inset-0 bg-black/85 backdrop-blur-md cursor-pointer pointer-events-auto"
-                    />
-
-                    {/* Modal Panel */}
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.9, y: 30 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.9, y: 30 }}
-                      transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                      className="relative w-full max-w-lg bg-zinc-950/95 border border-amber-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_25px_60px_rgba(245,158,11,0.15)] overflow-hidden text-right flex flex-col gap-4 max-h-[90%] font-sans pointer-events-auto"
-                    >
-                      {/* Decorative Golden Ambient Back-Glow */}
-                      <div className="absolute -top-24 -left-24 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-                      <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-red-500/10 rounded-full blur-3xl pointer-events-none" />
-
-                      {/* Header */}
-                      <div className="flex items-center justify-between border-b border-white/5 pb-3 shrink-0 relative z-10">
-                        <button
-                          onClick={() => setShowRescuePanel(false)}
-                          className="p-1.5 hover:bg-white/5 border border-white/10 hover:border-white/20 rounded-full text-zinc-400 hover:text-white transition-all cursor-pointer"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                        <div className="flex items-center gap-2 text-right">
-                          <div className="flex flex-col">
-                            <h3 className="text-xs sm:text-sm font-black text-white flex items-center gap-1.5 justify-end">
-                              <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[8px] sm:text-[9px] font-black tracking-wider animate-pulse">BYPASS MODE</span>
-                              نظام الإنقاذ الذكي والتشغيل الفولاذي ⚡
-                            </h3>
-                            <p className="text-[10px] text-zinc-400 font-bold mt-0.5">لوحة التحكم السريعة لتجاوز حماية مشغلات البث وسيرفرات الفخاخ</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Diagnostic Summary Panel */}
-                      <div className="bg-zinc-900/40 border border-white/5 rounded-2xl p-3 flex flex-col gap-1.5 shrink-0 text-xs text-zinc-300">
-                        <div className="flex items-center justify-between">
-                          <span className={cn(
-                            "font-black",
-                            navigator.onLine ? "text-emerald-400" : "text-rose-400"
-                          )}>
-                            {navigator.onLine ? "متصل (Online) 🌐" : "غير متصل (Offline) ⚠️"}
-                          </span>
-                          <span className="text-zinc-500 font-bold">حالة الاتصال بالشبكة:</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-amber-400 font-black">
-                            {isIframeFallback ? "مشغل ويب مدمج (Iframe)" : "مشغل الفيديو المباشر (Direct Video)"}
-                          </span>
-                          <span className="text-zinc-500 font-bold">نوع خادم التشغيل الحالي:</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-zinc-400 font-mono text-[10px] truncate max-w-[200px]" dir="ltr">
-                            {resolvedVideoUrl || "غير متوفر"}
-                          </span>
-                          <span className="text-zinc-500 font-bold">خادم البث النشط:</span>
-                        </div>
-                      </div>
-
-                      {/* Scrollable Body */}
-                      <div className="flex-grow overflow-y-auto pr-1 flex flex-col gap-4 custom-scrollbar">
-                        
-                        {/* THE ULTIMATE BYPASS BUTTON - OPEN IN NEW TAB */}
-                        <div className="flex flex-col gap-1.5">
-                          <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider">الحل الفوري والنهائي 🚀</span>
-                          <button
-                            onClick={() => {
-                              if (resolvedVideoUrl) {
-                                window.open(resolvedVideoUrl, '_blank');
-                                showToast('تم فتح السيرفر الأصلي بنجاح في نافذة جديدة! 🍿🎉', 'success');
-                              } else {
-                                showToast('رابط السيرفر غير متوفر للفتح الخارجي!', 'error');
-                              }
-                            }}
-                            className="w-full bg-gradient-to-r from-amber-500 via-amber-600 to-red-600 hover:from-amber-600 hover:to-red-700 text-black hover:text-white font-black text-xs sm:text-sm py-3.5 px-4 rounded-2xl shadow-[0_12px_35px_rgba(245,158,11,0.25)] hover:shadow-[0_12px_45px_rgba(239,68,68,0.35)] transition-all flex items-center justify-center gap-2 border border-amber-400/30 group cursor-pointer"
-                          >
-                            <ExternalLink className="w-4 h-4 animate-bounce shrink-0 text-black group-hover:text-white" />
-                            <span>فتح السيرفر في نافذة مستقلة خارجية (بث مباشر 100%)</span>
-                          </button>
-                          <p className="text-[9px] sm:text-[10px] text-zinc-400 leading-relaxed font-bold mt-1">
-                            💡 **لماذا هذا الحل خارق؟** بعض خوادم البث تحظر تشغيل الفيديو داخل إطارات التطبيقات (Iframe Embed Protection) أو تقوم بحجب المشاهدة بسبب جدار الحماية. فتح السيرفر مباشرة في متصفحك يزيل 100% من هذه القيود والرموز (مثل رمز 232600) فوراً!
-                          </p>
-                        </div>
-
-                        {/* STRICT AD-POPUP BLOCKER */}
-                        {isIframeFallback && (
-                          <div className="bg-zinc-900/30 border border-white/5 rounded-2xl p-4 flex flex-col gap-3">
-                            <div className="flex items-center justify-between gap-4">
-                              <label className="relative inline-flex items-center cursor-pointer select-none">
-                                <input
-                                  type="checkbox"
-                                  checked={blockPopups}
-                                  onChange={(e) => {
-                                    setBlockPopups(e.target.checked);
-                                    showToast(e.target.checked ? 'تم تفعيل جدار الحماية ضد النوافذ المنبثقة! 🛡️' : 'تم السماح بالنوافذ المنبثقة للمشغل.', 'info');
-                                  }}
-                                  className="sr-only peer"
-                                />
-                                <div className="w-9 h-5 bg-zinc-850 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-zinc-400 after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500 peer-checked:after:bg-black peer-checked:after:border-black" />
-                              </label>
-                              <div className="flex flex-col text-right">
-                                <span className="text-xs font-black text-white flex items-center gap-1.5 justify-end">
-                                  تفعيل جدار الحماية الصارم من الإعلانات المنبثقة 🛡️
-                                </span>
-                                <span className="text-[9px] text-zinc-400 mt-0.5">تجميد النوافذ المفتوحة تلقائياً لمنع تحويل الصفحة للإعلانات</span>
-                              </div>
-                            </div>
-                            <p className="text-[9px] text-zinc-500 leading-relaxed font-bold">
-                              ⚠️ *ملاحظة:* يمنع هذا الخيار المشغل من فتح علامات تبويب جديدة مزعجة أثناء النقر لتشغيل الفيديو. إذا كان المشغل يحتاج لفتح نافذة للعمل، قم بتعطيل هذا الخيار مؤقتاً.
-                            </p>
-                          </div>
-                        )}
-
-                        {/* ALTERNATIVE SERVERS SELECTOR */}
-                        {servers && servers.length > 1 && (
-                          <div className="flex flex-col gap-2">
-                            <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider">تغيير سيرفر البث (السيرفرات البديلة) 🔄</span>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                              {servers.map((srv, idx) => (
-                                <button
-                                  key={idx}
-                                  onClick={() => {
-                                    onSelectServer(srv.url);
-                                    setShowRescuePanel(false);
-                                    showToast(`جاري التحويل إلى: ${srv.name} 🚀`, 'info');
-                                  }}
-                                  className={cn(
-                                    "px-3 py-2 rounded-xl text-[10px] sm:text-xs font-black transition-all border text-center cursor-pointer",
-                                    srv.url === activeServerUrl
-                                      ? "bg-amber-500 border-amber-500 text-black shadow-lg"
-                                      : "bg-zinc-900 border-white/5 text-zinc-300 hover:border-white/15 hover:bg-zinc-800"
-                                  )}
-                                >
-                                  {srv.name}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* REPORT BROKEN EPISODE */}
-                        <div className="bg-zinc-900/10 border border-white/5 rounded-2xl p-4 flex flex-col gap-3">
-                          <div className="flex items-center justify-between gap-4">
-                            {reportSuccess ? (
-                              <span className="text-[10px] font-black text-emerald-400 flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                تم الإرسال بنجاح!
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  setIsReporting(true);
-                                  setTimeout(() => {
-                                    setIsReporting(false);
-                                    setReportSuccess(true);
-                                    showToast('تم إرسال تقرير العطل للفريق التقني بنجاح! سيتم فحص السيرفر وتعديله فوراً 🛠️🍿', 'success');
-                                  }, 1500);
-                                }}
-                                disabled={isReporting}
-                                className="px-3 py-1.5 bg-red-950 hover:bg-red-900 border border-red-500/20 text-red-400 hover:text-red-200 rounded-xl text-[10px] font-black transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1 cursor-pointer"
-                              >
-                                {isReporting ? 'جاري الإرسال...' : '⚠️ إبلاغ عن عطل السيرفر'}
-                              </button>
-                            )}
-                            <div className="flex flex-col text-right">
-                              <span className="text-xs font-black text-white">هل السيرفر معطل بالكامل؟</span>
-                              <span className="text-[9px] text-zinc-400 mt-0.5">أرسل بلاغاً فورياً للقسم التقني لاستبدال خادم البث بالحلقة البديلة</span>
-                            </div>
-                          </div>
-                        </div>
-
-                      </div>
-
-                      {/* Footer Info */}
-                      <div className="border-t border-white/5 pt-3 flex items-center justify-between text-[9px] font-bold text-zinc-500 relative z-10 shrink-0">
-                        <span>نظام حماية وسيرفرات حكايتنا 🍿</span>
-                        <span>v4.2.0 (بث فائق الأمان)</span>
                       </div>
                     </motion.div>
                   </div>

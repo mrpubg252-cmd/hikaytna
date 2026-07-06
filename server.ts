@@ -1401,6 +1401,28 @@ async function startServer() {
         return res.status(400).send("Invalid player URL");
       }
 
+      // If the target URL is a known protected embed provider (like ArabHD, EStream, Ok.ru, etc.),
+      // we immediately redirect the user's browser iframe to load it natively instead of server proxying.
+      // This completely bypasses Cloudflare Turnstile / anti-bot challenge issues (e.g. error code 232403) and CORS blocks!
+      const lowerDecrypted = decryptedUrl.toLowerCase();
+      const shouldDirectRedirect = 
+        lowerDecrypted.includes('arabhd') ||
+        lowerDecrypted.includes('estream') ||
+        lowerDecrypted.includes('ok.ru') ||
+        lowerDecrypted.includes('redplay') ||
+        lowerDecrypted.includes('redhd') ||
+        lowerDecrypted.includes('dailymotion') ||
+        lowerDecrypted.includes('youtube.com') ||
+        lowerDecrypted.includes('google.com') ||
+        lowerDecrypted.includes('vk.com') ||
+        lowerDecrypted.includes('mail.ru') ||
+        lowerDecrypted.includes('sibnet.ru');
+
+      if (shouldDirectRedirect) {
+        console.log(`[3isk Player Proxy] Direct redirecting (bypass proxy) to: ${decryptedUrl}`);
+        return res.redirect(decryptedUrl);
+      }
+
       console.log(`[3isk Player Proxy] Fetching original player page: ${decryptedUrl}`);
       
       const response = await axios.get(decryptedUrl, {
@@ -1585,7 +1607,18 @@ async function startServer() {
       res.send(finalHtml);
 
     } catch (error: any) {
-      console.error("[3isk Player Proxy Error] Failed proxying player page:", error.message);
+      console.warn("[3isk Player Proxy Warning] Failed proxying player page, redirecting directly as a robust fallback:", error.message);
+      try {
+        const { url } = req.query;
+        if (url) {
+          const decryptedUrl = decryptValue(url as string) || (url as string);
+          if (decryptedUrl && decryptedUrl.startsWith("http")) {
+            return res.redirect(decryptedUrl);
+          }
+        }
+      } catch (e) {
+        console.error("[3isk Player Proxy Fallback Error] Redirect fallback failed:", e);
+      }
       res.status(500).send(`Error loading secure player wrapper: ${error.message}`);
     }
   });
