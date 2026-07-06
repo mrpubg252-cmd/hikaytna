@@ -1469,6 +1469,46 @@ async function startServer() {
                 return;
               };
             } catch(e) {}
+
+            // XHR / Fetch Media Hook
+            try {
+               const proxyUrlBase = window.location.origin + '/api/v1/stream-proxy-b64/';
+               
+               // Hook fetch
+               const origFetch = window.fetch;
+               window.fetch = async function() {
+                  let args = arguments;
+                  if (args[0] && typeof args[0] === 'string') {
+                     let url = args[0];
+                     if ((url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts') || url.includes('.vtt') || url.includes('.srt')) && !url.includes('/api/v1/stream-proxy')) {
+                        if (url.startsWith('//')) url = 'https:' + url;
+                        if (url.startsWith('/')) url = window.location.origin + url;
+                        args[0] = proxyUrlBase + btoa(url);
+                     }
+                  } else if (args[0] && args[0] instanceof Request) {
+                     let url = args[0].url;
+                     if ((url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts') || url.includes('.vtt') || url.includes('.srt')) && !url.includes('/api/v1/stream-proxy')) {
+                        if (url.startsWith('//')) url = 'https:' + url;
+                        if (url.startsWith('/')) url = window.location.origin + url;
+                        args[0] = new Request(proxyUrlBase + btoa(url), args[0]);
+                     }
+                  }
+                  return origFetch.apply(this, args);
+               };
+
+               // Hook XHR
+               const origOpen = XMLHttpRequest.prototype.open;
+               XMLHttpRequest.prototype.open = function(method, url) {
+                  if (typeof url === 'string') {
+                     if ((url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts') || url.includes('.vtt') || url.includes('.srt')) && !url.includes('/api/v1/stream-proxy')) {
+                        if (url.startsWith('//')) url = 'https:' + url;
+                        if (url.startsWith('/')) url = window.location.origin + url;
+                        url = proxyUrlBase + btoa(url);
+                     }
+                  }
+                  return origOpen.call(this, method, url, arguments[2], arguments[3], arguments[4]);
+               };
+            } catch (e) { console.warn('Fetch hook error', e); }
           })();
         </script>
       `;
@@ -1662,6 +1702,34 @@ async function startServer() {
     `);
   });
 
+  // Handle preflight OPTIONS for stream proxy
+  app.options("/api/v1/stream-proxy/:encryptedUrl", (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range, Accept, Origin, User-Agent, Cache-Control, Pragma');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    res.status(204).end();
+  });
+
+  // Base64 wrapper for client-side XHR hooking
+  app.options("/api/v1/stream-proxy-b64/:b64", (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range, Accept, Origin, User-Agent, Cache-Control, Pragma');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    res.status(204).end();
+  });
+
+  app.get("/api/v1/stream-proxy-b64/:b64", (req, res) => {
+    try {
+      const decodedUrl = Buffer.from(req.params.b64, 'base64').toString('utf-8');
+      const encrypted = encodeURIComponent(encryptValue(decodedUrl));
+      res.redirect(`/api/v1/stream-proxy/${encrypted}`);
+    } catch(e) {
+      res.status(400).send("Invalid base64");
+    }
+  });
+
   // 4.6. Secure Stream Proxy (Absolute Protection against sniffers)
   app.get("/api/v1/stream-proxy/:encryptedUrl", async (req, res) => {
     try {
@@ -1753,27 +1821,19 @@ async function startServer() {
                       chunkUrl = new URL(chunkUrl, finalUrl).toString();
                    }
                    
-                   // CRITICAL EGRESS & RESOURCE OPTIMIZATION:
-                   // Only proxy nested sub-playlists (.m3u8) or decryption keys (.key) to bypass CORS blocks.
-                   // The extremely heavy media/video segments (.ts, .mp4, .m4s, .aac) are streamed directly from the hosting CDNs
-                   // to the browser, bypassing the server entirely. This slashes server Egress by 99.9%, lowers CPU/Memory,
-                   // and provides buttery-smooth streaming without server-side choke-points.
+                   // We must proxy everything (playlists, keys, and media segments) to prevent CORS issues.
+                   // The hosting CDNs often lack Access-Control-Allow-Origin headers, breaking MSE (JWPlayer/Hls.js).
                    const lowerChunk = chunkUrl.toLowerCase();
-                   const isPlaylistOrKey = lowerChunk.includes('.m3u8') || lowerChunk.includes('.key') || lowerChunk.includes('key.php');
                    
-                   if (isPlaylistOrKey) {
-                       const enc = encodeURIComponent(encryptValue(chunkUrl));
-                       return `/api/v1/stream-proxy/${enc}`;
-                   } else {
-                       // Stream the heavy media chunk directly from the CDN
-                       return chunkUrl;
-                   }
+                   const enc = encodeURIComponent(encryptValue(chunkUrl));
+                   return `/api/v1/stream-proxy/${enc}`;
                } catch {
                    return line;
                }
             }).join('\n');
             
             res.status(axiosResponse.status || 200);
+            res.setHeader('Access-Control-Allow-Origin', '*');
             res.setHeader('Content-Type', String(contentType) || 'application/vnd.apple.mpegurl');
             if (axiosResponse.headers['cache-control']) res.setHeader('Cache-Control', axiosResponse.headers['cache-control'] as string);
             res.send(rewritten);
