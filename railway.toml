@@ -2,9 +2,7 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "node dist/server.cjs"
-healthcheckPath = "/"
+startCommand = "npm run start"
 
 [env]
-PORT = "3000"
 NODE_ENV = "production"
