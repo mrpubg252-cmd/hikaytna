@@ -1474,23 +1474,45 @@ async function startServer() {
             try {
                const proxyUrlBase = window.location.origin + '/api/v1/stream-proxy-b64/';
                
+               function resolveUrl(u) {
+                  try { return new URL(u, document.baseURI).href; }
+                  catch(e) { return u; }
+               }
+
+               function shouldProxy(u, method) {
+                  if (typeof u !== 'string') return false;
+                  if (method && method.toUpperCase() !== 'GET') return false;
+                  if (u.startsWith('blob:') || u.startsWith('data:')) return false;
+                  if (u.includes('/api/v1/stream-proxy')) return false;
+                  // Always proxy media extensions
+                  const lu = u.toLowerCase();
+                  if (lu.includes('.m3u8') || lu.includes('.mp4') || lu.includes('.ts') || lu.includes('.vtt') || lu.includes('.srt') || lu.includes('key')) return true;
+                  
+                  // Also proxy cross-origin requests that might be API calls for media
+                  try {
+                     const parsed = new URL(resolveUrl(u));
+                     if (parsed.origin !== window.location.origin && !parsed.hostname.includes('google') && !parsed.hostname.includes('facebook') && !parsed.hostname.includes('cloudflare')) {
+                         return true;
+                     }
+                  } catch(e) {}
+                  return false;
+               }
+
                // Hook fetch
                const origFetch = window.fetch;
                window.fetch = async function() {
-                  let args = arguments;
+                  let args = Array.prototype.slice.call(arguments);
+                  let method = 'GET';
+                  if (args[1] && args[1].method) method = args[1].method;
+                  if (args[0] instanceof Request && args[0].method) method = args[0].method;
+
                   if (args[0] && typeof args[0] === 'string') {
-                     let url = args[0];
-                     if ((url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts') || url.includes('.vtt') || url.includes('.srt')) && !url.includes('/api/v1/stream-proxy')) {
-                        if (url.startsWith('//')) url = 'https:' + url;
-                        if (url.startsWith('/')) url = window.location.origin + url;
-                        args[0] = proxyUrlBase + btoa(url);
+                     if (shouldProxy(args[0], method)) {
+                        args[0] = proxyUrlBase + btoa(resolveUrl(args[0]));
                      }
                   } else if (args[0] && args[0] instanceof Request) {
-                     let url = args[0].url;
-                     if ((url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts') || url.includes('.vtt') || url.includes('.srt')) && !url.includes('/api/v1/stream-proxy')) {
-                        if (url.startsWith('//')) url = 'https:' + url;
-                        if (url.startsWith('/')) url = window.location.origin + url;
-                        args[0] = new Request(proxyUrlBase + btoa(url), args[0]);
+                     if (shouldProxy(args[0].url, method)) {
+                        args[0] = new Request(proxyUrlBase + btoa(resolveUrl(args[0].url)), args[0]);
                      }
                   }
                   return origFetch.apply(this, args);
@@ -1500,10 +1522,8 @@ async function startServer() {
                const origOpen = XMLHttpRequest.prototype.open;
                XMLHttpRequest.prototype.open = function(method, url) {
                   if (typeof url === 'string') {
-                     if ((url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts') || url.includes('.vtt') || url.includes('.srt')) && !url.includes('/api/v1/stream-proxy')) {
-                        if (url.startsWith('//')) url = 'https:' + url;
-                        if (url.startsWith('/')) url = window.location.origin + url;
-                        url = proxyUrlBase + btoa(url);
+                     if (shouldProxy(url, method)) {
+                        url = proxyUrlBase + btoa(resolveUrl(url));
                      }
                   }
                   return origOpen.call(this, method, url, arguments[2], arguments[3], arguments[4]);
@@ -1533,15 +1553,18 @@ async function startServer() {
 
       // Find any direct video stream link (http... .mp4 or .m3u8) and wrap it in our stream proxy
       // We exclude links that are already stream-proxied. This completely bypasses referer/origin restrictions on video tag sources.
-      const videoStreamRegex = /(https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}(?:\/[^\s"']*)?\.(?:mp4|m3u8|webm)(?:\?[^\s"']*)?)/gi;
+      const videoStreamRegex = /(https?:(?:\\?\/){2}[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}(?:(?:\\?\/)[^\s"']*)?\.(?:mp4|m3u8|webm)(?:\?[^\s"']*)?)/gi;
       finalHtml = finalHtml.replace(videoStreamRegex, (match) => {
         // Skip if already proxied
         if (match.includes('/api/v1/stream-proxy/') || match.includes('/api/v1/stream-range-proxy')) {
           return match;
         }
         try {
-          const encrypted = encodeURIComponent(encryptValue(match));
-          return `/api/v1/stream-proxy/${encrypted}`;
+          const unescaped = match.replace(/\\\//g, '/');
+          const encrypted = encodeURIComponent(encryptValue(unescaped));
+          // if it was escaped, we must escape the replacement URL too so we don't break JSON structure
+          const proxyUrl = `/api/v1/stream-proxy/${encrypted}`;
+          return match.includes('\\/') ? proxyUrl.replace(/\//g, '\\/') : proxyUrl;
         } catch (e) {
           return match;
         }
@@ -1705,8 +1728,8 @@ async function startServer() {
   // Handle preflight OPTIONS for stream proxy
   app.options("/api/v1/stream-proxy/:encryptedUrl", (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range, Accept, Origin, User-Agent, Cache-Control, Pragma');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || '*');
     res.setHeader('Access-Control-Max-Age', '86400');
     res.status(204).end();
   });
@@ -1714,17 +1737,18 @@ async function startServer() {
   // Base64 wrapper for client-side XHR hooking
   app.options("/api/v1/stream-proxy-b64/:b64", (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range, Accept, Origin, User-Agent, Cache-Control, Pragma');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || '*');
     res.setHeader('Access-Control-Max-Age', '86400');
     res.status(204).end();
   });
 
-  app.get("/api/v1/stream-proxy-b64/:b64", (req, res) => {
+  app.get("/api/v1/stream-proxy-b64/:b64", (req, res, next) => {
     try {
       const decodedUrl = Buffer.from(req.params.b64, 'base64').toString('utf-8');
       const encrypted = encodeURIComponent(encryptValue(decodedUrl));
-      res.redirect(`/api/v1/stream-proxy/${encrypted}`);
+      req.url = `/api/v1/stream-proxy/${encrypted}`;
+      req.app.handle(req, res);
     } catch(e) {
       res.status(400).send("Invalid base64");
     }
@@ -1865,7 +1889,10 @@ async function startServer() {
       }
 
       proxyRes.on('error', (e: any) => {
-        if (!res.headersSent) res.status(500).send("Stream proxy failed");
+        if (!res.headersSent) {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.status(500).send("Stream proxy failed");
+        }
       });
       req.on('close', () => {
          if (proxyRes && typeof proxyRes.destroy === 'function') {
@@ -1873,7 +1900,14 @@ async function startServer() {
          }
       });
     } catch (e: any) {
-      if (!res.headersSent) res.status(500).send("Stream proxy error: " + e.message);
+      if (!res.headersSent) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        if (e.response) {
+           res.status(e.response.status).send("Stream proxy upstream error: " + e.response.status);
+        } else {
+           res.status(500).send("Stream proxy error: " + e.message);
+        }
+      }
     }
   });
 
