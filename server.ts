@@ -1602,16 +1602,12 @@ async function startServer() {
         return res.status(400).send("Invalid player URL");
       }
 
-      // If the target URL is a known protected embed provider (like ArabHD, EStream, Ok.ru, etc.),
+      // If the target URL is a known protected embed provider (like Ok.ru, dailymotion, etc.),
       // we immediately redirect the user's browser iframe to load it natively instead of server proxying.
       // This completely bypasses Cloudflare Turnstile / anti-bot challenge issues (e.g. error code 232403) and CORS blocks!
       const lowerDecrypted = decryptedUrl.toLowerCase();
       const shouldDirectRedirect = 
-        lowerDecrypted.includes('arabhd') ||
-        lowerDecrypted.includes('estream') ||
         lowerDecrypted.includes('ok.ru') ||
-        lowerDecrypted.includes('redplay') ||
-        lowerDecrypted.includes('redhd') ||
         lowerDecrypted.includes('dailymotion') ||
         lowerDecrypted.includes('youtube.com') ||
         lowerDecrypted.includes('google.com') ||
@@ -1661,6 +1657,15 @@ async function startServer() {
       const spoofScript = `
         <script id="bypass-script">
           (function() {
+            // Spoof mobile iOS Safari user agent to force mobile player behavior and bypass desktop CORS/232011 blocks
+            try {
+              const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
+              Object.defineProperty(navigator, 'userAgent', { get: function() { return mobileUA; }, configurable: true });
+              Object.defineProperty(navigator, 'platform', { get: function() { return 'iPhone'; }, configurable: true });
+              Object.defineProperty(navigator, 'vendor', { get: function() { return 'Apple Computer, Inc.'; }, configurable: true });
+              Object.defineProperty(navigator, 'maxTouchPoints', { get: function() { return 5; }, configurable: true });
+            } catch (e) { console.warn('[Proxy Player] UserAgent spoofing failed:', e); }
+
             // Safe independent wrappers
             try {
               Object.defineProperty(window, 'parent', { get: function() { return window; }, configurable: true });
@@ -2027,6 +2032,8 @@ async function startServer() {
         const isQesehSource = currentUrl.includes('qeseh') || currentUrl.includes('sayyarh');
         const isAlooyTv = currentUrl.includes('alooytv');
         const isArabHd = currentUrl.includes('arabhd');
+        const isEStream = currentUrl.includes('estream');
+        const isRedPlay = currentUrl.includes('redplay') || currentUrl.includes('redhd');
         const is3iskkSource = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive|thenextstop|fitnur|bshra/i);
 
         if (isQesehSource) {
@@ -2038,6 +2045,12 @@ async function startServer() {
         } else if (isArabHd) {
            headersOptions['Referer'] = 'https://arabhd.onl/';
            headersOptions['Origin'] = 'https://arabhd.onl';
+        } else if (isEStream) {
+           headersOptions['Referer'] = 'https://estream.to/';
+           headersOptions['Origin'] = 'https://estream.to';
+        } else if (isRedPlay) {
+           headersOptions['Referer'] = 'https://redplay.to/';
+           headersOptions['Origin'] = 'https://redplay.to';
         } else if (is3iskkSource) {
            headersOptions['Referer'] = 'https://3iskk.xyz/';
            headersOptions['Origin'] = 'https://3iskk.xyz';
