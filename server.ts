@@ -3811,7 +3811,7 @@ document.head.appendChild(s);
     console.warn("Async non-blocking logo puller failed:", e);
   }
 
-    app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`Environment PORT is: ${process.env.PORT}`);
     console.log(`Server running on port: ${PORT}`);
   });

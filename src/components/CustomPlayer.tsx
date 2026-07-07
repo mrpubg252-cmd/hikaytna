@@ -2430,6 +2430,39 @@ const SafariNotification = () => {
             >
               {playbackRate}x
             </button>
+            {currentVideoUrl && (currentVideoUrl.includes('/api/v1/stream-proxy/') || currentVideoUrl.includes('/api/v1/3isk-player?url=')) && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  try {
+                    let encrypted = '';
+                    if (currentVideoUrl.includes('/api/v1/stream-proxy/')) {
+                      encrypted = currentVideoUrl.split('/api/v1/stream-proxy/')[1];
+                    } else if (currentVideoUrl.includes('/api/v1/3isk-player?url=')) {
+                      encrypted = currentVideoUrl.split('/api/v1/3isk-player?url=')[1];
+                    }
+                    if (encrypted) {
+                      const decrypted = decryptValue(decodeURIComponent(encrypted));
+                      if (decrypted && decrypted.startsWith('http')) {
+                        console.log("[Direct stream button] Switching to direct URL:", decrypted);
+                        setCurrentVideoUrl(decrypted);
+                        setLocalToast({ type: 'success', text: 'تم تفعيل التشغيل المباشر السريع!' });
+                        return;
+                      }
+                    }
+                  } catch (err) {
+                    console.error("Direct stream decryption failed:", err);
+                  }
+                }}
+                tabIndex={showControls ? 0 : -1}
+                data-tv-focusable={showControls ? "true" : "false"}
+                className="flex items-center gap-1 sm:gap-1.5 bg-emerald-600 hover:bg-emerald-500 px-2 py-1 sm:px-3 sm:py-2 rounded-xl border border-emerald-500/40 text-white font-black text-[9px] sm:text-xs tracking-tight shadow-xl focus:ring-4 focus:ring-emerald-500 focus:outline-none shrink-0"
+                title="بث مباشر مباشر بدون سيرفر حماية لتخطي خطأ 232011"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-white" />
+                <span>بث مباشر (حل 232011)</span>
+              </button>
+            )}
             {!isLocalOfflineVideo && (
               <>
                 <button
