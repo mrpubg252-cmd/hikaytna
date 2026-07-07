@@ -1779,6 +1779,24 @@ async function startServer() {
         }
       });
 
+      // Proxy any external iframe embeds so they also get our spoofScript injected and can play CORS-blocked HLS streams seamlessly!
+      $('iframe').each((i, el) => {
+        let src = $(el).attr('src');
+        if (src) {
+          if (src.startsWith('//')) {
+            src = 'https:' + src;
+          }
+          if (src.startsWith('http') && !src.includes('/api/v1/3isk-player') && !src.includes('youtube.com') && !src.includes('google.com') && !src.includes('recaptcha')) {
+            try {
+              const encryptedTarget = encryptValue(src);
+              $(el).attr('src', `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`);
+            } catch (err) {
+              console.warn('[3isk Player Proxy] Failed to encrypt iframe src:', src, err);
+            }
+          }
+        }
+      });
+
       $('[href]').each((i, el) => {
         const href = $(el).attr('href');
         if (href && !href.startsWith('http') && !href.startsWith('javascript:') && !href.startsWith('#') && !href.startsWith('//')) {
