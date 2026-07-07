@@ -67,16 +67,13 @@ const ShadowVideo: React.FC<ShadowVideoProps> = ({
   onCanPlayThrough,
 }) => {
   const { isTV, isMobile } = useDevice();
-  const hostRef = useRef<HTMLDivElement>(null);
-  const videoElementRef = useRef<HTMLVideoElement | null>(null);
-
   const isIOS = typeof window !== 'undefined' ? 
     (/iPhone|iPad|iPod/.test(window.navigator.userAgent) || 
      (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1)) : false;
 
   // Enforce zero controls on smart TV, iOS, and mobile browser fallbacks
   React.useEffect(() => {
-    if ((!isTV && !isIOS && !isMobile) || !videoRef.current) return;
+    if (!videoRef.current) return;
     const video = videoRef.current;
     
     // Force controls off at load
@@ -97,179 +94,43 @@ const ShadowVideo: React.FC<ShadowVideoProps> = ({
     }, 500); // Increased interval to 500ms for better performance
     
     return () => clearInterval(interval);
-  }, [isTV, isMobile, videoRef]);
-
-  // If it's a TV, iOS device (Safari mobile), or mobile browser, fallback to standard React video tag
-  // Web browser engines fail to respect playsinline and trigger native player hijack when placed inside Closed Shadow Roots.
-  if (isTV || isIOS || isMobile) {
-    return (
-      <video
-        ref={videoRef as any}
-        className={className}
-        playsInline
-        autoPlay
-        muted={isMuted}
-        x-webkit-airplay="deny"
-        controls={false}
-        disablePictureInPicture
-        controlsList="nodownload nofullscreen noremoteplayback"
-        onTimeUpdate={onTimeUpdate}
-        onLoadedMetadata={onLoadedMetadata}
-        onError={onError}
-        onWaiting={onWaiting}
-        onPlaying={onPlaying}
-        onSeeking={onSeeking}
-        onSeeked={onSeeked}
-        onStalled={onStalled}
-        onCanPlay={onCanPlay}
-        onCanPlayThrough={onCanPlayThrough}
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'contain',
-          pointerEvents: 'none',
-          backgroundColor: 'transparent',
-          transition: 'all 500ms ease',
-          opacity: '1',
-          filter: 'none'
-        }}
-      />
-    );
-  }
-
-  // Non-TV standard behavior (Shadow DOM)
-  return <ShadowVideoInternal 
-      videoRef={videoRef} isPlaying={isPlaying} isMuted={isMuted} className={className} 
-      onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata} onError={onError}
-      onWaiting={onWaiting} onPlaying={onPlaying} onSeeking={onSeeking}
-      onSeeked={onSeeked} onStalled={onStalled} onCanPlay={onCanPlay} onCanPlayThrough={onCanPlayThrough}
-  />;
-};
-
-// Extracted internal component to prevent hook rules violation
-const ShadowVideoInternal: React.FC<ShadowVideoProps> = ({
-  videoRef,
-  isPlaying,
-  isMuted,
-  className,
-  onTimeUpdate,
-  onLoadedMetadata,
-  onError,
-  onWaiting,
-  onPlaying,
-  onSeeking,
-  onSeeked,
-  onStalled,
-  onCanPlay,
-  onCanPlayThrough,
-}) => {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const videoElementRef = useRef<HTMLVideoElement | null>(null);
-
-  React.useEffect(() => {
-    if (videoElementRef.current) {
-      videoElementRef.current.muted = isMuted;
-    }
-  }, [isMuted]);
-  
-  React.useLayoutEffect(() => {
-    if (!hostRef.current) return;
-    
-    const shadowRoot = hostRef.current.attachShadow({ mode: 'closed' });
-    const video = document.createElement('video');
-    video.muted = isMuted; // Set initial muted state
-    video.preload = 'auto';
-
-    video.tabIndex = -1;
-    video.controls = false;
-    video.playsInline = true;
-    (video as any).webkitPlaysInline = true;
-    
-    // Prevent downloads, PiP, etc.
-    video.setAttribute('controlsList', 'nodownload nofullscreen noremoteplayback');
-    (video as any).disablePictureInPicture = true;
-    (video as any).disableRemotePlayback = true;
-
-    // Mobile/TV browser inline plays attributes
-    video.setAttribute('playsinline', 'true');
-    video.setAttribute('webkit-playsinline', 'true');
-    video.setAttribute('x5-playsinline', 'true');
-    video.setAttribute('x5-video-player-type', 'h5-page');
-    video.setAttribute('x5-video-player-fullscreen', 'false');
-    video.setAttribute('x-webkit-airplay', 'deny');
-    video.setAttribute('aria-hidden', 'true');
-
-    // CSS Styling for Shadow Root (Tailwind cannot enter a closed shadow)
-    video.style.width = '100%';
-    video.style.height = '100%';
-    video.style.objectFit = 'contain';
-    video.style.pointerEvents = 'none';
-    video.style.backgroundColor = 'transparent';
-    video.style.transition = 'all 500ms ease';
-    video.style.opacity = isPlaying ? '1' : '0.9'; // Increased opacity for better visibility
-    // Removed blur filter for mobile/TV performance optimization
-    
-    shadowRoot.appendChild(video);
-    videoElementRef.current = video;
-
-    // Constantly suppress controls via frequency intervals
-    const interval = setInterval(() => {
-      if (video.controls) {
-        video.controls = false;
-        video.removeAttribute('controls');
-      }
-    }, 500);
-
-    // Bind ref
-    if (videoRef) {
-      (videoRef as any).current = video;
-    }
-
-    // Forward listeners safely to replicate React element behaviour
-    const listeners: { [key: string]: (e: Event) => void } = {
-      timeupdate: (e) => onTimeUpdate?.(e),
-      loadedmetadata: (e) => onLoadedMetadata?.(e),
-      error: (e) => onError?.(e),
-      waiting: (e) => onWaiting?.(e),
-      playing: (e) => onPlaying?.(e),
-      seeking: (e) => onSeeking?.(e),
-      seeked: (e) => onSeeked?.(e),
-      stalled: (e) => onStalled?.(e),
-      canplay: (e) => onCanPlay?.(e),
-      canplaythrough: (e) => onCanPlayThrough?.(e),
-    };
-
-    Object.keys(listeners).forEach((event) => {
-      video.addEventListener(event, listeners[event]);
-    });
-
-    return () => {
-      clearInterval(interval);
-      Object.keys(listeners).forEach((event) => {
-        video.removeEventListener(event, listeners[event]);
-      });
-      try {
-        video.pause();
-        video.removeAttribute('src');
-        video.load();
-      } catch (err) {
-        console.warn('ShadowVideo cleanup error on unmount:', err);
-      }
-      if (videoRef) {
-        (videoRef as any).current = null;
-      }
-    };
   }, [videoRef]);
 
-  // Handle playing style update dynamically
-  useEffect(() => {
-    if (videoElementRef.current) {
-      videoElementRef.current.style.opacity = isPlaying ? '1' : '0.9';
-    }
-  }, [isPlaying]);
-
-  return <div ref={hostRef} className={className} style={{ width: '100%', height: '100%' }} />;
+  return (
+    <video
+      ref={videoRef as any}
+      className={className}
+      playsInline
+      autoPlay
+      muted={isMuted}
+      x-webkit-airplay="deny"
+      controls={false}
+      disablePictureInPicture
+      controlsList="nodownload nofullscreen noremoteplayback"
+      onTimeUpdate={onTimeUpdate}
+      onLoadedMetadata={onLoadedMetadata}
+      onError={onError}
+      onWaiting={onWaiting}
+      onPlaying={onPlaying}
+      onSeeking={onSeeking}
+      onSeeked={onSeeked}
+      onStalled={onStalled}
+      onCanPlay={onCanPlay}
+      onCanPlayThrough={onCanPlayThrough}
+      style={{
+        width: '100%',
+        height: '100%',
+        objectFit: 'contain',
+        pointerEvents: 'none',
+        backgroundColor: 'transparent',
+        transition: 'all 500ms ease',
+        opacity: isPlaying ? '1' : '0.9',
+        filter: 'none'
+      }}
+    />
+  );
 };
+
 
 const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   const {
