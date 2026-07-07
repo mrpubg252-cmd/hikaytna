@@ -14,6 +14,7 @@ import { progressService } from '../services/progressService';
 import HorizontalEpisodeList from './HorizontalEpisodeList';
 import { useDevice } from '../context/DeviceAndNavigationContext';
 import { formatEpisodeTitle } from './EpisodeGrid';
+import { decryptValue } from '../lib/security';
 
 interface CustomPlayerProps {
   videoUrl: string;
@@ -480,6 +481,11 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   const [isIframeFallback, setIsIframeFallback] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showTimeoutOptions, setShowTimeoutOptions] = useState(false);
+  const [currentVideoUrl, setCurrentVideoUrl] = useState(resolvedVideoUrl);
+
+  useEffect(() => {
+    setCurrentVideoUrl(resolvedVideoUrl);
+  }, [resolvedVideoUrl]);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const isLocalOfflineVideo = videoUrl && videoUrl.startsWith('blob:');
@@ -1169,7 +1175,7 @@ const SafariNotification = () => {
 
   // Initialize PlayerJS if loaded and direct stream is used (non-embed)
   useEffect(() => {
-    if (!playerjsLoaded || isIframeFallback || !resolvedVideoUrl) return;
+    if (!playerjsLoaded || isIframeFallback || !currentVideoUrl) return;
 
     const PlayerjsClass = (window as any).Playerjs;
     if (!PlayerjsClass) return;
@@ -1194,7 +1200,7 @@ const SafariNotification = () => {
     try {
       const pjs = new PlayerjsClass({
         id: 'pjs-player',
-        file: resolvedVideoUrl,
+        file: currentVideoUrl,
         autoplay: true,
       });
 
@@ -1208,12 +1214,12 @@ const SafariNotification = () => {
         try {
           playerjsInstanceRef.current.api('destroy');
         } catch (e) {
-          console.warn('Error destroying playerjs on cleanup:', e);
+          console.warn('Error destroying playerjs:', e);
         }
         playerjsInstanceRef.current = null;
       }
     };
-  }, [playerjsLoaded, resolvedVideoUrl, isIframeFallback]);
+  }, [playerjsLoaded, currentVideoUrl, isIframeFallback]);
 
   // Check if link is iframe/embed only or a standard direct video
   useEffect(() => {
@@ -1221,11 +1227,11 @@ const SafariNotification = () => {
     setIsBuffering(false);
     setIsIframeFallback(false);
     
-    if (!resolvedVideoUrl) {
+    if (!currentVideoUrl) {
       return;
     }
     
-    const urlLower = resolvedVideoUrl.toLowerCase();
+    const urlLower = currentVideoUrl.toLowerCase();
     
       // Explicitly handle our secure frame proxies
       if (urlLower.startsWith('/api/v1/secured-player') || urlLower.startsWith('/api/v1/titanic-player')) {
@@ -1291,7 +1297,7 @@ const SafariNotification = () => {
           manifestLoadingMaxRetry: 8,
           levelLoadingMaxRetry: 8,
         });
-        hls.loadSource(resolvedVideoUrl);
+        hls.loadSource(currentVideoUrl);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setIsLoading(false);
@@ -1312,6 +1318,23 @@ const SafariNotification = () => {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
                 console.warn("HLS network error, attempting recovery level reload:", data);
+                // Decrypt and retry direct playback fallback if proxy failed
+                if (currentVideoUrl && currentVideoUrl.includes('/api/v1/stream-proxy/')) {
+                  try {
+                    const parts = currentVideoUrl.split('/api/v1/stream-proxy/');
+                    const encrypted = parts[1];
+                    if (encrypted) {
+                      const decrypted = decryptValue(decodeURIComponent(encrypted));
+                      if (decrypted && decrypted.startsWith('http')) {
+                        console.log("[HLS Network Error Fallback] Decrypting and switching to direct stream URL:", decrypted);
+                        setCurrentVideoUrl(decrypted);
+                        return;
+                      }
+                    }
+                  } catch (err) {
+                    console.error("Failed HLS fatal network decryption:", err);
+                  }
+                }
                 hls?.startLoad();
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
@@ -1336,7 +1359,7 @@ const SafariNotification = () => {
           }
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = resolvedVideoUrl;
+        video.src = currentVideoUrl;
         video.load(); // Explicitly trigger hardware media system on Safari & iOS
         video.addEventListener('loadedmetadata', () => {
           setIsLoading(false);
@@ -1359,7 +1382,7 @@ const SafariNotification = () => {
       }
     } else {
       // Regular streaming files (MP4/WebM)
-      video.src = resolvedVideoUrl;
+      video.src = currentVideoUrl;
       video.load(); // Explicitly call .load() for instant cross-browser parsing
       const onPlayable = () => {
         setIsLoading(false);
@@ -1388,7 +1411,7 @@ const SafariNotification = () => {
         video.src = '';
       }
     };
-  }, [resolvedVideoUrl, episodeIndex, playerjsLoaded]);
+  }, [currentVideoUrl, episodeIndex, playerjsLoaded]);
 
   // Resume progress logic
   const resumeWatchProgress = () => {
@@ -1962,6 +1985,26 @@ const SafariNotification = () => {
 
   const handleVideoError = (e: any) => {
     console.warn("Native video playback encountered an issue:", e?.type || e?.message || "unknown_error");
+    
+    // Check if we are playing a proxied URL and can fallback to the direct URL
+    if (currentVideoUrl && currentVideoUrl.includes('/api/v1/stream-proxy/')) {
+      try {
+        const parts = currentVideoUrl.split('/api/v1/stream-proxy/');
+        const encrypted = parts[1];
+        if (encrypted) {
+          const decrypted = decryptValue(decodeURIComponent(encrypted));
+          if (decrypted && decrypted.startsWith('http')) {
+            console.log("[Custom Player Error Fallback] Falling back to direct URL:", decrypted);
+            setCurrentVideoUrl(decrypted);
+            setIsLoading(true);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to decrypt fallback URL:", err);
+      }
+    }
+
     // Instead of immediate fallback, try to wait or show timeout options
     if (!showTimeoutOptions) {
       setShowTimeoutOptions(true);
@@ -2760,7 +2803,7 @@ const SafariNotification = () => {
         )}
       </AnimatePresence>
 
-      {!resolvedVideoUrl ? (
+      {!currentVideoUrl ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 gap-4">
           <div className="w-14 h-14 border-4 border-primary border-t-transparent rounded-full animate-spin shadow-lg shadow-primary/20" />
           <p className="text-zinc-400 text-sm font-bold tracking-widest text-center px-4">جاري تجهيز سيرفرات المشغل المباشر...</p>
@@ -2832,13 +2875,13 @@ const SafariNotification = () => {
           {isIframeFallback ? (
             <div className={cn(
               "w-full h-full relative",
-              resolvedVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
+              currentVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
             )}>
               <iframe
-                src={resolvedVideoUrl}
+                src={currentVideoUrl}
                 className={cn(
                   "w-full h-full border-0 animate-fade-in",
-                  resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
+                  currentVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
                 )}
                 allowFullScreen
                 allow="autoplay; encrypted-media; picture-in-picture"
@@ -2855,7 +2898,7 @@ const SafariNotification = () => {
                   zIndex: 10,
                 }}
               />
-              {resolvedVideoUrl.includes('streamimdb') && (
+              {currentVideoUrl.includes('streamimdb') && (
                 <div className="absolute top-4 left-4 z-20 pointer-events-none">
                   <div className="bg-amber-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
                     <Sparkles className="w-3 h-3 fill-current" />
@@ -3195,6 +3238,79 @@ const SafariNotification = () => {
                   )}
                 </AnimatePresence>
               </div>
+
+              {/* DYNAMIC ERROR & FALLBACK OVERLAY */}
+              {showTimeoutOptions && (
+                <div className="absolute inset-0 z-[8500] flex flex-col items-center justify-center bg-black/95 p-6 text-center animate-fade-in pointer-events-auto">
+                  <div className="w-16 h-16 bg-red-500/10 border border-red-500/20 rounded-full flex items-center justify-center text-red-500 mb-4 animate-pulse">
+                    <AlertTriangle className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-white text-base font-black mb-2">تعذر تشغيل هذا البث المباشر</h3>
+                  <p className="text-zinc-400 text-xs max-w-sm mb-6 leading-relaxed">
+                    يبدو أن مشغل الفيديو يواجه صعوبة في الاتصال بسيرفر البث المشفر (الخطأ 232011). يمكنك تجربة تشغيل البث المباشر لتجاوز الحظر فوراً!
+                  </p>
+                  
+                  <div className="flex flex-col sm:flex-row gap-3 w-full max-w-md justify-center">
+                    <button
+                      onClick={() => {
+                        if (currentVideoUrl && (currentVideoUrl.includes('/api/v1/stream-proxy/') || currentVideoUrl.includes('/api/v1/3isk-player?url='))) {
+                          try {
+                            let encrypted = '';
+                            if (currentVideoUrl.includes('/api/v1/stream-proxy/')) {
+                              encrypted = currentVideoUrl.split('/api/v1/stream-proxy/')[1];
+                            } else {
+                              encrypted = currentVideoUrl.split('/api/v1/3isk-player?url=')[1];
+                            }
+                            if (encrypted) {
+                              const decrypted = decryptValue(decodeURIComponent(encrypted));
+                              if (decrypted && decrypted.startsWith('http')) {
+                                console.log("[Manual Error Overlay Button] Switching to direct URL:", decrypted);
+                                setCurrentVideoUrl(decrypted);
+                                setShowTimeoutOptions(false);
+                                setIsLoading(true);
+                                setLocalToast({ type: 'success', text: 'تم تفعيل التشغيل المباشر السريع!' });
+                                return;
+                              }
+                            }
+                          } catch (err) {
+                            console.error("Failed manual fallback decryption:", err);
+                          }
+                        }
+                        
+                        // Default fallback
+                        setShowTimeoutOptions(false);
+                        setIsLoading(true);
+                        const video = videoRef.current;
+                        if (video) {
+                          const currentSrc = video.src;
+                          video.src = '';
+                          video.src = currentSrc;
+                          video.load();
+                        }
+                      }}
+                      className="px-5 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 border border-red-500/30 cursor-pointer"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>تفعيل التشغيل المباشر (حل بديل)</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setShowTimeoutOptions(false);
+                        setIsLoading(true);
+                        const temp = currentVideoUrl;
+                        setCurrentVideoUrl('');
+                        setTimeout(() => {
+                          setCurrentVideoUrl(temp);
+                        }, 100);
+                      }}
+                      className="px-5 py-3 bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-white font-black text-xs sm:text-sm rounded-2xl transition-all active:scale-95 cursor-pointer"
+                    >
+                      <span>إعادة المحاولة 🔄</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </>
