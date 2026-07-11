@@ -1045,7 +1045,7 @@ export default function WatchScreen() {
     if (controller.signal.aborted) return;
     
     setVideoUrl(finalUrl);
-    setActiveServerUrl(finalUrl);
+    setActiveServerUrl(rawUrl);
     setServers(fetchedServers);
 
     // Dynamic initial check to see if THIS episode is already downloaded

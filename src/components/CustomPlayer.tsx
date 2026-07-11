@@ -525,14 +525,14 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   const [isDailymotionClicked, setIsDailymotionClicked] = useState(false);
 
   useEffect(() => {
-    if (videoUrl && (videoUrl.toLowerCase().includes('dailymotion.com') || videoUrl.toLowerCase().includes('syndication'))) {
+    if (activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion.com') || activeServerUrl.toLowerCase().includes('syndication'))) {
       setDailymotionSeconds(6);
       setIsDailymotionClicked(false);
     } else {
       setDailymotionSeconds(null);
       setIsDailymotionClicked(false);
     }
-  }, [videoUrl]);
+  }, [activeServerUrl]);
 
   useEffect(() => {
     if (dailymotionSeconds === null) return;
@@ -543,30 +543,30 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
       return () => clearTimeout(timer);
     } else if (dailymotionSeconds === 0) {
       // If the user hasn't clicked, we must automatically redirect
-      if (videoUrl && !isDailymotionClicked) {
+      if (activeServerUrl && !isDailymotionClicked) {
         try {
-          const newWindow = window.open(videoUrl, '_blank');
+          const newWindow = window.open(activeServerUrl, '_blank');
           if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
             // Popup was blocked or failed to open. Redirect current page directly to guarantee the video loads outside the site.
             try {
               if (window.top && window.top !== window) {
-                window.top.location.href = videoUrl;
+                window.top.location.href = activeServerUrl;
               } else {
-                window.location.href = videoUrl;
+                window.location.href = activeServerUrl;
               }
             } catch (err) {
-              window.location.href = videoUrl;
+              window.location.href = activeServerUrl;
             }
           }
         } catch (e) {
           try {
             if (window.top && window.top !== window) {
-              window.top.location.href = videoUrl;
+              window.top.location.href = activeServerUrl;
             } else {
-              window.location.href = videoUrl;
+              window.location.href = activeServerUrl;
             }
           } catch (err) {
-            window.location.href = videoUrl;
+            window.location.href = activeServerUrl;
           }
         }
       }
@@ -2643,7 +2643,7 @@ const SafariNotification = () => {
 
   return (
     <>
-      {(videoUrl && (videoUrl.toLowerCase().includes('dailymotion.com') || videoUrl.toLowerCase().includes('syndication'))) && (
+      {(activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion.com') || activeServerUrl.toLowerCase().includes('syndication'))) && (
         <div className="w-full bg-[#050505] border border-red-900/30 rounded-xl mb-4 p-6 text-center shadow-xl animate-fade-in relative overflow-hidden flex flex-col items-center justify-center">
           <div className="absolute inset-0 bg-gradient-to-r from-red-600/5 via-transparent to-red-600/5" />
           <div className="relative z-10 w-16 h-16 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center mb-5 shadow-2xl">
@@ -2657,7 +2657,7 @@ const SafariNotification = () => {
           </p>
 
           <a
-            href={videoUrl}
+            href={activeServerUrl}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => {
@@ -3128,9 +3128,9 @@ const SafariNotification = () => {
               {/* Floating navigation icons for Embeds */}
               {isIframeFallback && (
                 <div className="absolute top-4 right-4 z-[1000] flex items-center gap-2 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)]">
-                  {videoUrl && (videoUrl.toLowerCase().includes('dailymotion.com') || videoUrl.toLowerCase().includes('syndication')) && (
+                  {activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion.com') || activeServerUrl.toLowerCase().includes('syndication')) && (
                     <a
-                      href={videoUrl}
+                      href={activeServerUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
