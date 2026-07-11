@@ -12,6 +12,7 @@ import http from "http";
 import * as cheerio from "cheerio";
 import { GoogleGenAI } from "@google/genai";
 import multer from "multer";
+import zlib from "zlib";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -48,6 +49,95 @@ function decryptValue(encoded: string): string {
   } catch (e) {
     return encoded;
   }
+}
+
+const turkVeArabCache = new Map<string, string>();
+
+function rewriteTurkVeArabUrl(url: string, serverName: string = ''): string {
+  if (!url || !url.includes('v.turkvearab.com')) return url;
+  
+  const vTurkMatch = url.match(/v\.turkvearab\.com\/embed-([a-zA-Z0-9]+)/i);
+  if (!vTurkMatch) return url;
+  
+  const id = vTurkMatch[1];
+  const sName = serverName.toLowerCase();
+  
+  // 1. If ID is purely digits, it is an ok.ru ID
+  if (/^\d+$/.test(id)) {
+    return `https://ok.ru/videoembed/${id}`;
+  }
+  
+  // 2. Check if we already have it in cache
+  if (turkVeArabCache.has(id)) {
+    return turkVeArabCache.get(id)!;
+  }
+  
+  // 3. Map based on server name if provided and matches
+  if (sName.includes('turk') || sName.includes('ترك') || sName.includes('ثاني') || sName.includes('2')) {
+    const res = `https://arabveturk.com/embed-${id}.html`;
+    turkVeArabCache.set(id, res);
+    return res;
+  }
+  if (sName.includes('red') || sName.includes('احمر') || sName.includes('سادس') || sName.includes('6') || sName.includes('iplayer')) {
+    const res = `https://iplayerhls.com/e/${id}`;
+    turkVeArabCache.set(id, res);
+    return res;
+  }
+  if (sName.includes('pro') || sName.includes('خامس') || sName.includes('5') || sName.includes('برو')) {
+    const res = `https://iplayerhls.com/e/${id}`;
+    turkVeArabCache.set(id, res);
+    return res;
+  }
+  if (sName.includes('ok') || sName.includes('رابع') || sName.includes('4')) {
+    const res = `https://ok.ru/videoembed/${id}`;
+    turkVeArabCache.set(id, res);
+    return res;
+  }
+  
+  // 4. Default fallback: arabveturk.com/embed-[ID].html
+  return `https://arabveturk.com/embed-${id}.html`;
+}
+
+async function resolveTurkVeArabUrlAsync(url: string): Promise<string> {
+  if (!url || !url.includes('v.turkvearab.com')) return url;
+  
+  const vTurkMatch = url.match(/v\.turkvearab\.com\/embed-([a-zA-Z0-9]+)/i);
+  if (!vTurkMatch) return url;
+  
+  const id = vTurkMatch[1];
+  
+  // 1. If ID is purely digits, it is ok.ru
+  if (/^\d+$/.test(id)) {
+    return `https://ok.ru/videoembed/${id}`;
+  }
+  
+  // 2. Check cache
+  if (turkVeArabCache.has(id)) {
+    return turkVeArabCache.get(id)!;
+  }
+  
+  // 3. Fallback check
+  let targetUrl = `https://arabveturk.com/embed-${id}.html`;
+  try {
+    const checkRes = await axios.get(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+      },
+      timeout: 1500,
+      httpAgent: new http.Agent({ family: 4 }),
+      httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
+    });
+    if (checkRes.status === 200 && checkRes.data && !checkRes.data.includes("no longer available") && checkRes.data.length > 1000) {
+      targetUrl = `https://arabveturk.com/embed-${id}.html`;
+    } else {
+      targetUrl = `https://iplayerhls.com/e/${id}`;
+    }
+  } catch (e) {
+    targetUrl = `https://iplayerhls.com/e/${id}`;
+  }
+  
+  turkVeArabCache.set(id, targetUrl);
+  return targetUrl;
 }
 
 // ============ DeepSeek Speed Configuration ============
@@ -1304,6 +1394,9 @@ async function startServer() {
                 embedUrl = 'https:' + embedUrl;
               }
               
+              // Rewrite any v.turkvearab.com URLs to working standalone domains
+              embedUrl = rewriteTurkVeArabUrl(embedUrl, fullName);
+              
               // Wrap the server URL in our player proxy to defeat iframe security limitations
               let proxyUrl = embedUrl;
               const encryptedTarget = encryptValue(embedUrl);
@@ -1345,8 +1438,11 @@ async function startServer() {
                   iframeSrc = getEmbedUrl(firstServer.name, firstServer.id);
                   
                   postData.servers.forEach((srv: any, idx: number) => {
-                    const embedUrl = getEmbedUrl(srv.name, srv.id);
+                    let embedUrl = getEmbedUrl(srv.name, srv.id);
                     if (embedUrl) {
+                      // Rewrite any v.turkvearab.com URLs to working standalone domains
+                      embedUrl = rewriteTurkVeArabUrl(embedUrl, srv.name || '');
+
                       let proxyUrl = embedUrl;
                       const encryptedTarget = encryptValue(embedUrl);
                       proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
@@ -1407,6 +1503,9 @@ async function startServer() {
                  iframeSrc = parsed.origin + iframeSrc;
              } catch (e) {}
          }
+
+         // Rewrite any v.turkvearab.com URLs to working standalone domains
+         iframeSrc = rewriteTurkVeArabUrl(iframeSrc, 'المشغل الرئيسي');
 
          let proxyUrl = iframeSrc;
          const encryptedTarget = encryptValue(iframeSrc);
@@ -1592,9 +1691,14 @@ async function startServer() {
         return res.status(400).send("Missing player URL");
       }
 
-      const decryptedUrl = decryptValue(url as string) || (url as string);
+      let decryptedUrl = decryptValue(url as string) || (url as string);
       if (!decryptedUrl.startsWith("http")) {
         return res.status(400).send("Invalid player URL");
+      }
+
+      // If it is a v.turkvearab.com URL, asynchronously resolve it to its active standalone domain
+      if (decryptedUrl.includes('v.turkvearab.com')) {
+         decryptedUrl = await resolveTurkVeArabUrlAsync(decryptedUrl);
       }
 
       // 4.1.1. Dailymotion Landing Page (External Redirect)
@@ -1749,20 +1853,20 @@ async function startServer() {
         return res.status(500).send("Invalid player response structure.");
       }
 
-      // Pre-clean frame-busting or block-redirect scripts from raw HTML string
-      html = html.replace(/<script[^>]*>[\s\S]*?blocked\.html[\s\S]*?<\/script>/gi, '<!-- stripped frame-busting script -->');
-      html = html.replace(/<script[^>]*>[\s\S]*?Chrome PDF Viewer[\s\S]*?<\/script>/gi, '<!-- stripped pdf script -->');
-
       const $ = cheerio.load(html);
 
-      // Clean any leftover frame-busting/sandbox-busting scripts via Cheerio selector
+      // Clean any frame-busting/sandbox-busting scripts via Cheerio selector
       $('script').each((i, el) => {
          const scriptContent = $(el).html() || '';
-         if (scriptContent.includes('blocked.html') || scriptContent.includes('Chrome PDF Viewer') || scriptContent.includes('sandbox')) {
-            if (scriptContent.includes('frameElement') || scriptContent.includes('ancestorOrigins')) {
-               console.log(`[3isk Player Proxy] Stripped frame-busting script element from DOM`);
-               $(el).remove();
-            }
+         if (
+           scriptContent.includes('blocked.html') || 
+           scriptContent.includes('Chrome PDF Viewer') || 
+           scriptContent.includes('sandbox') ||
+           scriptContent.includes('frameElement') ||
+           scriptContent.includes('ancestorOrigins')
+         ) {
+            console.log(`[3isk Player Proxy] Stripped frame-busting script element from DOM`);
+            $(el).remove();
          }
       });
       const parsedUrl = new URL(decryptedUrl);
@@ -1849,6 +1953,22 @@ async function startServer() {
             } catch(e) { console.warn('[Proxy Player] Could not redefine top'); }
 
             try {
+              Object.defineProperty(window, 'frameElement', {
+                get: function() {
+                  return {
+                    hasAttribute: function(attr) {
+                      return false;
+                    },
+                    getAttribute: function(attr) {
+                      return null;
+                    }
+                  };
+                },
+                configurable: true
+              });
+            } catch(e) {}
+
+            try {
               Object.defineProperty(document, 'referrer', { get: function() { return 'https://3iskk.xyz/'; }, configurable: true });
             } catch(e) {}
 
@@ -1891,7 +2011,7 @@ async function startServer() {
                    if (lu.includes('.m3u8') || lu.includes('.mp4') || lu.includes('.ts') || lu.includes('.vtt') || lu.includes('.srt') || lu.includes('key')) return true;
                    
                    // Explicitly proxy iplayerhls, huntrexus, arabveturk and associated CDNs
-                   if (lu.includes('iplayerhls.com') || lu.includes('huntrexus.com') || lu.includes('cdnz.online') || lu.includes('arabveturk.com') || lu.includes('artrk.online')) return true;
+                   if (lu.includes('iplayerhls.com') || lu.includes('huntrexus.com') || lu.includes('cdnz.online') || lu.includes('arabveturk.com') || lu.includes('artrk.online') || lu.includes('arbtrk') || lu.includes('artrk')) return true;
 
                    // Also proxy cross-origin requests that might be API calls for media
                    try {
@@ -2202,7 +2322,8 @@ async function startServer() {
           'Accept': '*/*',
           'Accept-Language': 'en-US,en;q=0.9',
           'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
+          'Pragma': 'no-cache',
+          'Accept-Encoding': 'identity'
         };
 
         // Match known AlooyTV servers and archive.org video hosts
@@ -2285,8 +2406,22 @@ async function startServer() {
 
       if (isM3u8) {
          let body = '';
-         proxyRes.on('data', (chunk: Buffer) => body += chunk.toString('utf-8'));
-         proxyRes.on('end', () => {
+         let decompressorStream = proxyRes;
+         const contentEncoding = String(axiosResponse.headers['content-encoding'] || '').toLowerCase();
+         if (contentEncoding.includes('gzip')) {
+            decompressorStream = proxyRes.pipe(zlib.createGunzip());
+         } else if (contentEncoding.includes('deflate')) {
+            decompressorStream = proxyRes.pipe(zlib.createInflate());
+         } else if (contentEncoding.includes('br')) {
+            decompressorStream = proxyRes.pipe(zlib.createBrotliDecompress());
+         }
+
+         decompressorStream.on('error', (err: any) => {
+            console.error("[Stream Proxy Decompress Error]", err);
+         });
+
+         decompressorStream.on('data', (chunk: Buffer) => body += chunk.toString('utf-8'));
+         decompressorStream.on('end', () => {
             const lines = body.split('\n');
             const finalUrl = currentUrl;
             const rewritten = lines.map(line => {

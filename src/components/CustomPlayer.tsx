@@ -301,7 +301,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     }
 
     // Wrap Dailymotion, iplayerhls, arabveturk and cdnz in our proxy
-    if (target.includes('dailymotion.com') || target.includes('iplayerhls.com') || target.includes('cdnz.online') || target.includes('arabveturk.com')) {
+    if (target.includes('dailymotion.com') || target.includes('iplayerhls.com') || target.includes('cdnz.online') || target.includes('arabveturk.com') || target.includes('arbtrk') || target.includes('artrk') || target.includes('huntrexus.com')) {
       try {
         const encrypted = encryptValue(target);
         if (target.includes('.m3u8') || target.includes('.mp4')) {
