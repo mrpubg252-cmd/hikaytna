@@ -542,12 +542,14 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
       }, 1000);
       return () => clearTimeout(timer);
     } else if (dailymotionSeconds === 0) {
+      // If the user hasn't clicked, we must automatically redirect
       if (videoUrl && !isDailymotionClicked) {
         try {
           const newWindow = window.open(videoUrl, '_blank');
           if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+            // Popup was blocked or failed to open. Redirect current page directly to guarantee the video loads outside the site.
             try {
-              if (window.top) {
+              if (window.top && window.top !== window) {
                 window.top.location.href = videoUrl;
               } else {
                 window.location.href = videoUrl;
@@ -558,7 +560,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
           }
         } catch (e) {
           try {
-            if (window.top) {
+            if (window.top && window.top !== window) {
               window.top.location.href = videoUrl;
             } else {
               window.location.href = videoUrl;
@@ -2962,7 +2964,13 @@ const SafariNotification = () => {
                     className="pointer-events-auto px-6 py-3 bg-gradient-to-r from-red-650 to-red-750 hover:from-red-700 hover:to-red-800 text-white font-black text-xs sm:text-sm rounded-2xl shadow-[0_12px_30px_rgba(229,9,20,0.3)] transition-all transform active:scale-95 flex items-center gap-2 border border-red-500/20 cursor-pointer"
                   >
                     <ExternalLink className="w-4 h-4 text-white" />
-                    <span>{isDailymotionClicked ? "جاري تحويل للحلقة" : "جاري تحويلك تلقائياً..."}</span>
+                    <span>
+                      {isDailymotionClicked ? (
+                        dailymotionSeconds === 0 ? "اضغط هنا إذا لم تفتح الحلقة 🚀" : `جاري تحويل للحلقة (${dailymotionSeconds})...`
+                      ) : (
+                        dailymotionSeconds === 0 ? "ذهاب إلى الحلقة الآن 🚀" : `جاري تحويلك تلقائياً (${dailymotionSeconds})...`
+                      )}
+                    </span>
                   </a>
                 </div>
               )}

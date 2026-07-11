@@ -1879,7 +1879,13 @@ async function startServer() {
                 progressCircle.style.strokeDashoffset = offset;
                 countdownText.innerText = Math.max(0, seconds);
                 
-                if (!isClicked) {
+                if (isClicked) {
+                  if (seconds > 0) {
+                    redirectBtn.querySelector('span').innerText = 'جاري تحويل للحلقة (' + seconds + ')...';
+                  } else {
+                    redirectBtn.querySelector('span').innerText = 'اضغط هنا إذا لم تفتح الحلقة 🚀';
+                  }
+                } else {
                   if (seconds > 0) {
                     redirectBtn.querySelector('span').innerText = 'جاري تحويلك تلقائياً (' + seconds + ')...';
                   } else {
@@ -1891,22 +1897,30 @@ async function startServer() {
               updateProgress(countdown);
               
               function doRedirect() {
-                if (isClicked) return;
+                if (isClicked) return; // Already clicked and opened new tab
                 try {
                   var newWin = window.open(targetUrl, '_blank');
                   if (!newWin || newWin.closed || typeof newWin.closed === 'undefined') {
-                    if (window.top) {
-                      window.top.location.href = targetUrl;
+                    // Popup was blocked or failed to open. Fallback to navigating the top page to load the video outside the site.
+                    try {
+                      if (window.top && window.top !== window) {
+                        window.top.location.href = targetUrl;
+                      } else {
+                        window.location.href = targetUrl;
+                      }
+                    } catch (err) {
+                      window.location.href = targetUrl;
                     }
                   }
                 } catch (e) {
                   try {
-                    if (window.top) {
+                    if (window.top && window.top !== window) {
                       window.top.location.href = targetUrl;
+                    } else {
+                      window.location.href = targetUrl;
                     }
                   } catch (err) {
-                    // Do not load inside iframe (avoid window.location.href = targetUrl)
-                    // Keep the button available for direct click which always works
+                    window.location.href = targetUrl;
                   }
                 }
               }
