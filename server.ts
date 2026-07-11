@@ -1397,21 +1397,10 @@ async function startServer() {
               // Rewrite any v.turkvearab.com URLs to working standalone domains
               embedUrl = rewriteTurkVeArabUrl(embedUrl, fullName);
               
-              // Wrap the server URL in our player proxy to defeat iframe security limitations if it's restricted
+              // Wrap the server URL in our player proxy to defeat iframe security limitations
               let proxyUrl = embedUrl;
-              const shouldProxy = !embedUrl.includes('arabveturk.com') && 
-                                  !embedUrl.includes('iplayerhls.com') && 
-                                  !embedUrl.includes('ok.ru') && 
-                                  !embedUrl.includes('youtube.com') && 
-                                  !embedUrl.includes('google.com') && 
-                                  !embedUrl.includes('vk.com') && 
-                                  !embedUrl.includes('mail.ru') && 
-                                  !embedUrl.includes('sibnet.ru');
-              
-              if (shouldProxy) {
-                const encryptedTarget = encryptValue(embedUrl);
-                proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
-              }
+              const encryptedTarget = encryptValue(embedUrl);
+              proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
               
               const exists = parsedServers.some(p => p.url === proxyUrl);
               if (!exists) {
@@ -1455,19 +1444,8 @@ async function startServer() {
                       embedUrl = rewriteTurkVeArabUrl(embedUrl, srv.name || '');
 
                       let proxyUrl = embedUrl;
-                      const shouldProxy = !embedUrl.includes('arabveturk.com') && 
-                                          !embedUrl.includes('iplayerhls.com') && 
-                                          !embedUrl.includes('ok.ru') && 
-                                          !embedUrl.includes('youtube.com') && 
-                                          !embedUrl.includes('google.com') && 
-                                          !embedUrl.includes('vk.com') && 
-                                          !embedUrl.includes('mail.ru') && 
-                                          !embedUrl.includes('sibnet.ru');
-                      
-                      if (shouldProxy) {
-                        const encryptedTarget = encryptValue(embedUrl);
-                        proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
-                      }
+                      const encryptedTarget = encryptValue(embedUrl);
+                      proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
                       
                       const exists = parsedServers.some(p => p.url === proxyUrl);
                       if (!exists) {
@@ -1530,19 +1508,8 @@ async function startServer() {
          iframeSrc = rewriteTurkVeArabUrl(iframeSrc, 'المشغل الرئيسي');
 
          let proxyUrl = iframeSrc;
-         const shouldProxy = !iframeSrc.includes('arabveturk.com') && 
-                             !iframeSrc.includes('iplayerhls.com') && 
-                             !iframeSrc.includes('ok.ru') && 
-                             !iframeSrc.includes('youtube.com') && 
-                             !iframeSrc.includes('google.com') && 
-                             !iframeSrc.includes('vk.com') && 
-                             !iframeSrc.includes('mail.ru') && 
-                             !iframeSrc.includes('sibnet.ru');
-         
-         if (shouldProxy) {
-           const encryptedTarget = encryptValue(iframeSrc);
-           proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
-         }
+         const encryptedTarget = encryptValue(iframeSrc);
+         proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
          
          const fallbackServers = [{ name: 'المشغل الرئيسي', url: proxyUrl }];
          const responseData = { 
@@ -1845,8 +1812,6 @@ async function startServer() {
         lowerDecrypted.includes('ok.ru') ||
         lowerDecrypted.includes('redplay') ||
         lowerDecrypted.includes('redhd') ||
-        lowerDecrypted.includes('arabveturk.com') ||
-        lowerDecrypted.includes('iplayerhls.com') ||
         lowerDecrypted.includes('youtube.com') ||
         lowerDecrypted.includes('google.com') ||
         lowerDecrypted.includes('vk.com') ||
@@ -2159,44 +2124,6 @@ async function startServer() {
       }
       res.status(500).send(`Error loading secure player wrapper: ${error.message}`);
     }
-  });
-
-  // 4.1.2. Anti-Sandbox Blocked Fallback Route
-  app.get("/blocked.html", (req, res) => {
-    console.log("[Blocked Handler] Anti-sandbox triggered, referer:", req.query.referer || req.headers.referer);
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>جاري تحميل المشغل الآمن...</title>
-        <style>
-          body { background: #000; color: #fff; font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-          .loader { text-align: center; }
-        </style>
-      </head>
-      <body>
-        <div class="loader">
-          <p>جاري تحميل المشغل الآمن...</p>
-          <script>
-            // Redirect back to the referrer or player page safely
-            const ref = document.referrer || window.location.ancestorOrigins?.[0];
-            if (ref) {
-              setTimeout(() => {
-                window.location.href = ref;
-              }, 100);
-            } else {
-              // Standard history back if no referrer found
-              setTimeout(() => {
-                window.history.back();
-              }, 100);
-            }
-          </script>
-        </div>
-      </body>
-      </html>
-    `);
   });
 
   // 4.2. Image Proxy to bypass hotlink and domain protections on API images
