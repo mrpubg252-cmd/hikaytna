@@ -1602,17 +1602,27 @@ async function startServer() {
         return res.status(400).send("Invalid player URL");
       }
 
-      // If the target URL is a known protected embed provider (like ArabHD, EStream, Ok.ru, etc.),
+      let targetUrl = decryptedUrl;
+
+      // Handle Dailymotion specific conversion to embed format if it's a standard video link
+      const dmMatch = targetUrl.match(/dailymotion\.com\/video\/([a-zA-Z0-9]+)/);
+      if (dmMatch) {
+        try {
+          const videoId = dmMatch[1];
+          const queryParam = targetUrl.includes('?') ? '?' + targetUrl.split('?')[1] : '';
+          targetUrl = `https://www.dailymotion.com/embed/video/${videoId}${queryParam}`;
+          console.log(`[3isk Player Proxy] Converted Dailymotion URL to embed: ${targetUrl}`);
+        } catch (e) {
+          console.warn('[3isk Player Proxy] Dailymotion conversion failed:', e);
+        }
+      }
+
+      // If the target URL is a known protected embed provider (like Ok.ru, etc.),
       // we immediately redirect the user's browser iframe to load it natively instead of server proxying.
       // This completely bypasses Cloudflare Turnstile / anti-bot challenge issues (e.g. error code 232403) and CORS blocks!
-      const lowerDecrypted = decryptedUrl.toLowerCase();
+      const lowerDecrypted = targetUrl.toLowerCase();
       const shouldDirectRedirect = 
-        lowerDecrypted.includes('arabhd') ||
-        lowerDecrypted.includes('estream') ||
         lowerDecrypted.includes('ok.ru') ||
-        lowerDecrypted.includes('redplay') ||
-        lowerDecrypted.includes('redhd') ||
-        lowerDecrypted.includes('dailymotion') ||
         lowerDecrypted.includes('youtube.com') ||
         lowerDecrypted.includes('google.com') ||
         lowerDecrypted.includes('vk.com') ||
@@ -1620,16 +1630,16 @@ async function startServer() {
         lowerDecrypted.includes('sibnet.ru');
 
       if (shouldDirectRedirect) {
-        console.log(`[3isk Player Proxy] Direct redirecting (bypass proxy) to: ${decryptedUrl}`);
-        return res.redirect(decryptedUrl);
+        console.log(`[3isk Player Proxy] Direct redirecting (bypass proxy) to: ${targetUrl}`);
+        return res.redirect(targetUrl);
       }
 
-      console.log(`[3isk Player Proxy] Fetching original player page: ${decryptedUrl}`);
+      console.log(`[3isk Player Proxy] Fetching original player page: ${targetUrl}`);
       
-      const response = await axios.get(decryptedUrl, {
+      const response = await axios.get(targetUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-          'Referer': 'https://3iskk.xyz/',
+          'Referer': targetUrl.includes('dailymotion.com') ? 'https://www.dailymotion.com/' : 'https://3iskk.xyz/',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
           'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
         },
@@ -1661,6 +1671,43 @@ async function startServer() {
       const spoofScript = `
         <script id="bypass-script">
           (function() {
+            // Spoof mobile iOS Safari user agent to force mobile player behavior and bypass desktop CORS/232011 blocks
+            try {
+              const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
+              Object.defineProperty(navigator, 'userAgent', { get: function() { return mobileUA; }, configurable: true });
+              Object.defineProperty(navigator, 'platform', { get: function() { return 'iPhone'; }, configurable: true });
+              Object.defineProperty(navigator, 'vendor', { get: function() { return 'Apple Computer, Inc.'; }, configurable: true });
+              Object.defineProperty(navigator, 'maxTouchPoints', { get: function() { return 5; }, configurable: true });
+              
+              // Force mobile screen dimensions to trigger mobile players and bypass desktop restrictions
+              // We use 390x844 (iPhone 12/13/14 size) as a standard mobile baseline
+              try {
+                Object.defineProperty(window, 'innerWidth', { get: function() { return 390; }, configurable: true });
+                Object.defineProperty(window, 'innerHeight', { get: function() { return 844; }, configurable: true });
+                Object.defineProperty(window, 'outerWidth', { get: function() { return 390; }, configurable: true });
+                Object.defineProperty(window, 'outerHeight', { get: function() { return 844; }, configurable: true });
+                
+                const mockScreen = {
+                  width: 390,
+                  height: 844,
+                  availWidth: 390,
+                  availHeight: 844,
+                  colorDepth: 24,
+                  pixelDepth: 24,
+                  orientation: { type: 'portrait-primary', angle: 0 }
+                };
+                Object.defineProperty(window, 'screen', { get: function() { return mockScreen; }, configurable: true });
+                // Also spoof matchMedia for mobile-first checks
+                const originalMatchMedia = window.matchMedia;
+                window.matchMedia = function(query) {
+                  if (query.includes('max-width') || query.includes('pointer: coarse') || query.includes('hover: none')) {
+                    return { matches: true, media: query, onchange: null, addListener: function(){}, removeListener: function(){}, addEventListener: function(){}, removeEventListener: function(){}, dispatchEvent: function(){ return true; } };
+                  }
+                  return originalMatchMedia.call(window, query);
+                };
+              } catch (e) { console.warn('[Proxy Player] Dimension spoofing failed:', e); }
+            } catch (e) { console.warn('[Proxy Player] UserAgent spoofing failed:', e); }
+
             // Safe independent wrappers
             try {
               Object.defineProperty(window, 'parent', { get: function() { return window; }, configurable: true });
@@ -1771,6 +1818,24 @@ async function startServer() {
         const src = $(el).attr('src');
         if (src && !src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('//') && !src.startsWith('javascript:')) {
           $(el).attr('src', makeAbsoluteUrl(src, decryptedUrl));
+        }
+      });
+
+      // Proxy any external iframe embeds so they also get our spoofScript injected and can play CORS-blocked HLS streams seamlessly!
+      $('iframe').each((i, el) => {
+        let src = $(el).attr('src');
+        if (src) {
+          if (src.startsWith('//')) {
+            src = 'https:' + src;
+          }
+          if (src.startsWith('http') && !src.includes('/api/v1/3isk-player') && !src.includes('youtube.com') && !src.includes('google.com') && !src.includes('recaptcha')) {
+            try {
+              const encryptedTarget = encryptValue(src);
+              $(el).attr('src', `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`);
+            } catch (err) {
+              console.warn('[3isk Player Proxy] Failed to encrypt iframe src:', src, err);
+            }
+          }
         }
       });
 
@@ -2027,6 +2092,9 @@ async function startServer() {
         const isQesehSource = currentUrl.includes('qeseh') || currentUrl.includes('sayyarh');
         const isAlooyTv = currentUrl.includes('alooytv');
         const isArabHd = currentUrl.includes('arabhd');
+        const isEStream = currentUrl.includes('estream');
+        const isDailymotion = currentUrl.includes('dailymotion.com');
+        const isRedPlay = currentUrl.includes('redplay') || currentUrl.includes('redhd');
         const is3iskkSource = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive|thenextstop|fitnur|bshra/i);
 
         if (isQesehSource) {
@@ -2038,6 +2106,15 @@ async function startServer() {
         } else if (isArabHd) {
            headersOptions['Referer'] = 'https://arabhd.onl/';
            headersOptions['Origin'] = 'https://arabhd.onl';
+        } else if (isEStream) {
+           headersOptions['Referer'] = 'https://estream.to/';
+           headersOptions['Origin'] = 'https://estream.to';
+        } else if (isDailymotion) {
+           headersOptions['Referer'] = 'https://www.dailymotion.com/';
+           headersOptions['Origin'] = 'https://www.dailymotion.com';
+        } else if (isRedPlay) {
+           headersOptions['Referer'] = 'https://redplay.to/';
+           headersOptions['Origin'] = 'https://redplay.to';
         } else if (is3iskkSource) {
            headersOptions['Referer'] = 'https://3iskk.xyz/';
            headersOptions['Origin'] = 'https://3iskk.xyz';
@@ -3812,7 +3889,8 @@ document.head.appendChild(s);
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Environment PORT is: ${process.env.PORT}`); console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Environment PORT is: ${process.env.PORT}`);
+    console.log(`Server running on port: ${PORT}`);
   });
 }
 
