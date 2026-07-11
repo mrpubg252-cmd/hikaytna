@@ -2868,7 +2868,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                     referrerPolicy="no-referrer-when-downgrade"
                     sandbox={
                       isDailymotion 
-                        ? undefined 
+                        ? "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
                         : (blockPopups 
                             ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
                             : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox")
