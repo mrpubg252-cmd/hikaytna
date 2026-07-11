@@ -2884,6 +2884,29 @@ const SafariNotification = () => {
                   </div>
                 </div>
               )}
+
+              {/* Dailymotion dedicated custom play-overlay */}
+              {videoUrl && (videoUrl.toLowerCase().includes('dailymotion.com') || videoUrl.toLowerCase().includes('syndication')) && (
+                <div className="absolute inset-0 z-[110] flex flex-col items-center justify-center bg-black/85 backdrop-blur-md px-6 text-center animate-fade-in pointer-events-none">
+                  <div className="w-14 h-14 rounded-2xl bg-primary/15 border border-primary/25 flex items-center justify-center mb-4 shadow-xl">
+                    <ExternalLink className="w-6 h-6 text-primary animate-pulse" />
+                  </div>
+                  <h3 className="text-white text-xs sm:text-sm font-black mb-1.5 font-sans tracking-wide">تأمين مشغل Dailymotion 🛡️</h3>
+                  <p className="text-zinc-400 text-[10px] sm:text-[11px] max-w-xs leading-relaxed mb-4">
+                    لمنع النوافذ المنبثقة وحظر الإعلانات المزعجة، يرجى الانتقال إلى مشغل الحلقة الآمن.
+                  </p>
+                  <a
+                    href={videoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="pointer-events-auto px-5 py-2.5 bg-gradient-to-r from-red-650 to-red-750 hover:from-red-700 hover:to-red-800 text-white font-black text-[11px] sm:text-xs rounded-xl shadow-[0_10px_25px_rgba(229,9,20,0.25)] transition-all transform active:scale-95 flex items-center gap-1.5 border border-red-500/20 cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>ذهاب إلى الحلقة 🚀</span>
+                  </a>
+                </div>
+              )}
             </div>
           ) : (
             <ShadowVideo
@@ -3040,6 +3063,18 @@ const SafariNotification = () => {
               {/* Floating navigation icons for Embeds */}
               {isIframeFallback && (
                 <div className="absolute top-4 right-4 z-[1000] flex items-center gap-2 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)]">
+                  {videoUrl && (videoUrl.toLowerCase().includes('dailymotion.com') || videoUrl.toLowerCase().includes('syndication')) && (
+                    <a
+                      href={videoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-1.5 bg-gradient-to-r from-red-650 to-red-750 hover:from-red-700 hover:to-red-800 px-3 py-2 rounded-xl border border-red-500/30 text-white text-[10px] font-black uppercase tracking-wider shadow-2xl pointer-events-auto cursor-pointer"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-white" />
+                      الذهاب للحلقة 🚀
+                    </a>
+                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowEpisodeMenu(!showEpisodeMenu); }}
                     className="flex items-center gap-2 bg-black/85 px-3 py-2 rounded-xl border border-white/10 text-white text-[10px] font-black uppercase tracking-wider shadow-2xl pointer-events-auto"
