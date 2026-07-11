@@ -935,34 +935,34 @@ async function startServer() {
       const categories = [
         { 
           name: 'آخر الحلقات', 
-          url: 'https://wwv.qeseh.com/', 
+          url: 'https://qeseh.net/', 
           pages: [
-            'https://wwv.qeseh.com/',
-            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/page/${i + 2}/`)
+            'https://qeseh.net/',
+            ...Array.from({ length: 9 }, (_, i) => `https://qeseh.net/page/${i + 2}/`)
           ] 
         },
         { 
           name: 'جميع المسلسلات', 
-          url: 'https://wwv.qeseh.com/discover/', 
+          url: 'https://qeseh.net/discover/', 
           pages: [
-            'https://wwv.qeseh.com/discover/',
-            ...Array.from({ length: 19 }, (_, i) => `https://wwv.qeseh.com/discover/page/${i + 2}/`)
+            'https://qeseh.net/discover/',
+            ...Array.from({ length: 19 }, (_, i) => `https://qeseh.net/discover/page/${i + 2}/`)
           ] 
         },
         { 
           name: 'مسلسلات كاملة', 
-          url: 'https://wwv.qeseh.com/category/alarshif/', 
+          url: 'https://qeseh.net/category/alarshif/', 
           pages: [
-            'https://wwv.qeseh.com/category/alarshif/',
-            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/category/alarshif/page/${i + 2}/`)
+            'https://qeseh.net/category/alarshif/',
+            ...Array.from({ length: 9 }, (_, i) => `https://qeseh.net/category/alarshif/page/${i + 2}/`)
           ] 
         },
         { 
           name: 'أفلام تركية', 
-          url: 'https://wwv.qeseh.com/category/yeni-filmler/', 
+          url: 'https://qeseh.net/category/yeni-filmler/', 
           pages: [
-            'https://wwv.qeseh.com/category/yeni-filmler/',
-            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/category/yeni-filmler/page/${i + 2}/`)
+            'https://qeseh.net/category/yeni-filmler/',
+            ...Array.from({ length: 9 }, (_, i) => `https://qeseh.net/category/yeni-filmler/page/${i + 2}/`)
           ] 
         }
       ];
@@ -988,7 +988,7 @@ async function startServer() {
 
       // Try multiple domains or failovers if rate-limited or blocked
       let html = "";
-      const domains = ['https://wwv.qeseh.com', 'https://qeseh.net'];
+      const domains = ['https://qeseh.net', 'https://wwv.qeseh.com'];
       let lastErr = null;
 
       for (const domain of domains) {
@@ -1097,7 +1097,7 @@ async function startServer() {
       }
 
       let html = "";
-      const domains = ['https://wwv.qeseh.com', 'https://qeseh.net'];
+      const domains = ['https://qeseh.net', 'https://wwv.qeseh.com'];
       let lastErr = null;
 
       for (const domain of domains) {
@@ -1602,6 +1602,107 @@ async function startServer() {
         return res.status(400).send("Invalid player URL");
       }
 
+      // 4.1.1. Dailymotion Landing Page (External Redirect)
+      // Per user request: "فقط اذا كان متوفر سيرفر حلقه من Dailymotion يقلي فقط Dailymotion"
+      // "اذا كان كذا يودي الى رابط"
+      if (decryptedUrl.includes('dailymotion.com') && !req.query.confirmed) {
+        let targetUrl = decryptedUrl;
+        // Convert to standard video URL if it's an embed, or keep as is if it's already a video URL
+        // Standard: dailymotion.com/video/x...
+        // Embed: dailymotion.com/embed/video/x...
+        const dmIdMatch = decryptedUrl.match(/dailymotion\.com\/(?:embed\/)?video\/([a-zA-Z0-9]+)/);
+        if (dmIdMatch) {
+          targetUrl = `https://www.dailymotion.com/video/${dmIdMatch[1]}`;
+        }
+
+        return res.send(`
+          <!DOCTYPE html>
+          <html dir="rtl">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>مشغل Dailymotion</title>
+            <style>
+              body {
+                margin: 0;
+                padding: 0;
+                background: #000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                color: #fff;
+                font-family: system-ui, -apple-system, sans-serif;
+                overflow: hidden;
+              }
+              .container {
+                text-align: center;
+                animation: fadeIn 0.5s ease-out;
+                padding: 20px;
+                background: rgba(255,255,255,0.05);
+                border-radius: 20px;
+                border: 1px solid rgba(255,255,255,0.1);
+                max-width: 90%;
+              }
+              @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(20px); }
+                to { opacity: 1; transform: translateY(0); }
+              }
+              .logo {
+                font-size: 24px;
+                font-weight: 900;
+                margin-bottom: 20px;
+                color: #ff0000;
+                display: block;
+              }
+              .watch-button {
+                padding: 16px 32px;
+                font-size: 18px;
+                background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%);
+                color: #fff;
+                text-decoration: none;
+                border-radius: 12px;
+                font-weight: 800;
+                display: inline-block;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                box-shadow: 0 10px 25px rgba(255, 0, 0, 0.4);
+                cursor: pointer;
+                border: none;
+              }
+              .watch-button:hover {
+                transform: scale(1.05);
+                box-shadow: 0 15px 35px rgba(255, 0, 0, 0.6);
+              }
+              .hint {
+                margin-top: 25px;
+                color: rgba(255, 255, 255, 0.6);
+                font-size: 14px;
+                line-height: 1.6;
+              }
+              .dm-logo {
+                width: 40px;
+                height: 40px;
+                margin-bottom: 15px;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <svg class="dm-logo" viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+              <div class="logo">Dailymotion</div>
+              <a href="${targetUrl}" target="_blank" class="watch-button">
+                اضغط هنا لمشاهدة الحلقة
+              </a>
+              <div class="hint">
+                يتعذر تشغيل هذا السيرفر داخل الموقع مباشرة.<br>
+                سيتم فتح الحلقة في نافذة جديدة لضمان أفضل جودة.
+              </div>
+            </div>
+          </body>
+          </html>
+        `);
+      }
+
       // If the target URL is a known protected embed provider (like ArabHD, EStream, Ok.ru, etc.),
       // we immediately redirect the user's browser iframe to load it natively instead of server proxying.
       // This completely bypasses Cloudflare Turnstile / anti-bot challenge issues (e.g. error code 232403) and CORS blocks!
@@ -1612,7 +1713,6 @@ async function startServer() {
         lowerDecrypted.includes('ok.ru') ||
         lowerDecrypted.includes('redplay') ||
         lowerDecrypted.includes('redhd') ||
-        lowerDecrypted.includes('dailymotion') ||
         lowerDecrypted.includes('youtube.com') ||
         lowerDecrypted.includes('google.com') ||
         lowerDecrypted.includes('vk.com') ||

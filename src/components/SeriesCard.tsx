@@ -116,7 +116,7 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
         decoding="async"
         referrerPolicy="no-referrer"
         className={cn(
-          "absolute inset-0 w-full h-full object-cover transition-all duration-500 will-change-transform z-10",
+          "absolute inset-0 w-full h-full object-fill transition-all duration-500 will-change-transform z-10",
           imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95',
           isLegendary && "scale-[1.01]"
         )}

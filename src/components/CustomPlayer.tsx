@@ -14,6 +14,7 @@ import { progressService } from '../services/progressService';
 import HorizontalEpisodeList from './HorizontalEpisodeList';
 import { useDevice } from '../context/DeviceAndNavigationContext';
 import { formatEpisodeTitle } from './EpisodeGrid';
+import { encryptValue } from '../lib/security';
 
 interface CustomPlayerProps {
   videoUrl: string;
@@ -290,12 +291,26 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
 
   const resolvedVideoUrl = React.useMemo(() => {
     if (!videoUrl) return '';
-    if (videoUrl.includes('mega.nz')) {
+    
+    let target = videoUrl;
+
+    if (target.includes('mega.nz')) {
       // Convert standard Mega file URLs into the embed URL representation
       // e.g. /file/... -> /embed/...
-      return videoUrl.replace(/\/file\//i, '/embed/');
+      target = target.replace(/\/file\//i, '/embed/');
     }
-    return videoUrl;
+
+    // Wrap Dailymotion in our proxy to show the landing page
+    if (target.includes('dailymotion.com')) {
+      try {
+        const encrypted = encryptValue(target);
+        return `/api/v1/3isk-player?url=${encodeURIComponent(encrypted)}`;
+      } catch (e) {
+        console.warn('[CustomPlayer] Encryption failed:', e);
+      }
+    }
+
+    return target;
   }, [videoUrl]);
 
   const { profile } = useAuth();
