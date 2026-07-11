@@ -1225,6 +1225,16 @@ async function startServer() {
     }
   }
 
+  function getEmbedUrl(name: string, id: string): string {
+    const n = name.toLowerCase();
+    if (n.includes('arab')) return `https://arabhd.onl/embed-${id}.html`;
+    if (n.includes('estream')) return `https://estream.to/embed-${id}.html`;
+    if (n.includes('dailymotion')) return `https://www.dailymotion.com/embed/video/${id}`;
+    if (n.includes('ok')) return `https://ok.ru/videoembed/${id}`;
+    if (n.includes('red')) return `https://redplay.to/embed-${id}.html`;
+    return id.startsWith('http') ? id : `https://arabhd.onl/embed-${id}.html`;
+  }
+
   // 4. Play URL
   app.get("/api/v1/play", async (req, res) => {
     try {
@@ -1238,16 +1248,6 @@ async function startServer() {
       const cached = getCachedData(cacheKey);
       if (cached) {
         return res.json(cached);
-      }
-
-      function getEmbedUrl(name: string, id: string): string {
-        const n = name.toLowerCase();
-        if (n.includes('arab')) return `https://arabhd.onl/embed-${id}.html`;
-        if (n.includes('estream')) return `https://estream.to/embed-${id}.html`;
-        if (n.includes('dailymotion')) return `https://www.dailymotion.com/embed/video/${id}`;
-        if (n.includes('ok')) return `https://ok.ru/videoembed/${id}`;
-        if (n.includes('red')) return `https://redplay.to/embed-${id}.html`;
-        return id.startsWith('http') ? id : `https://arabhd.onl/embed-${id}.html`;
       }
 
       let iframeSrc = "";
@@ -1273,7 +1273,8 @@ async function startServer() {
           '.server-item',
           '.watch-servers li',
           '.player-option',
-          '.server-btn'
+          '.server-btn',
+          '.skipAd a'
         ];
 
         selectors.forEach(sel => {
@@ -1305,10 +1306,8 @@ async function startServer() {
               
               // Wrap the server URL in our player proxy to defeat iframe security limitations
               let proxyUrl = embedUrl;
-              if (!embedUrl.includes('thenextstop.net')) {
-                const encryptedTarget = encryptValue(embedUrl);
-                proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
-              }
+              const encryptedTarget = encryptValue(embedUrl);
+              proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
               
               const exists = parsedServers.some(p => p.url === proxyUrl);
               if (!exists) {
@@ -1349,10 +1348,8 @@ async function startServer() {
                     const embedUrl = getEmbedUrl(srv.name, srv.id);
                     if (embedUrl) {
                       let proxyUrl = embedUrl;
-                      if (!embedUrl.includes('thenextstop.net')) {
-                        const encryptedTarget = encryptValue(embedUrl);
-                        proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
-                      }
+                      const encryptedTarget = encryptValue(embedUrl);
+                      proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
                       
                       const exists = parsedServers.some(p => p.url === proxyUrl);
                       if (!exists) {
@@ -1412,10 +1409,8 @@ async function startServer() {
          }
 
          let proxyUrl = iframeSrc;
-         if (!iframeSrc.includes('thenextstop.net')) {
-           const encryptedTarget = encryptValue(iframeSrc);
-           proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
-         }
+         const encryptedTarget = encryptValue(iframeSrc);
+         proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
          
          const fallbackServers = [{ name: 'المشغل الرئيسي', url: proxyUrl }];
          const responseData = { 
@@ -1724,12 +1719,21 @@ async function startServer() {
         return res.redirect(decryptedUrl);
       }
 
-      console.log(`[3isk Player Proxy] Fetching original player page: ${decryptedUrl}`);
-      
+      let referer = 'https://3iskk.xyz/';
+      if (decryptedUrl.includes('thenextstop.net')) {
+        referer = 'https://thenextstop.net/';
+      } else if (decryptedUrl.includes('sayyarh.com')) {
+        referer = 'https://sayyarh.com/';
+      } else if (decryptedUrl.includes('qeseh.net') || decryptedUrl.includes('qeseh.com')) {
+        referer = 'https://qeseh.net/';
+      } else if (decryptedUrl.includes('iplayerhls.com')) {
+        referer = 'https://iplayerhls.com/';
+      }
+
       const response = await axios.get(decryptedUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-          'Referer': 'https://3iskk.xyz/',
+          'Referer': referer,
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
           'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
         },
@@ -1746,6 +1750,63 @@ async function startServer() {
       const $ = cheerio.load(html);
       const parsedUrl = new URL(decryptedUrl);
       const originalOrigin = parsedUrl.origin;
+
+      // 0. Special Resolver for NextStop/Watch pages listing multiple servers
+      if (decryptedUrl.includes('thenextstop.net') && $('.serversList').length > 0) {
+        console.log(`[NextStop Resolver] Detected multi-server page: ${decryptedUrl}`);
+        const extracted: { name: string; url: string; id: string }[] = [];
+        
+        $('.serversList li').each((i, el) => {
+           const name = $(el).find('span').text().trim() || $(el).attr('data-name') || `سيرفر ${i+1}`;
+           const type = $(el).find('em').text().trim();
+           const fullName = type ? `${name} (${type})` : name;
+           const id = $(el).attr('data-server') || $(el).attr('data-id') || '';
+           const link = $(el).find('code a').attr('href') || $(el).find('a').attr('href') || '';
+           
+           let finalUrl = link;
+           if (!finalUrl && id) {
+              finalUrl = getEmbedUrl(name, id);
+           }
+           
+           if (finalUrl) {
+              extracted.push({ name: fullName, url: finalUrl, id });
+           }
+        });
+
+        if (extracted.length > 0) {
+          // Provide a clean server selection UI to be displayed within the iframe
+          const serverButtons = extracted.map((s, idx) => {
+            const enc = encodeURIComponent(encryptValue(s.url));
+            const proxyUrl = `/api/v1/3isk-player?url=${enc}&confirmed=1`;
+            return `<button class="srv-btn" onclick="window.location.href='${proxyUrl}'">${s.name}</button>`;
+          }).join('');
+
+          return res.send(`
+            <!DOCTYPE html>
+            <html dir="rtl">
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>اختر السيرفر</title>
+              <style>
+                body { margin: 0; background: #000; color: #fff; font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; text-align: center; }
+                .container { padding: 20px; max-width: 500px; }
+                .title { font-size: 16px; margin-bottom: 20px; color: #aaa; font-weight: 800; }
+                .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+                .srv-btn { padding: 12px; background: #111; border: 1px solid #333; border-radius: 8px; color: #fff; cursor: pointer; transition: all 0.2s; font-weight: bold; font-size: 13px; }
+                .srv-btn:hover { background: #e50914; border-color: #e50914; transform: translateY(-2px); }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="title">اختر سيرفر المشاهدة:</div>
+                <div class="grid">${serverButtons}</div>
+              </div>
+            </body>
+            </html>
+          `);
+        }
+      }
 
       // 1. Inject <base> tag to force the browser to resolve relative resources to the original host
       const baseTagExists = $('base').length > 0;
@@ -1802,25 +1863,29 @@ async function startServer() {
                   catch(e) { return u; }
                }
 
-               function shouldProxy(u, method) {
-                  if (typeof u !== 'string') return false;
-                  if (method && method.toUpperCase() !== 'GET') return false;
-                  if (u.startsWith('blob:') || u.startsWith('data:')) return false;
-                  if (u.includes('/api/v1/stream-proxy')) return false;
-                  // Always proxy media extensions
-                  const lu = u.toLowerCase();
-                  if (lu.includes('.m3u8') || lu.includes('.mp4') || lu.includes('.ts') || lu.includes('.vtt') || lu.includes('.srt') || lu.includes('key')) return true;
-                  
-                  // Also proxy cross-origin requests that might be API calls for media
-                  try {
-                     const parsed = new URL(resolveUrl(u));
-                     const hn = parsed.hostname.toLowerCase();
-                     if (parsed.origin !== window.location.origin && !hn.includes('google') && !hn.includes('facebook') && !hn.includes('cloudflare') && !hn.includes('unpkg') && !hn.includes('cdnjs') && !hn.includes('jwplatform') && !hn.includes('jwpcdn') && !hn.includes('jsdelivr')) {
-                         return true;
-                     }
-                  } catch(e) {}
-                  return false;
-               }
+                function shouldProxy(u, method) {
+                   if (typeof u !== 'string') return false;
+                   if (method && method.toUpperCase() !== 'GET' && method.toUpperCase() !== 'POST') return false;
+                   if (u.startsWith('blob:') || u.startsWith('data:')) return false;
+                   if (u.includes('/api/v1/stream-proxy')) return false;
+                   
+                   const lu = u.toLowerCase();
+                   // Always proxy media extensions
+                   if (lu.includes('.m3u8') || lu.includes('.mp4') || lu.includes('.ts') || lu.includes('.vtt') || lu.includes('.srt') || lu.includes('key')) return true;
+                   
+                   // Explicitly proxy iplayerhls and huntrexus
+                   if (lu.includes('iplayerhls.com') || lu.includes('huntrexus.com') || lu.includes('cdnz.online')) return true;
+
+                   // Also proxy cross-origin requests that might be API calls for media
+                   try {
+                      const parsed = new URL(resolveUrl(u));
+                      const hn = parsed.hostname.toLowerCase();
+                      if (parsed.origin !== window.location.origin && !hn.includes('google') && !hn.includes('facebook') && !hn.includes('cloudflare') && !hn.includes('unpkg') && !hn.includes('cdnjs') && !hn.includes('jwplatform') && !hn.includes('jwpcdn') && !hn.includes('jsdelivr')) {
+                          return true;
+                      }
+                   } catch(e) {}
+                   return false;
+                }
 
                function toB64(str) {
                    return btoa(unescape(encodeURIComponent(str)));
@@ -2092,7 +2157,7 @@ async function startServer() {
   });
 
   // 4.6. Secure Stream Proxy (Absolute Protection against sniffers)
-  app.get("/api/v1/stream-proxy/:encryptedUrl", async (req, res) => {
+  app.all("/api/v1/stream-proxy/:encryptedUrl", async (req, res) => {
     try {
       const encrypted = req.params.encryptedUrl;
       let url = decryptValue(decodeURIComponent(encrypted));
@@ -2127,6 +2192,9 @@ async function startServer() {
         const isQesehSource = currentUrl.includes('qeseh') || currentUrl.includes('sayyarh');
         const isAlooyTv = currentUrl.includes('alooytv');
         const isArabHd = currentUrl.includes('arabhd');
+        const isNextStop = currentUrl.includes('thenextstop.net');
+        const isIPlayer = currentUrl.includes('iplayerhls.com') || currentUrl.includes('huntrexus.com');
+        const isCdnz = currentUrl.includes('cdnz.online');
         const is3iskkSource = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive|thenextstop|fitnur|bshra/i);
 
         if (isQesehSource) {
@@ -2138,6 +2206,15 @@ async function startServer() {
         } else if (isArabHd) {
            headersOptions['Referer'] = 'https://arabhd.onl/';
            headersOptions['Origin'] = 'https://arabhd.onl';
+        } else if (isNextStop) {
+           headersOptions['Referer'] = 'https://thenextstop.net/';
+           headersOptions['Origin'] = 'https://thenextstop.net';
+        } else if (isIPlayer) {
+           headersOptions['Referer'] = 'https://iplayerhls.com/';
+           headersOptions['Origin'] = 'https://iplayerhls.com';
+        } else if (isCdnz) {
+           headersOptions['Referer'] = 'https://qeseh.net/';
+           headersOptions['Origin'] = 'https://qeseh.net';
         } else if (is3iskkSource) {
            headersOptions['Referer'] = 'https://3iskk.xyz/';
            headersOptions['Origin'] = 'https://3iskk.xyz';
@@ -2150,17 +2227,23 @@ async function startServer() {
           headersOptions.range = req.headers.range;
         }
 
-        axiosResponse = await axios({
-          method: 'GET',
+        const axiosConfig: any = {
+          method: req.method,
           url: currentUrl,
           responseType: 'stream',
           headers: headersOptions,
           maxRedirects: 0, // Handle redirects manually to preserve Referer/Origin headers
-          validateStatus: (status) => status >= 200 && status < 400,
+          validateStatus: (status: number) => status >= 200 && status < 400,
           httpAgent: new http.Agent({ keepAlive: true, family: 4 }),
           httpsAgent: new https.Agent({ keepAlive: true, rejectUnauthorized: false, family: 4 }),
           timeout: 45000 // Higher timeout for slow video providers
-        });
+        };
+
+        if (req.method === 'POST') {
+           axiosConfig.data = req; // Pipe the original request body
+        }
+
+        axiosResponse = await axios(axiosConfig);
 
         if (axiosResponse.status >= 300 && axiosResponse.status < 400 && axiosResponse.headers.location) {
           let nextUrl = axiosResponse.headers.location;

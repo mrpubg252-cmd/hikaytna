@@ -300,10 +300,13 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
       target = target.replace(/\/file\//i, '/embed/');
     }
 
-    // Wrap Dailymotion in our proxy to show the landing page
-    if (target.includes('dailymotion.com')) {
+    // Wrap Dailymotion, iplayerhls and cdnz in our proxy
+    if (target.includes('dailymotion.com') || target.includes('iplayerhls.com') || target.includes('cdnz.online')) {
       try {
         const encrypted = encryptValue(target);
+        if (target.includes('.m3u8') || target.includes('.mp4')) {
+           return `/api/v1/stream-proxy/${encodeURIComponent(encrypted)}`;
+        }
         return `/api/v1/3isk-player?url=${encodeURIComponent(encrypted)}`;
       } catch (e) {
         console.warn('[CustomPlayer] Encryption failed:', e);
