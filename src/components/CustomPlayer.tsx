@@ -2905,8 +2905,39 @@ const SafariNotification = () => {
               "w-full h-full relative",
               resolvedVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
             )}>
-              {(videoUrl && (videoUrl.toLowerCase().includes('dailymotion.com') || videoUrl.toLowerCase().includes('syndication'))) ? (
-                <div className="w-full h-full z-[110] flex flex-col items-center justify-center bg-[#07070a] px-6 text-center animate-fade-in border border-red-900/30 rounded-2xl">
+              <iframe
+                src={resolvedVideoUrl}
+                className={cn(
+                  "w-full h-full border-0 animate-fade-in",
+                  resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
+                )}
+                allowFullScreen
+                allow="autoplay; encrypted-media; picture-in-picture"
+                referrerPolicy="no-referrer-when-downgrade"
+                sandbox={
+                  blockPopups 
+                    ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
+                    : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
+                }
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  backgroundColor: 'black',
+                  position: 'relative',
+                  zIndex: 10,
+                }}
+              />
+              {resolvedVideoUrl.includes('streamimdb') && (
+                <div className="absolute top-4 left-4 z-20 pointer-events-none">
+                  <div className="bg-amber-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
+                    <Sparkles className="w-3 h-3 fill-current" />
+                    PREMIUM STREAMING
+                  </div>
+                </div>
+              )}
+
+              {(videoUrl && (videoUrl.toLowerCase().includes('dailymotion.com') || videoUrl.toLowerCase().includes('syndication'))) && (
+                <div className="absolute inset-0 z-[110] flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm px-6 text-center animate-fade-in pointer-events-none">
                   <div className="w-16 h-16 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center mb-5 shadow-2xl relative">
                     <div className="absolute inset-0 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
                     <span className="text-primary font-black text-xl font-mono">{dailymotionSeconds !== null ? dailymotionSeconds : 6}</span>
@@ -2939,39 +2970,6 @@ const SafariNotification = () => {
                     </span>
                   </a>
                 </div>
-              ) : (
-                <>
-                  <iframe
-                    src={resolvedVideoUrl}
-                    className={cn(
-                      "w-full h-full border-0 animate-fade-in",
-                      resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
-                    )}
-                    allowFullScreen
-                    allow="autoplay; encrypted-media; picture-in-picture"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    sandbox={
-                      blockPopups 
-                        ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
-                        : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
-                    }
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      backgroundColor: 'black',
-                      position: 'relative',
-                      zIndex: 10,
-                    }}
-                  />
-                  {resolvedVideoUrl.includes('streamimdb') && (
-                    <div className="absolute top-4 left-4 z-20 pointer-events-none">
-                      <div className="bg-amber-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
-                        <Sparkles className="w-3 h-3 fill-current" />
-                        PREMIUM STREAMING
-                      </div>
-                    </div>
-                  )}
-                </>
               )}
             </div>
           ) : (
