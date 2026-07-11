@@ -1720,12 +1720,20 @@ async function startServer() {
           <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<<<<<<< HEAD
             <title>مشغل Dailymotion</title>
+=======
+            <title>مشغل Dailymotion الآمن</title>
+>>>>>>> 8037c95 (update code)
             <style>
               body {
                 margin: 0;
                 padding: 0;
+<<<<<<< HEAD
                 background: #000;
+=======
+                background: #050505;
+>>>>>>> 8037c95 (update code)
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -1736,6 +1744,7 @@ async function startServer() {
               }
               .container {
                 text-align: center;
+<<<<<<< HEAD
                 animation: fadeIn 0.5s ease-out;
                 padding: 20px;
                 background: rgba(255,255,255,0.05);
@@ -1782,11 +1791,112 @@ async function startServer() {
                 width: 40px;
                 height: 40px;
                 margin-bottom: 15px;
+=======
+                animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+                padding: 30px 24px;
+                background: rgba(10, 10, 10, 0.8);
+                backdrop-filter: blur(12px);
+                border-radius: 24px;
+                border: 1px solid rgba(229, 9, 20, 0.15);
+                max-width: 380px;
+                width: 90%;
+                box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 40px rgba(229, 9, 20, 0.05);
+              }
+              @keyframes fadeIn {
+                from { opacity: 0; transform: scale(0.95) translateY(15px); }
+                to { opacity: 1; transform: scale(1) translateY(0); }
+              }
+              .logo {
+                font-size: 20px;
+                font-weight: 900;
+                margin-bottom: 24px;
+                color: #E50914;
+                letter-spacing: 0.5px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+              }
+              
+              /* Circular Progress Timer */
+              .timer-wrapper {
+                position: relative;
+                width: 80px;
+                height: 80px;
+                margin: 0 auto 24px auto;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              }
+              .timer-svg {
+                transform: rotate(-90deg);
+                width: 100%;
+                height: 100%;
+              }
+              .timer-bg {
+                fill: none;
+                stroke: rgba(229, 9, 20, 0.1);
+                stroke-width: 4;
+              }
+              .timer-progress {
+                fill: none;
+                stroke: #E50914;
+                stroke-width: 4;
+                stroke-linecap: round;
+                stroke-dasharray: 226; /* 2 * PI * r (r=36) */
+                stroke-dashoffset: 0;
+                transition: stroke-dashoffset 1s linear;
+              }
+              .timer-text {
+                position: absolute;
+                font-size: 26px;
+                font-weight: 900;
+                color: #fff;
+                font-family: monospace;
+              }
+
+              .watch-button {
+                width: 100%;
+                box-sizing: border-box;
+                padding: 14px 24px;
+                font-size: 15px;
+                background: linear-gradient(135deg, #E50914 0%, #B81D24 100%);
+                color: #fff;
+                text-decoration: none;
+                border-radius: 16px;
+                font-weight: 800;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                transition: all 0.2s ease;
+                box-shadow: 0 8px 24px rgba(229, 9, 20, 0.3);
+                cursor: pointer;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+              }
+              .watch-button:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 12px 28px rgba(229, 9, 20, 0.45);
+              }
+              .watch-button:active {
+                transform: translateY(0);
+              }
+              .hint {
+                margin-top: 20px;
+                color: rgba(255, 255, 255, 0.5);
+                font-size: 11px;
+                line-height: 1.6;
+              }
+              .dm-logo {
+                width: 32px;
+                height: 32px;
+>>>>>>> 8037c95 (update code)
               }
             </style>
           </head>
           <body>
             <div class="container">
+<<<<<<< HEAD
               <svg class="dm-logo" viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
               <div class="logo">Dailymotion</div>
               <a href="${targetUrl}" target="_blank" class="watch-button">
@@ -1797,6 +1907,89 @@ async function startServer() {
                 سيتم فتح الحلقة في نافذة جديدة لضمان أفضل جودة.
               </div>
             </div>
+=======
+              <div class="logo">
+                <svg class="dm-logo" viewBox="0 0 24 24" fill="#E50914"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+                <span>Dailymotion الآمن 🛡️</span>
+              </div>
+              
+              <div class="timer-wrapper">
+                <svg class="timer-svg" viewBox="0 0 80 80">
+                  <circle class="timer-bg" cx="40" cy="40" r="36" />
+                  <circle id="progress-circle" class="timer-progress" cx="40" cy="40" r="36" />
+                </svg>
+                <div id="countdown-text" class="timer-text">6</div>
+              </div>
+
+              <a id="redirect-btn" href="${targetUrl}" target="_blank" class="watch-button">
+                <span>جاري تحويلك تلقائياً...</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+              </a>
+              
+              <div class="hint">
+                لمنع النوافذ المنبثقة وحظر الإعلانات المزعجة.<br>
+                سيتم فتح الحلقة تلقائياً بأمان. إذا لم يتم التحويل اضغط على الزر.
+              </div>
+            </div>
+
+            <script>
+              var targetUrl = "${targetUrl}";
+              var countdown = 6;
+              var totalDuration = 6;
+              var progressCircle = document.getElementById('progress-circle');
+              var countdownText = document.getElementById('countdown-text');
+              var redirectBtn = document.getElementById('redirect-btn');
+              
+              var circumference = 2 * Math.PI * 36;
+              
+              function updateProgress(seconds) {
+                var offset = circumference - (seconds / totalDuration) * circumference;
+                progressCircle.style.strokeDashoffset = offset;
+                countdownText.innerText = Math.max(0, seconds);
+                
+                if (seconds > 0) {
+                  redirectBtn.querySelector('span').innerText = 'جاري تحويلك تلقائياً (' + seconds + ')...';
+                } else {
+                  redirectBtn.querySelector('span').innerText = 'ذهاب إلى الحلقة الآن 🚀';
+                }
+              }
+              
+              updateProgress(countdown);
+              
+              function doRedirect() {
+                try {
+                  var newWin = window.open(targetUrl, '_blank');
+                  if (!newWin || newWin.closed || typeof newWin.closed === 'undefined') {
+                    if (window.top) {
+                      window.top.location.href = targetUrl;
+                    } else {
+                      window.location.href = targetUrl;
+                    }
+                  }
+                } catch (e) {
+                  try {
+                    window.top.location.href = targetUrl;
+                  } catch (err) {
+                    window.location.href = targetUrl;
+                  }
+                }
+              }
+              
+              var timer = setInterval(function() {
+                countdown--;
+                updateProgress(countdown);
+                
+                if (countdown <= 0) {
+                  clearInterval(timer);
+                  doRedirect();
+                }
+              }, 1000);
+
+              redirectBtn.addEventListener('click', function(e) {
+                clearInterval(timer);
+              });
+            </script>
+>>>>>>> 8037c95 (update code)
           </body>
           </html>
         `);
