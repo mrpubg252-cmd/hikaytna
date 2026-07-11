@@ -314,7 +314,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     }
 
     return target;
-  }, [activeServerUrl]);
+  }, [videoUrl]);
 
   const { profile } = useAuth();
   const { isTV, isMobile } = useDevice();
@@ -521,7 +521,60 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   };
   const [isSearchOverlayActive, setIsSearchOverlayActive] = useState(false);
 
-  const SafariNotification = () => {
+  const [dailymotionSeconds, setDailymotionSeconds] = useState<number | null>(null);
+  const [isDailymotionClicked, setIsDailymotionClicked] = useState(false);
+
+  useEffect(() => {
+    if (activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion.com') || activeServerUrl.toLowerCase().includes('syndication'))) {
+      setDailymotionSeconds(6);
+      setIsDailymotionClicked(false);
+    } else {
+      setDailymotionSeconds(null);
+      setIsDailymotionClicked(false);
+    }
+  }, [activeServerUrl]);
+
+  useEffect(() => {
+    if (dailymotionSeconds === null) return;
+    if (dailymotionSeconds > 0) {
+      const timer = setTimeout(() => {
+        setDailymotionSeconds(dailymotionSeconds - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (dailymotionSeconds === 0) {
+      // If the user hasn't clicked, we must automatically redirect
+      if (activeServerUrl && !isDailymotionClicked) {
+        try {
+          const newWindow = window.open(activeServerUrl, '_blank');
+          if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+            // Popup was blocked or failed to open. Redirect current page directly to guarantee the video loads outside the site.
+            try {
+              if (window.top && window.top !== window) {
+                window.top.location.href = activeServerUrl;
+              } else {
+                window.location.href = activeServerUrl;
+              }
+            } catch (err) {
+              window.location.href = activeServerUrl;
+            }
+          }
+        } catch (e) {
+          try {
+            if (window.top && window.top !== window) {
+              window.top.location.href = activeServerUrl;
+            } else {
+              window.location.href = activeServerUrl;
+            }
+          } catch (err) {
+            window.location.href = activeServerUrl;
+          }
+        }
+      }
+    }
+  }, [dailymotionSeconds, videoUrl, isDailymotionClicked]);
+
+
+const SafariNotification = () => {
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const [show, setShow] = useState(() => {
     if (!isSafari) return false;
@@ -2443,7 +2496,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
               />
             </div>
 
-
             {/* Glowing drag-indicator thumb (positioned on the right side of progress fill) */}
             <div 
               className={cn(
@@ -2454,15 +2506,12 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
             />
           </div>
 
-
           {/* Video Duration metrics */}
           <div className="flex justify-between text-[11px] font-black tracking-wider text-zinc-400 font-mono mt-0.5 px-0.5">
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(duration)}</span>
           </div>
-
         </div>
-
 
         {/* Functional Dashboard Options Row */}
         <div className="flex flex-row items-center justify-between w-full gap-1 sm:gap-2 mt-1">
@@ -2536,9 +2585,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
             </div>
 
 
-
           </div>
-
 
           {/* Right controls */}
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
@@ -2589,24 +2636,60 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
               {isMaximized ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
             </button>
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 
   return (
     <>
-    <div
+      {(activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion.com') || activeServerUrl.toLowerCase().includes('syndication'))) && (
+        <div className="w-full bg-[#050505] border border-red-900/30 rounded-xl mb-4 p-6 text-center shadow-xl animate-fade-in relative overflow-hidden flex flex-col items-center justify-center">
+          <div className="absolute inset-0 bg-gradient-to-r from-red-600/5 via-transparent to-red-600/5" />
+          <div className="relative z-10 w-16 h-16 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center mb-5 shadow-2xl">
+            <div className="absolute inset-0 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+            <span className="text-primary font-black text-xl font-mono">{dailymotionSeconds !== null ? dailymotionSeconds : 6}</span>
+          </div>
+          
+          <h3 className="text-lg sm:text-xl font-black text-white mb-2 tracking-tight relative z-10">سيرفر Dailymotion الخاص</h3>
+          <p className="text-xs sm:text-sm text-zinc-400 font-medium mb-6 max-w-md mx-auto relative z-10">
+            يرجى العلم أن هذا السيرفر يتطلب فتح صفحة خارجية لضمان الجودة العالية وعدم التقطيع
+          </p>
+
+          <a
+            href={activeServerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsDailymotionClicked(true);
+            }}
+            className="pointer-events-auto relative z-10 px-8 py-3.5 bg-gradient-to-r from-red-650 to-red-750 hover:from-red-700 hover:to-red-800 text-white font-black text-sm rounded-2xl shadow-[0_12px_30px_rgba(229,9,20,0.3)] transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-3 border border-red-500/20 cursor-pointer"
+          >
+            <ExternalLink className="w-5 h-5 text-white" />
+            <span>
+              {isDailymotionClicked ? (
+                dailymotionSeconds === 0 ? "اضغط هنا إذا لم تفتح الحلقة 🚀" : `جاري تحويل للحلقة (${dailymotionSeconds})...`
+              ) : (
+                dailymotionSeconds === 0 ? "الذهاب إلى الحلقة الآن 🚀" : `جاري تحويلك تلقائياً (${dailymotionSeconds})...`
+              )}
+            </span>
+          </a>
+        </div>
+      )}
+
+      <div 
+        id="custom-video-player-container"
       ref={containerRef}
       onMouseMove={handleMouseMove}
-      onClick={handleContainerClick}
+      onMouseLeave={() => isPlaying && !isHoveringControls && setShowControls(false)}
+      onClick={handlePlayerClick}
       className={cn(
-        "group relative flex items-center justify-center overflow-hidden transition-all duration-300",
-        useCssRotationFallback ? "fixed inset-0 z-[99999] bg-black" : (isMaximized || isForceRotated) ? "fixed inset-0 z-[99999] bg-black" : "w-full aspect-video rounded-3xl bg-zinc-950 border border-white/5",
-        (isForceRotated && !useCssRotationFallback) && "landscape-mode"
+        "relative select-none flex flex-col items-center justify-center bg-black overflow-hidden group w-full h-full text-white cursor-pointer transition-all duration-300 touch-manipulation",
+        isSearchOverlayActive ? "z-0 pointer-events-none opacity-0 select-none scale-95" : "",
+        (isMaximized || isForceRotated)
+          ? (isSearchOverlayActive ? "fixed inset-0 w-full z-0 opacity-0 pointer-events-none" : "fixed inset-0 w-screen h-[100dvh] z-[99999] p-0 m-0 border-none rounded-none") 
+          : "aspect-video rounded-xl border border-white/5"
       )}
       style={
         useCssRotationFallback ? {
@@ -2665,10 +2748,8 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                     <div className="w-10 h-10 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin" />
                     <p className="text-zinc-400 text-xs font-bold font-sans">جاري تحميل إعلان الشريك الموثوق...</p>
                   </div>
-
                 )}
               </div>
-
             ) : (
               <video
                 ref={adVideoRef}
@@ -2705,7 +2786,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                   {useIframeAd ? "موقع الشريك الراعي" : "إعلان ممول"}
                 </span>
               </div>
-
               
               {useIframeAd && currentAdVideoSrc ? (
                 <button
@@ -2729,7 +2809,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
               ) : null}
             </div>
 
-
             {/* Bottom Controls / Skip Action Button Row */}
             <div className="absolute bottom-6 left-6 right-6 z-[2100] flex justify-between items-end pointer-events-none">
               
@@ -2746,7 +2825,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                 <div className="w-8 h-8 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-500 text-sm font-black">
                   🔗
                 </div>
-
                 <div className="flex flex-col text-right">
                   <span className="text-[10px] text-zinc-400 font-bold">زيارة موقع الراعي</span>
                   <span className="text-xs text-white font-black truncate max-w-[150px]">
@@ -2759,9 +2837,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                     })() : "تفاصل أكثر"}
                   </span>
                 </div>
-
               </div>
-
 
               {/* Right Skip / Countdown Controller */}
               <div className="flex flex-col items-end gap-2 text-right">
@@ -2771,7 +2847,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                     <span className="text-yellow-500 font-mono text-sm">{adCountdown}</span>
                     <span className="text-zinc-400"> ثوانٍ</span>
                   </div>
-
                 ) : (
                   <button
                     id="ad-skip-button"
@@ -2787,9 +2862,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                   </button>
                 )}
               </div>
-
             </div>
-
           </motion.div>
         )}
       </AnimatePresence>
@@ -2799,7 +2872,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
           <div className="w-14 h-14 border-4 border-primary border-t-transparent rounded-full animate-spin shadow-lg shadow-primary/20" />
           <p className="text-zinc-400 text-sm font-bold tracking-widest text-center px-4">جاري تجهيز سيرفرات المشغل المباشر...</p>
         </div>
-
       ) : playerjsLoaded ? (
         // Dynamic custom PlayerJS renderer container
         <div className="relative w-full h-full">
@@ -2837,9 +2909,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
               {isMaximized ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
             </button>
           </div>
-
         </div>
-
       ) : (
         // High fidelity native fallback player
         <>
@@ -2863,9 +2933,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                   )
                 )}
               </div>
-
             </div>
-
           )}
 
           {isIframeFallback ? (
@@ -2873,54 +2941,38 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
               "w-full h-full relative",
               resolvedVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
             )}>
-              {(activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion.com') || activeServerUrl.toLowerCase().includes('syndication'))) ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 p-8 text-center overflow-hidden">
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-red-600/5 via-transparent to-transparent" />
-                  <div className="w-16 h-16 rounded-2xl bg-red-500/10 text-red-500 flex items-center justify-center mb-6 border border-red-500/20 shadow-[0_0_50px_rgba(239,68,68,0.1)] relative z-10">
-                    <ExternalLink className="w-8 h-8 animate-pulse" />
-                  </div>
-                  <h3 className="text-xl sm:text-2xl font-black text-white mb-2 relative z-10">سيرفر خارجي (Dailymotion)</h3>
-                  <p className="text-sm sm:text-base text-zinc-400 max-w-md mx-auto mb-8 font-medium relative z-10">
-                    يرجى استخدام الرابط الموجود فوق المشغل للمشاهدة
-                  </p>
-                </div>
-              ) : (
-                <iframe
-                  src={resolvedVideoUrl}
-                  className={cn(
-                    "w-full h-full border-0 animate-fade-in",
-                    resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
-                  )}
-                  allowFullScreen
-                  allow="autoplay; encrypted-media; picture-in-picture"
-                  referrerPolicy="no-referrer-when-downgrade"
-                  sandbox={
-                    blockPopups 
-                      ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
-                      : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
-                  }
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    backgroundColor: 'black',
-                    position: 'relative',
-                    zIndex: 10,
-                  }}
-                />
-              )}
+              <iframe
+                src={resolvedVideoUrl}
+                className={cn(
+                  "w-full h-full border-0 animate-fade-in",
+                  resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
+                )}
+                allowFullScreen
+                allow="autoplay; encrypted-media; picture-in-picture"
+                referrerPolicy="no-referrer-when-downgrade"
+                sandbox={
+                  blockPopups 
+                    ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
+                    : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
+                }
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  backgroundColor: 'black',
+                  position: 'relative',
+                  zIndex: 10,
+                }}
+              />
               {resolvedVideoUrl.includes('streamimdb') && (
                 <div className="absolute top-4 left-4 z-20 pointer-events-none">
                   <div className="bg-amber-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
                     <Sparkles className="w-3 h-3 fill-current" />
                     PREMIUM STREAMING
                   </div>
-
                 </div>
-
               )}
 
             </div>
-
           ) : (
             <ShadowVideo
               videoRef={videoRef}
@@ -2951,9 +3003,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                         <span className="w-2 h-2 rounded-full bg-emerald-450 animate-ping shrink-0" />
                         <span>🍿 بإمكانك إطفاء الواي فاي الآن ومتابعة المشاهدة بدون إنترنت وبدون استهلاك الباقة! ⚡</span>
                       </div>
-
                     </div>
-
                   )
                 ) : (
                   <div className="absolute inset-0 z-30 flex flex-col items-center justify-center pointer-events-none bg-black/60 backdrop-blur-md px-6 text-center animate-fade-in">
@@ -2965,7 +3015,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                       إذا قمت بتحميل هذه الحلقة مسبقاً، يرجى تفعيل وضع الأوفلاين.
                     </p>
                   </div>
-
                 )
               )}
 
@@ -3016,7 +3065,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                           <motion.span animate={{ x: [-5, 5, -5] }} transition={{ repeat: Infinity, duration: 0.6, delay: 0.1 }} className="text-white text-xl font-bold">◀</motion.span>
                           <motion.span animate={{ x: [-5, 5, -5] }} transition={{ repeat: Infinity, duration: 0.6, delay: 0.2 }} className="text-white text-xl font-bold">◀</motion.span>
                         </div>
-
                         <span className="text-[10px] sm:text-xs font-black tracking-wider text-white">10ث للخلف</span>
                       </motion.div>
                     </motion.div>
@@ -3042,14 +3090,12 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                           <motion.span animate={{ x: [5, -5, 5] }} transition={{ repeat: Infinity, duration: 0.6, delay: 0.1 }} className="text-white text-xl font-bold">▶</motion.span>
                           <motion.span animate={{ x: [5, -5, 5] }} transition={{ repeat: Infinity, duration: 0.6 }} className="text-white text-xl font-bold">▶</motion.span>
                         </div>
-
                         <span className="text-[10px] sm:text-xs font-black tracking-wider text-white">10ث للأمام</span>
                       </motion.div>
                     </motion.div>
                   )}
                 </AnimatePresence>
               </div>
-
 
               {/* Central Play/Pause Circular Button Overlay */}
               <AnimatePresence>
@@ -3082,6 +3128,18 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
               {/* Floating navigation icons for Embeds */}
               {isIframeFallback && (
                 <div className="absolute top-4 right-4 z-[1000] flex items-center gap-2 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)]">
+                  {activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion.com') || activeServerUrl.toLowerCase().includes('syndication')) && (
+                    <a
+                      href={activeServerUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-1.5 bg-gradient-to-r from-red-650 to-red-750 hover:from-red-700 hover:to-red-800 px-3 py-2 rounded-xl border border-red-500/30 text-white text-[10px] font-black uppercase tracking-wider shadow-2xl pointer-events-auto cursor-pointer"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-white" />
+                      الذهاب للحلقة 🚀
+                    </a>
+                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowEpisodeMenu(!showEpisodeMenu); }}
                     className="flex items-center gap-2 bg-black/85 px-3 py-2 rounded-xl border border-white/10 text-white text-[10px] font-black uppercase tracking-wider shadow-2xl pointer-events-auto"
@@ -3109,7 +3167,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                     {isMaximized ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
                   </button>
                 </div>
-
               )}
 
               {!isIframeFallback && controlsLayout}
@@ -3128,7 +3185,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                       <span className="text-[10px] sm:text-[11px] font-black text-red-500 tracking-wider">تم الاستئناف</span>
                       <span className="text-[11px] sm:text-[12px] text-zinc-200 mt-0.5">{resumeTimeText}</span>
                     </div>
-
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -3209,7 +3265,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                         <div className="text-center flex-1">
                           <h3 className="text-[11px] sm:text-xs font-black text-white">اختر حلقة للمشاهدة ({episodes.length})</h3>
                         </div>
-
                         <button 
                           onClick={() => setShowEpisodeMenu(false)}
                           data-tv-focusable="true"
@@ -3218,7 +3273,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                           <ChevronLeft className="w-3 h-3 shrink-0 -rotate-90" />
                         </button>
                       </div>
-
 
                       {/* Content Section */}
                       <div className="flex-grow pt-1 w-full min-h-0">
@@ -3236,10 +3290,8 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                           }}
                         />
                       </div>
-
                     </motion.div>
                   </div>
-
                 )}
               </AnimatePresence>
 
@@ -3268,10 +3320,9 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
           )}
         </>
       )}
-    </div>
+      </div>
     </>
   );
 });
 
 export default CustomPlayer;
-
