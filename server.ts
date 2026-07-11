@@ -1867,6 +1867,7 @@ async function startServer() {
               var targetUrl = "${targetUrl}";
               var countdown = 6;
               var totalDuration = 6;
+              var isClicked = false;
               var progressCircle = document.getElementById('progress-circle');
               var countdownText = document.getElementById('countdown-text');
               var redirectBtn = document.getElementById('redirect-btn');
@@ -1878,30 +1879,34 @@ async function startServer() {
                 progressCircle.style.strokeDashoffset = offset;
                 countdownText.innerText = Math.max(0, seconds);
                 
-                if (seconds > 0) {
-                  redirectBtn.querySelector('span').innerText = 'جاري تحويلك تلقائياً (' + seconds + ')...';
-                } else {
-                  redirectBtn.querySelector('span').innerText = 'ذهاب إلى الحلقة الآن 🚀';
+                if (!isClicked) {
+                  if (seconds > 0) {
+                    redirectBtn.querySelector('span').innerText = 'جاري تحويلك تلقائياً (' + seconds + ')...';
+                  } else {
+                    redirectBtn.querySelector('span').innerText = 'ذهاب إلى الحلقة الآن 🚀';
+                  }
                 }
               }
               
               updateProgress(countdown);
               
               function doRedirect() {
+                if (isClicked) return;
                 try {
                   var newWin = window.open(targetUrl, '_blank');
                   if (!newWin || newWin.closed || typeof newWin.closed === 'undefined') {
                     if (window.top) {
                       window.top.location.href = targetUrl;
-                    } else {
-                      window.location.href = targetUrl;
                     }
                   }
                 } catch (e) {
                   try {
-                    window.top.location.href = targetUrl;
+                    if (window.top) {
+                      window.top.location.href = targetUrl;
+                    }
                   } catch (err) {
-                    window.location.href = targetUrl;
+                    // Do not load inside iframe (avoid window.location.href = targetUrl)
+                    // Keep the button available for direct click which always works
                   }
                 }
               }
@@ -1917,7 +1922,8 @@ async function startServer() {
               }, 1000);
 
               redirectBtn.addEventListener('click', function(e) {
-                clearInterval(timer);
+                isClicked = true;
+                updateProgress(countdown);
               });
             </script>
           </body>

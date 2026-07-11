@@ -522,12 +522,15 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   const [isSearchOverlayActive, setIsSearchOverlayActive] = useState(false);
 
   const [dailymotionSeconds, setDailymotionSeconds] = useState<number | null>(null);
+  const [isDailymotionClicked, setIsDailymotionClicked] = useState(false);
 
   useEffect(() => {
     if (videoUrl && (videoUrl.toLowerCase().includes('dailymotion.com') || videoUrl.toLowerCase().includes('syndication'))) {
       setDailymotionSeconds(6);
+      setIsDailymotionClicked(false);
     } else {
       setDailymotionSeconds(null);
+      setIsDailymotionClicked(false);
     }
   }, [videoUrl]);
 
@@ -539,18 +542,34 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
       }, 1000);
       return () => clearTimeout(timer);
     } else if (dailymotionSeconds === 0) {
-      if (videoUrl) {
+      if (videoUrl && !isDailymotionClicked) {
         try {
           const newWindow = window.open(videoUrl, '_blank');
           if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-            window.location.href = videoUrl;
+            try {
+              if (window.top) {
+                window.top.location.href = videoUrl;
+              } else {
+                window.location.href = videoUrl;
+              }
+            } catch (err) {
+              window.location.href = videoUrl;
+            }
           }
         } catch (e) {
-          window.location.href = videoUrl;
+          try {
+            if (window.top) {
+              window.top.location.href = videoUrl;
+            } else {
+              window.location.href = videoUrl;
+            }
+          } catch (err) {
+            window.location.href = videoUrl;
+          }
         }
       }
     }
-  }, [dailymotionSeconds, videoUrl]);
+  }, [dailymotionSeconds, videoUrl, isDailymotionClicked]);
 
 
 const SafariNotification = () => {
@@ -2924,19 +2943,26 @@ const SafariNotification = () => {
                     <div className="absolute inset-0 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
                     <span className="text-primary font-black text-xl font-mono">{dailymotionSeconds !== null ? dailymotionSeconds : 6}</span>
                   </div>
-                  <h3 className="text-white text-sm sm:text-base font-black mb-2 font-sans tracking-wide">جاري  تحويلك للحلقة... </h3>
+                  <h3 className="text-white text-sm sm:text-base font-black mb-2 font-sans tracking-wide">
+                    {isDailymotionClicked ? "جاري تحويل للحلقة..." : "جاري حظر الإعلانات وتحويلك للحلقة... 🛡️"}
+                  </h3>
                   <p className="text-zinc-400 text-xs max-w-xs leading-relaxed mb-6">
-                    سيتم فتح الحلقة تلقائياً وبأمان في غضون <span className="text-primary font-bold">{dailymotionSeconds !== null ? dailymotionSeconds : 6} ثوانٍ</span> دون نوافذ منبثقة مزعجة.
+                    {isDailymotionClicked 
+                      ? "جاري توجيهك إلى السيرفر الخارجي بأمان..."
+                      : `سيتم فتح الحلقة تلقائياً وبأمان في غضون ${dailymotionSeconds !== null ? dailymotionSeconds : 6} ثوانٍ دون نوافذ منبثقة مزعجة.`}
                   </p>
                   <a
                     href={videoUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsDailymotionClicked(true);
+                    }}
                     className="pointer-events-auto px-6 py-3 bg-gradient-to-r from-red-650 to-red-750 hover:from-red-700 hover:to-red-800 text-white font-black text-xs sm:text-sm rounded-2xl shadow-[0_12px_30px_rgba(229,9,20,0.3)] transition-all transform active:scale-95 flex items-center gap-2 border border-red-500/20 cursor-pointer"
                   >
                     <ExternalLink className="w-4 h-4 text-white" />
-                    <span>انتقال الآن دون انتظار 🚀</span>
+                    <span>{isDailymotionClicked ? "جاري تحويل للحلقة" : "جاري تحويلك تلقائياً..."}</span>
                   </a>
                 </div>
               )}
