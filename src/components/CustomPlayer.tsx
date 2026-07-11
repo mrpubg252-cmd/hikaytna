@@ -2861,12 +2861,9 @@ const SafariNotification = () => {
                 allowFullScreen
                 allow="autoplay; encrypted-media; picture-in-picture"
                 referrerPolicy="no-referrer-when-downgrade"
-                sandbox={
-                  (resolvedVideoUrl.includes('3isk-player') || resolvedVideoUrl.includes('secured-player') || resolvedVideoUrl.includes('titanic-player'))
-                    ? undefined
-                    : (blockPopups 
-                        ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
-                        : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox")
+                sandbox={blockPopups 
+                  ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
+                  : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
                 }
                 style={{
                   width: '100%',

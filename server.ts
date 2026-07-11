@@ -99,14 +99,12 @@ function rewriteTurkVeArabUrl(url: string, serverName: string = ''): string {
 }
 
 async function resolveTurkVeArabUrlAsync(url: string): Promise<string> {
-  if (!url) return url;
+  if (!url || !url.includes('v.turkvearab.com')) return url;
   
-  const match = url.match(/v\.turkvearab\.com\/embed-([a-zA-Z0-9]+)/i) ||
-                url.match(/arabveturk\.com\/embed-([a-zA-Z0-9]+)/i) ||
-                url.match(/iplayerhls\.com\/e\/([a-zA-Z0-9]+)/i);
-  if (!match) return url;
+  const vTurkMatch = url.match(/v\.turkvearab\.com\/embed-([a-zA-Z0-9]+)/i);
+  if (!vTurkMatch) return url;
   
-  const id = match[1];
+  const id = vTurkMatch[1];
   
   // 1. If ID is purely digits, it is ok.ru
   if (/^\d+$/.test(id)) {
@@ -118,23 +116,18 @@ async function resolveTurkVeArabUrlAsync(url: string): Promise<string> {
     return turkVeArabCache.get(id)!;
   }
   
-  // 3. Fallback check on arabveturk.com
+  // 3. Fallback check
   let targetUrl = `https://arabveturk.com/embed-${id}.html`;
   try {
     const checkRes = await axios.get(targetUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
       },
-      timeout: 2500,
+      timeout: 1500,
       httpAgent: new http.Agent({ family: 4 }),
       httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 })
     });
-    const pageData = checkRes.data || '';
-    const isDeleted = pageData.includes("no longer available") || 
-                      pageData.includes("deleted") || 
-                      pageData.includes("expired") || 
-                      pageData.length < 1000;
-    if (checkRes.status === 200 && !isDeleted) {
+    if (checkRes.status === 200 && checkRes.data && !checkRes.data.includes("no longer available") && checkRes.data.length > 1000) {
       targetUrl = `https://arabveturk.com/embed-${id}.html`;
     } else {
       targetUrl = `https://iplayerhls.com/e/${id}`;
@@ -1703,8 +1696,8 @@ async function startServer() {
         return res.status(400).send("Invalid player URL");
       }
 
-      // If it is a v.turkvearab.com, arabveturk.com, or iplayerhls.com URL, asynchronously resolve it to its active standalone domain
-      if (decryptedUrl.includes('v.turkvearab.com') || decryptedUrl.includes('arabveturk.com') || decryptedUrl.includes('iplayerhls.com')) {
+      // If it is a v.turkvearab.com URL, asynchronously resolve it to its active standalone domain
+      if (decryptedUrl.includes('v.turkvearab.com')) {
          decryptedUrl = await resolveTurkVeArabUrlAsync(decryptedUrl);
       }
 
