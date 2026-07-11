@@ -2126,6 +2126,44 @@ async function startServer() {
     }
   });
 
+  // 4.1.2. Anti-Sandbox Blocked Fallback Route
+  app.get("/blocked.html", (req, res) => {
+    console.log("[Blocked Handler] Anti-sandbox triggered, referer:", req.query.referer || req.headers.referer);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>جاري تحميل المشغل الآمن...</title>
+        <style>
+          body { background: #000; color: #fff; font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+          .loader { text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="loader">
+          <p>جاري تحميل المشغل الآمن...</p>
+          <script>
+            // Redirect back to the referrer or player page safely
+            const ref = document.referrer || window.location.ancestorOrigins?.[0];
+            if (ref) {
+              setTimeout(() => {
+                window.location.href = ref;
+              }, 100);
+            } else {
+              // Standard history back if no referrer found
+              setTimeout(() => {
+                window.history.back();
+              }, 100);
+            }
+          </script>
+        </div>
+      </body>
+      </html>
+    `);
+  });
+
   // 4.2. Image Proxy to bypass hotlink and domain protections on API images
   app.get("/api/v1/image-proxy", async (req, res) => {
     let targetUrl = "";

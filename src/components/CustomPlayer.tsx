@@ -300,8 +300,8 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
       target = target.replace(/\/file\//i, '/embed/');
     }
 
-    // Wrap Dailymotion, iplayerhls, arabveturk and cdnz in our proxy
-    if (target.includes('dailymotion.com') || target.includes('iplayerhls.com') || target.includes('cdnz.online') || target.includes('arabveturk.com') || target.includes('arbtrk') || target.includes('artrk') || target.includes('huntrexus.com')) {
+    // Wrap Dailymotion, iplayerhls, arabveturk, turkvearab and cdnz in our proxy
+    if (target.includes('dailymotion.com') || target.includes('iplayerhls.com') || target.includes('cdnz.online') || target.includes('arabveturk.com') || target.includes('arbtrk') || target.includes('artrk') || target.includes('huntrexus.com') || target.includes('turkvearab.com')) {
       try {
         const encrypted = encryptValue(target);
         if (target.includes('.m3u8') || target.includes('.mp4')) {
@@ -1246,7 +1246,7 @@ const SafariNotification = () => {
     const urlLower = resolvedVideoUrl.toLowerCase();
     
       // Explicitly handle our secure frame proxies
-      if (urlLower.startsWith('/api/v1/secured-player') || urlLower.startsWith('/api/v1/titanic-player')) {
+      if (urlLower.startsWith('/api/v1/secured-player') || urlLower.startsWith('/api/v1/titanic-player') || urlLower.startsWith('/api/v1/3isk-player')) {
         setIsIframeFallback(true);
         setIsLoading(false);
         setIsPlaying(true);
@@ -2861,9 +2861,12 @@ const SafariNotification = () => {
                 allowFullScreen
                 allow="autoplay; encrypted-media; picture-in-picture"
                 referrerPolicy="no-referrer-when-downgrade"
-                sandbox={blockPopups 
-                  ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
-                  : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
+                sandbox={
+                  (resolvedVideoUrl.includes('3isk-player') || resolvedVideoUrl.includes('secured-player') || resolvedVideoUrl.includes('titanic-player'))
+                    ? undefined
+                    : (blockPopups 
+                        ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
+                        : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox")
                 }
                 style={{
                   width: '100%',
