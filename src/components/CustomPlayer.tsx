@@ -521,60 +521,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   };
   const [isSearchOverlayActive, setIsSearchOverlayActive] = useState(false);
 
-  const [dailymotionSeconds, setDailymotionSeconds] = useState<number | null>(null);
-  const [isDailymotionClicked, setIsDailymotionClicked] = useState(false);
-
-  useEffect(() => {
-    if (activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion.com') || activeServerUrl.toLowerCase().includes('syndication'))) {
-      setDailymotionSeconds(6);
-      setIsDailymotionClicked(false);
-    } else {
-      setDailymotionSeconds(null);
-      setIsDailymotionClicked(false);
-    }
-  }, [activeServerUrl]);
-
-  useEffect(() => {
-    if (dailymotionSeconds === null) return;
-    if (dailymotionSeconds > 0) {
-      const timer = setTimeout(() => {
-        setDailymotionSeconds(dailymotionSeconds - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
-    } else if (dailymotionSeconds === 0) {
-      // If the user hasn't clicked, we must automatically redirect
-      if (activeServerUrl && !isDailymotionClicked) {
-        try {
-          const newWindow = window.open(activeServerUrl, '_blank');
-          if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
-            // Popup was blocked or failed to open. Redirect current page directly to guarantee the video loads outside the site.
-            try {
-              if (window.top && window.top !== window) {
-                window.top.location.href = activeServerUrl;
-              } else {
-                window.location.href = activeServerUrl;
-              }
-            } catch (err) {
-              window.location.href = activeServerUrl;
-            }
-          }
-        } catch (e) {
-          try {
-            if (window.top && window.top !== window) {
-              window.top.location.href = activeServerUrl;
-            } else {
-              window.location.href = activeServerUrl;
-            }
-          } catch (err) {
-            window.location.href = activeServerUrl;
-          }
-        }
-      }
-    }
-  }, [dailymotionSeconds, videoUrl, isDailymotionClicked]);
-
-
-const SafariNotification = () => {
+  const SafariNotification = () => {
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const [show, setShow] = useState(() => {
     if (!isSafari) return false;
@@ -2643,41 +2590,6 @@ const SafariNotification = () => {
 
   return (
     <>
-      {(activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion.com') || activeServerUrl.toLowerCase().includes('syndication'))) && (
-        <div className="w-full bg-[#050505] border border-red-900/30 rounded-xl mb-4 p-6 text-center shadow-xl animate-fade-in relative overflow-hidden flex flex-col items-center justify-center">
-          <div className="absolute inset-0 bg-gradient-to-r from-red-600/5 via-transparent to-red-600/5" />
-          <div className="relative z-10 w-16 h-16 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center mb-5 shadow-2xl">
-            <div className="absolute inset-0 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-            <span className="text-primary font-black text-xl font-mono">{dailymotionSeconds !== null ? dailymotionSeconds : 6}</span>
-          </div>
-          
-          <h3 className="text-lg sm:text-xl font-black text-white mb-2 tracking-tight relative z-10">سيرفر Dailymotion الخاص</h3>
-          <p className="text-xs sm:text-sm text-zinc-400 font-medium mb-6 max-w-md mx-auto relative z-10">
-            يرجى العلم أن هذا السيرفر يتطلب فتح صفحة خارجية لضمان الجودة العالية وعدم التقطيع
-          </p>
-
-          <a
-            href={activeServerUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsDailymotionClicked(true);
-            }}
-            className="pointer-events-auto relative z-10 px-8 py-3.5 bg-gradient-to-r from-red-650 to-red-750 hover:from-red-700 hover:to-red-800 text-white font-black text-sm rounded-2xl shadow-[0_12px_30px_rgba(229,9,20,0.3)] transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-3 border border-red-500/20 cursor-pointer"
-          >
-            <ExternalLink className="w-5 h-5 text-white" />
-            <span>
-              {isDailymotionClicked ? (
-                dailymotionSeconds === 0 ? "اضغط هنا إذا لم تفتح الحلقة 🚀" : `جاري تحويل للحلقة (${dailymotionSeconds})...`
-              ) : (
-                dailymotionSeconds === 0 ? "الذهاب إلى الحلقة الآن 🚀" : `جاري تحويلك تلقائياً (${dailymotionSeconds})...`
-              )}
-            </span>
-          </a>
-        </div>
-      )}
-
       <div 
         id="custom-video-player-container"
       ref={containerRef}
@@ -2937,42 +2849,49 @@ const SafariNotification = () => {
           )}
 
           {isIframeFallback ? (
-            <div className={cn(
-              "w-full h-full relative",
-              resolvedVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
-            )}>
-              <iframe
-                src={resolvedVideoUrl}
-                className={cn(
-                  "w-full h-full border-0 animate-fade-in",
-                  resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
-                )}
-                allowFullScreen
-                allow="autoplay; encrypted-media; picture-in-picture"
-                referrerPolicy="no-referrer-when-downgrade"
-                sandbox={
-                  blockPopups 
-                    ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
-                    : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
-                }
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  backgroundColor: 'black',
-                  position: 'relative',
-                  zIndex: 10,
-                }}
-              />
-              {resolvedVideoUrl.includes('streamimdb') && (
-                <div className="absolute top-4 left-4 z-20 pointer-events-none">
-                  <div className="bg-amber-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
-                    <Sparkles className="w-3 h-3 fill-current" />
-                    PREMIUM STREAMING
-                  </div>
+            (() => {
+              const isDailymotion = (resolvedVideoUrl && (resolvedVideoUrl.toLowerCase().includes('dailymotion.com') || resolvedVideoUrl.toLowerCase().includes('syndication'))) ||
+                                    (activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion.com') || activeServerUrl.toLowerCase().includes('syndication')));
+              return (
+                <div className={cn(
+                  "w-full h-full relative",
+                  resolvedVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
+                )}>
+                  <iframe
+                    src={resolvedVideoUrl}
+                    className={cn(
+                      "w-full h-full border-0 animate-fade-in",
+                      resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
+                    )}
+                    allowFullScreen
+                    allow="autoplay; encrypted-media; picture-in-picture"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    sandbox={
+                      isDailymotion 
+                        ? undefined 
+                        : (blockPopups 
+                            ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
+                            : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox")
+                    }
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      backgroundColor: 'black',
+                      position: 'relative',
+                      zIndex: 10,
+                    }}
+                  />
+                  {resolvedVideoUrl.includes('streamimdb') && (
+                    <div className="absolute top-4 left-4 z-20 pointer-events-none">
+                      <div className="bg-amber-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
+                        <Sparkles className="w-3 h-3 fill-current" />
+                        PREMIUM STREAMING
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-
-            </div>
+              );
+            })()
           ) : (
             <ShadowVideo
               videoRef={videoRef}
