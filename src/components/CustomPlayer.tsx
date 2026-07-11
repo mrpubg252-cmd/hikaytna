@@ -521,6 +521,38 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   };
   const [isSearchOverlayActive, setIsSearchOverlayActive] = useState(false);
 
+  const [dailymotionSeconds, setDailymotionSeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (videoUrl && (videoUrl.toLowerCase().includes('dailymotion.com') || videoUrl.toLowerCase().includes('syndication'))) {
+      setDailymotionSeconds(6);
+    } else {
+      setDailymotionSeconds(null);
+    }
+  }, [videoUrl]);
+
+  useEffect(() => {
+    if (dailymotionSeconds === null) return;
+    if (dailymotionSeconds > 0) {
+      const timer = setTimeout(() => {
+        setDailymotionSeconds(dailymotionSeconds - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (dailymotionSeconds === 0) {
+      if (videoUrl) {
+        try {
+          const newWindow = window.open(videoUrl, '_blank');
+          if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+            window.location.href = videoUrl;
+          }
+        } catch (e) {
+          window.location.href = videoUrl;
+        }
+      }
+    }
+  }, [dailymotionSeconds, videoUrl]);
+
+
 const SafariNotification = () => {
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const [show, setShow] = useState(() => {
@@ -2887,23 +2919,24 @@ const SafariNotification = () => {
 
               {/* Dailymotion dedicated custom play-overlay */}
               {videoUrl && (videoUrl.toLowerCase().includes('dailymotion.com') || videoUrl.toLowerCase().includes('syndication')) && (
-                <div className="absolute inset-0 z-[110] flex flex-col items-center justify-center bg-black/85 backdrop-blur-md px-6 text-center animate-fade-in pointer-events-none">
-                  <div className="w-14 h-14 rounded-2xl bg-primary/15 border border-primary/25 flex items-center justify-center mb-4 shadow-xl">
-                    <ExternalLink className="w-6 h-6 text-primary animate-pulse" />
+                <div className="absolute inset-0 z-[110] flex flex-col items-center justify-center bg-black/90 backdrop-blur-md px-6 text-center animate-fade-in pointer-events-none">
+                  <div className="w-16 h-16 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center mb-5 shadow-2xl relative">
+                    <div className="absolute inset-0 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+                    <span className="text-primary font-black text-xl font-mono">{dailymotionSeconds !== null ? dailymotionSeconds : 6}</span>
                   </div>
-                  <h3 className="text-white text-xs sm:text-sm font-black mb-1.5 font-sans tracking-wide">تأمين مشغل Dailymotion 🛡️</h3>
-                  <p className="text-zinc-400 text-[10px] sm:text-[11px] max-w-xs leading-relaxed mb-4">
-                    لمنع النوافذ المنبثقة وحظر الإعلانات المزعجة، يرجى الانتقال إلى مشغل الحلقة الآمن.
+                  <h3 className="text-white text-sm sm:text-base font-black mb-2 font-sans tracking-wide">جاري حظر الإعلانات وتحويلك للحلقة... 🛡️</h3>
+                  <p className="text-zinc-400 text-xs max-w-xs leading-relaxed mb-6">
+                    سيتم فتح الحلقة تلقائياً وبأمان في غضون <span className="text-primary font-bold">{dailymotionSeconds !== null ? dailymotionSeconds : 6} ثوانٍ</span> دون نوافذ منبثقة مزعجة.
                   </p>
                   <a
                     href={videoUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    className="pointer-events-auto px-5 py-2.5 bg-gradient-to-r from-red-650 to-red-750 hover:from-red-700 hover:to-red-800 text-white font-black text-[11px] sm:text-xs rounded-xl shadow-[0_10px_25px_rgba(229,9,20,0.25)] transition-all transform active:scale-95 flex items-center gap-1.5 border border-red-500/20 cursor-pointer"
+                    className="pointer-events-auto px-6 py-3 bg-gradient-to-r from-red-650 to-red-750 hover:from-red-700 hover:to-red-800 text-white font-black text-xs sm:text-sm rounded-2xl shadow-[0_12px_30px_rgba(229,9,20,0.3)] transition-all transform active:scale-95 flex items-center gap-2 border border-red-500/20 cursor-pointer"
                   >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>ذهاب إلى الحلقة 🚀</span>
+                    <ExternalLink className="w-4 h-4 text-white" />
+                    <span>انتقال الآن دون انتظار 🚀</span>
                   </a>
                 </div>
               )}
