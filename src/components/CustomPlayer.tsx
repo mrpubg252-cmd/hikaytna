@@ -2642,8 +2642,44 @@ const SafariNotification = () => {
   );
 
   return (
-    <div 
-      id="custom-video-player-container"
+    <>
+      {(videoUrl && (videoUrl.toLowerCase().includes('dailymotion.com') || videoUrl.toLowerCase().includes('syndication'))) && (
+        <div className="w-full bg-[#050505] border border-red-900/30 rounded-xl mb-4 p-6 text-center shadow-xl animate-fade-in relative overflow-hidden flex flex-col items-center justify-center">
+          <div className="absolute inset-0 bg-gradient-to-r from-red-600/5 via-transparent to-red-600/5" />
+          <div className="relative z-10 w-16 h-16 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center mb-5 shadow-2xl">
+            <div className="absolute inset-0 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+            <span className="text-primary font-black text-xl font-mono">{dailymotionSeconds !== null ? dailymotionSeconds : 6}</span>
+          </div>
+          
+          <h3 className="text-lg sm:text-xl font-black text-white mb-2 tracking-tight relative z-10">سيرفر Dailymotion الخاص</h3>
+          <p className="text-xs sm:text-sm text-zinc-400 font-medium mb-6 max-w-md mx-auto relative z-10">
+            يرجى العلم أن هذا السيرفر يتطلب فتح صفحة خارجية لضمان الجودة العالية وعدم التقطيع
+          </p>
+
+          <a
+            href={videoUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsDailymotionClicked(true);
+            }}
+            className="pointer-events-auto relative z-10 px-8 py-3.5 bg-gradient-to-r from-red-650 to-red-750 hover:from-red-700 hover:to-red-800 text-white font-black text-sm rounded-2xl shadow-[0_12px_30px_rgba(229,9,20,0.3)] transition-all transform hover:scale-105 active:scale-95 flex items-center justify-center gap-3 border border-red-500/20 cursor-pointer"
+          >
+            <ExternalLink className="w-5 h-5 text-white" />
+            <span>
+              {isDailymotionClicked ? (
+                dailymotionSeconds === 0 ? "اضغط هنا إذا لم تفتح الحلقة 🚀" : `جاري تحويل للحلقة (${dailymotionSeconds})...`
+              ) : (
+                dailymotionSeconds === 0 ? "الذهاب إلى الحلقة الآن 🚀" : `جاري تحويلك تلقائياً (${dailymotionSeconds})...`
+              )}
+            </span>
+          </a>
+        </div>
+      )}
+
+      <div 
+        id="custom-video-player-container"
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={() => isPlaying && !isHoveringControls && setShowControls(false)}
@@ -2936,41 +2972,6 @@ const SafariNotification = () => {
                 </div>
               )}
 
-              {(videoUrl && (videoUrl.toLowerCase().includes('dailymotion.com') || videoUrl.toLowerCase().includes('syndication'))) && (
-                <div className="absolute inset-0 z-[110] flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm px-6 text-center animate-fade-in pointer-events-none">
-                  <div className="w-16 h-16 rounded-full bg-primary/20 border border-primary/40 flex items-center justify-center mb-5 shadow-2xl relative">
-                    <div className="absolute inset-0 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-                    <span className="text-primary font-black text-xl font-mono">{dailymotionSeconds !== null ? dailymotionSeconds : 6}</span>
-                  </div>
-                  <h3 className="text-white text-sm sm:text-base font-black mb-2 font-sans tracking-wide">
-                    {isDailymotionClicked ? "جاري تحويل للحلقة..." : "جاري حظر الإعلانات وتحويلك للحلقة... 🛡️"}
-                  </h3>
-                  <p className="text-zinc-400 text-xs max-w-xs leading-relaxed mb-6">
-                    {isDailymotionClicked 
-                      ? "جاري توجيهك إلى السيرفر الخارجي بأمان..."
-                      : `سيتم فتح الحلقة تلقائياً وبأمان في غضون ${dailymotionSeconds !== null ? dailymotionSeconds : 6} ثوانٍ دون نوافذ منبثقة مزعجة.`}
-                  </p>
-                  <a
-                    href={videoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsDailymotionClicked(true);
-                    }}
-                    className="pointer-events-auto px-6 py-3 bg-gradient-to-r from-red-650 to-red-750 hover:from-red-700 hover:to-red-800 text-white font-black text-xs sm:text-sm rounded-2xl shadow-[0_12px_30px_rgba(229,9,20,0.3)] transition-all transform active:scale-95 flex items-center gap-2 border border-red-500/20 cursor-pointer"
-                  >
-                    <ExternalLink className="w-4 h-4 text-white" />
-                    <span>
-                      {isDailymotionClicked ? (
-                        dailymotionSeconds === 0 ? "اضغط هنا إذا لم تفتح الحلقة 🚀" : `جاري تحويل للحلقة (${dailymotionSeconds})...`
-                      ) : (
-                        dailymotionSeconds === 0 ? "ذهاب إلى الحلقة الآن 🚀" : `جاري تحويلك تلقائياً (${dailymotionSeconds})...`
-                      )}
-                    </span>
-                  </a>
-                </div>
-              )}
             </div>
           ) : (
             <ShadowVideo
@@ -3319,7 +3320,8 @@ const SafariNotification = () => {
           )}
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 });
 
