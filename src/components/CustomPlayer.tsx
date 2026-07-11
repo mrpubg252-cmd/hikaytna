@@ -14,7 +14,7 @@ import { progressService } from '../services/progressService';
 import HorizontalEpisodeList from './HorizontalEpisodeList';
 import { useDevice } from '../context/DeviceAndNavigationContext';
 import { formatEpisodeTitle } from './EpisodeGrid';
-import { decryptValue } from '../lib/security';
+import { decryptValue, encryptValue } from '../lib/security';
 
 interface CustomPlayerProps {
   videoUrl: string;
@@ -153,22 +153,49 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   const resolvedVideoUrl = React.useMemo(() => {
     if (!videoUrl) return '';
     
+    let target = videoUrl;
+
+    // Handle Google redirect unwrapping (common in some sources)
+    if (target.includes('google.com/url?')) {
+      try {
+        const searchParams = new URL(target).searchParams;
+        const q = searchParams.get('q') || searchParams.get('url');
+        if (q) target = q;
+      } catch (e) {}
+    }
+
     // Handle Dailymotion conversion to embed format
-    if (videoUrl.includes('dailymotion.com/video/')) {
-      const dmMatch = videoUrl.match(/dailymotion\.com\/video\/([a-zA-Z0-9]+)/);
+    if (target.includes('dailymotion.com/video/')) {
+      const dmMatch = target.match(/dailymotion\.com\/video\/([a-zA-Z0-9]+)/);
       if (dmMatch) {
         const videoId = dmMatch[1];
-        const queryParam = videoUrl.includes('?') ? '?' + videoUrl.split('?')[1] : '';
-        return `https://www.dailymotion.com/embed/video/${videoId}${queryParam}`;
+        const queryParam = target.includes('?') ? '?' + target.split('?')[1] : '';
+        target = `https://www.dailymotion.com/embed/video/${videoId}${queryParam}`;
       }
     }
-    
-    if (videoUrl.includes('mega.nz')) {
+
+    // Handle ArabHD ID conversion (if target is just the server ID like 'oz2zsec7kt8x')
+    if (/^[a-zA-Z0-9]{12}$/.test(target) && !target.includes('/')) {
+      target = `https://arabhd.onl/embed-${target}.html`;
+    }
+
+    // If it's a Dailymotion URL, wrap it in our proxy to show the landing page button ("اضغط هنا")
+    if (target.includes('dailymotion.com')) {
+      try {
+        const encrypted = encryptValue(target);
+        return `/api/v1/3isk-player?url=${encodeURIComponent(encrypted)}`;
+      } catch (e) {
+        console.warn('[CustomPlayer] Encryption for proxy failed:', e);
+        return target;
+      }
+    }
+
+    if (target.includes('mega.nz')) {
       // Convert standard Mega file URLs into the embed URL representation
       // e.g. /file/... -> /embed/...
-      return videoUrl.replace(/\/file\//i, '/embed/');
+      return target.replace(/\/file\//i, '/embed/');
     }
-    return videoUrl;
+    return target;
   }, [videoUrl]);
 
   const { profile } = useAuth();
@@ -1333,7 +1360,7 @@ const SafariNotification = () => {
       const mins = Math.floor(savedSecond / 60);
       const secs = Math.floor(savedSecond % 60);
       const formattedEpClean = formatEpisodeTitle(episodes[episodeIndex]?.title || "", episodeIndex, false);
-      setResumeTimeText(`تم الاستئناف: ${formattedEpClean} عند الدقيقة ${mins}:${secs.toString().padStart(2, '0')}`);
+      setResumeTimeText(`تم الاستئناف: ${formattedEpClean}`);
       setShowResumeNotification(true);
       setTimeout(() => setShowResumeNotification(false), 4500);
     }
@@ -1348,7 +1375,7 @@ const SafariNotification = () => {
         const mins = Math.floor(savedSecond / 60);
         const secs = Math.floor(savedSecond % 60);
         const formattedEpClean = formatEpisodeTitle(episodes[episodeIndex]?.title || "", episodeIndex, false);
-        setResumeTimeText(`تم الاستئناف: ${formattedEpClean} عند الدقيقة ${mins}:${secs.toString().padStart(2, '0')}`);
+        setResumeTimeText(`تم الاستئناف: ${formattedEpClean}`);
         setShowResumeNotification(true);
         const timer = setTimeout(() => setShowResumeNotification(false), 4500);
         return () => clearTimeout(timer);
@@ -2996,15 +3023,15 @@ const SafariNotification = () => {
               <AnimatePresence>
                 {showResumeNotification && (
                   <motion.div
-                    initial={{ opacity: 0, x: -50 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -50 }}
-                    className="absolute bottom-20 sm:bottom-24 left-4 sm:left-6 z-[1500] bg-zinc-950/92 backdrop-blur-md rounded-xl border border-red-500/10 text-white px-4 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.8)] flex items-center gap-2.5 font-bold pointer-events-none select-none text-right max-w-xs"
+                    initial={{ opacity: 0, scale: 0.8, x: -20 }}
+                    animate={{ opacity: 1, scale: 1, x: 0 }}
+                    exit={{ opacity: 0, scale: 0.8, x: -20 }}
+                    className="absolute bottom-4 left-4 z-[1500] bg-zinc-950/90 backdrop-blur-sm rounded-lg border border-red-500/20 text-white px-2 py-1.5 shadow-xl flex items-center gap-2 font-bold pointer-events-none select-none text-right max-w-[180px]"
                   >
-                    <span className="text-sm">⏰</span>
+                    <span className="text-xs">⏰</span>
                     <div className="flex flex-col text-right">
-                      <span className="text-[10px] sm:text-[11px] font-black text-red-500 tracking-wider">تم الاستئناف</span>
-                      <span className="text-[11px] sm:text-[12px] text-zinc-200 mt-0.5">{resumeTimeText}</span>
+                      <span className="text-[9px] font-black text-red-500/80 tracking-tight leading-none">تم الاستئناف</span>
+                      <span className="text-[10px] text-zinc-300 mt-0.5 leading-tight truncate">{resumeTimeText}</span>
                     </div>
                   </motion.div>
                 )}
