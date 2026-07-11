@@ -2862,7 +2862,7 @@ const SafariNotification = () => {
                 allow="autoplay; encrypted-media; picture-in-picture"
                 referrerPolicy="no-referrer-when-downgrade"
                 sandbox={
-                  (resolvedVideoUrl.includes('3isk-player') || resolvedVideoUrl.includes('secured-player') || resolvedVideoUrl.includes('titanic-player'))
+                  (resolvedVideoUrl.includes('3isk-player') || resolvedVideoUrl.includes('secured-player') || resolvedVideoUrl.includes('titanic-player') || resolvedVideoUrl.includes('arabveturk.com') || resolvedVideoUrl.includes('iplayerhls.com'))
                     ? undefined
                     : (blockPopups 
                         ? "allow-scripts allow-same-origin allow-forms allow-presentation" 

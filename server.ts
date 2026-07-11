@@ -1397,10 +1397,21 @@ async function startServer() {
               // Rewrite any v.turkvearab.com URLs to working standalone domains
               embedUrl = rewriteTurkVeArabUrl(embedUrl, fullName);
               
-              // Wrap the server URL in our player proxy to defeat iframe security limitations
+              // Wrap the server URL in our player proxy to defeat iframe security limitations if it's restricted
               let proxyUrl = embedUrl;
-              const encryptedTarget = encryptValue(embedUrl);
-              proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
+              const shouldProxy = !embedUrl.includes('arabveturk.com') && 
+                                  !embedUrl.includes('iplayerhls.com') && 
+                                  !embedUrl.includes('ok.ru') && 
+                                  !embedUrl.includes('youtube.com') && 
+                                  !embedUrl.includes('google.com') && 
+                                  !embedUrl.includes('vk.com') && 
+                                  !embedUrl.includes('mail.ru') && 
+                                  !embedUrl.includes('sibnet.ru');
+              
+              if (shouldProxy) {
+                const encryptedTarget = encryptValue(embedUrl);
+                proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
+              }
               
               const exists = parsedServers.some(p => p.url === proxyUrl);
               if (!exists) {
@@ -1444,8 +1455,19 @@ async function startServer() {
                       embedUrl = rewriteTurkVeArabUrl(embedUrl, srv.name || '');
 
                       let proxyUrl = embedUrl;
-                      const encryptedTarget = encryptValue(embedUrl);
-                      proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
+                      const shouldProxy = !embedUrl.includes('arabveturk.com') && 
+                                          !embedUrl.includes('iplayerhls.com') && 
+                                          !embedUrl.includes('ok.ru') && 
+                                          !embedUrl.includes('youtube.com') && 
+                                          !embedUrl.includes('google.com') && 
+                                          !embedUrl.includes('vk.com') && 
+                                          !embedUrl.includes('mail.ru') && 
+                                          !embedUrl.includes('sibnet.ru');
+                      
+                      if (shouldProxy) {
+                        const encryptedTarget = encryptValue(embedUrl);
+                        proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
+                      }
                       
                       const exists = parsedServers.some(p => p.url === proxyUrl);
                       if (!exists) {
@@ -1508,8 +1530,19 @@ async function startServer() {
          iframeSrc = rewriteTurkVeArabUrl(iframeSrc, 'المشغل الرئيسي');
 
          let proxyUrl = iframeSrc;
-         const encryptedTarget = encryptValue(iframeSrc);
-         proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
+         const shouldProxy = !iframeSrc.includes('arabveturk.com') && 
+                             !iframeSrc.includes('iplayerhls.com') && 
+                             !iframeSrc.includes('ok.ru') && 
+                             !iframeSrc.includes('youtube.com') && 
+                             !iframeSrc.includes('google.com') && 
+                             !iframeSrc.includes('vk.com') && 
+                             !iframeSrc.includes('mail.ru') && 
+                             !iframeSrc.includes('sibnet.ru');
+         
+         if (shouldProxy) {
+           const encryptedTarget = encryptValue(iframeSrc);
+           proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
+         }
          
          const fallbackServers = [{ name: 'المشغل الرئيسي', url: proxyUrl }];
          const responseData = { 
@@ -1812,6 +1845,8 @@ async function startServer() {
         lowerDecrypted.includes('ok.ru') ||
         lowerDecrypted.includes('redplay') ||
         lowerDecrypted.includes('redhd') ||
+        lowerDecrypted.includes('arabveturk.com') ||
+        lowerDecrypted.includes('iplayerhls.com') ||
         lowerDecrypted.includes('youtube.com') ||
         lowerDecrypted.includes('google.com') ||
         lowerDecrypted.includes('vk.com') ||
