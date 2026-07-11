@@ -1728,6 +1728,8 @@ async function startServer() {
         referer = 'https://qeseh.net/';
       } else if (decryptedUrl.includes('iplayerhls.com')) {
         referer = 'https://iplayerhls.com/';
+      } else if (decryptedUrl.includes('arabveturk.com')) {
+        referer = 'https://arabveturk.com/';
       }
 
       const response = await axios.get(decryptedUrl, {
@@ -1873,8 +1875,8 @@ async function startServer() {
                    // Always proxy media extensions
                    if (lu.includes('.m3u8') || lu.includes('.mp4') || lu.includes('.ts') || lu.includes('.vtt') || lu.includes('.srt') || lu.includes('key')) return true;
                    
-                   // Explicitly proxy iplayerhls and huntrexus
-                   if (lu.includes('iplayerhls.com') || lu.includes('huntrexus.com') || lu.includes('cdnz.online')) return true;
+                   // Explicitly proxy iplayerhls, huntrexus, arabveturk and associated CDNs
+                   if (lu.includes('iplayerhls.com') || lu.includes('huntrexus.com') || lu.includes('cdnz.online') || lu.includes('arabveturk.com') || lu.includes('artrk.online')) return true;
 
                    // Also proxy cross-origin requests that might be API calls for media
                    try {
@@ -2194,7 +2196,8 @@ async function startServer() {
         const isArabHd = currentUrl.includes('arabhd');
         const isNextStop = currentUrl.includes('thenextstop.net');
         const isIPlayer = currentUrl.includes('iplayerhls.com') || currentUrl.includes('huntrexus.com');
-        const isCdnz = currentUrl.includes('cdnz.online');
+        const isCdnz = currentUrl.includes('cdnz.online') || currentUrl.includes('artrk.online');
+        const isArabVetUrk = currentUrl.includes('arabveturk.com');
         const is3iskkSource = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive|thenextstop|fitnur|bshra/i);
 
         if (isQesehSource) {
@@ -2212,6 +2215,9 @@ async function startServer() {
         } else if (isIPlayer) {
            headersOptions['Referer'] = 'https://iplayerhls.com/';
            headersOptions['Origin'] = 'https://iplayerhls.com';
+        } else if (isArabVetUrk) {
+           headersOptions['Referer'] = 'https://arabveturk.com/';
+           headersOptions['Origin'] = 'https://arabveturk.com';
         } else if (isCdnz) {
            headersOptions['Referer'] = 'https://qeseh.net/';
            headersOptions['Origin'] = 'https://qeseh.net';

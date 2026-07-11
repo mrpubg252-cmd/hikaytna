@@ -300,8 +300,8 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
       target = target.replace(/\/file\//i, '/embed/');
     }
 
-    // Wrap Dailymotion, iplayerhls and cdnz in our proxy
-    if (target.includes('dailymotion.com') || target.includes('iplayerhls.com') || target.includes('cdnz.online')) {
+    // Wrap Dailymotion, iplayerhls, arabveturk and cdnz in our proxy
+    if (target.includes('dailymotion.com') || target.includes('iplayerhls.com') || target.includes('cdnz.online') || target.includes('arabveturk.com')) {
       try {
         const encrypted = encryptValue(target);
         if (target.includes('.m3u8') || target.includes('.mp4')) {
