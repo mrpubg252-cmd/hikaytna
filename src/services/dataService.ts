@@ -22,10 +22,6 @@ function fixImageUrl(url: string, title: string = "") {
   // Specific fix for requested series posters
   if (title) {
     const normTitle = title.toLowerCase();
-    
-    // Check if image is already from Qeseh, if so, don't override unless it's a specific fix
-    const isQeseh = url?.includes('qeseh.com') || url?.includes('qeseh.net');
-    
     if (normTitle.includes("في سابعة عشر") || normTitle.includes("في السابعة عشر")) {
       finalUrl = "https://3iskk.xyz/wp-content/uploads/2026/05/daha-17-dizi.jpg";
     } else if (normTitle.includes("هذا بحر سوف يفيض") || normTitle.includes("هذا البحر سوف يفيض")) {

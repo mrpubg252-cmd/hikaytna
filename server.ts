@@ -935,34 +935,34 @@ async function startServer() {
       const categories = [
         { 
           name: 'آخر الحلقات', 
-          url: 'https://qeseh.net/', 
+          url: 'https://wwv.qeseh.com/', 
           pages: [
-            'https://qeseh.net/',
-            ...Array.from({ length: 9 }, (_, i) => `https://qeseh.net/page/${i + 2}/`)
+            'https://wwv.qeseh.com/',
+            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/page/${i + 2}/`)
           ] 
         },
         { 
           name: 'جميع المسلسلات', 
-          url: 'https://qeseh.net/discover/', 
+          url: 'https://wwv.qeseh.com/discover/', 
           pages: [
-            'https://qeseh.net/discover/',
-            ...Array.from({ length: 19 }, (_, i) => `https://qeseh.net/discover/page/${i + 2}/`)
+            'https://wwv.qeseh.com/discover/',
+            ...Array.from({ length: 19 }, (_, i) => `https://wwv.qeseh.com/discover/page/${i + 2}/`)
           ] 
         },
         { 
           name: 'مسلسلات كاملة', 
-          url: 'https://qeseh.net/category/alarshif/', 
+          url: 'https://wwv.qeseh.com/category/alarshif/', 
           pages: [
-            'https://qeseh.net/category/alarshif/',
-            ...Array.from({ length: 9 }, (_, i) => `https://qeseh.net/category/alarshif/page/${i + 2}/`)
+            'https://wwv.qeseh.com/category/alarshif/',
+            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/category/alarshif/page/${i + 2}/`)
           ] 
         },
         { 
           name: 'أفلام تركية', 
-          url: 'https://qeseh.net/category/yeni-filmler/', 
+          url: 'https://wwv.qeseh.com/category/yeni-filmler/', 
           pages: [
-            'https://qeseh.net/category/yeni-filmler/',
-            ...Array.from({ length: 9 }, (_, i) => `https://qeseh.net/category/yeni-filmler/page/${i + 2}/`)
+            'https://wwv.qeseh.com/category/yeni-filmler/',
+            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/category/yeni-filmler/page/${i + 2}/`)
           ] 
         }
       ];
@@ -988,7 +988,7 @@ async function startServer() {
 
       // Try multiple domains or failovers if rate-limited or blocked
       let html = "";
-      const domains = ['https://qeseh.net', 'https://wwv.qeseh.com'];
+      const domains = ['https://wwv.qeseh.com', 'https://qeseh.net'];
       let lastErr = null;
 
       for (const domain of domains) {
@@ -1049,23 +1049,14 @@ async function startServer() {
                      .replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '')
                      .trim();
 
-        const styleAttr = $(el).find('.imgBg').attr('style') || $(el).find('.imgSer').attr('style') || $(el).find('.posterThumb .imgBg').attr('style') || '';
+        const styleAttr = $(el).find('.imgBg').attr('style') || $(el).find('.imgSer').attr('style') || '';
         let img = '';
         const match = styleAttr.match(/url\(['"]?([^'"]+)['"]?\)/);
         if (match) {
           img = match[1];
         }
-        
-        // Secondary extraction for different structures
         if (!img) {
-          img = $(el).find('.posterThumb img').attr('src') || 
-                $(el).find('.imgBg img').attr('src') ||
-                $(el).find('img').attr('src') || '';
-        }
-
-        // Professional quality check: ensure we take the highest quality version if available
-        if (img && img.includes('qeseh.com') && img.includes('-150x150')) {
-          img = img.replace(/-150x150/, '');
+          img = $(el).find('img').attr('src') || '';
         }
 
         const episodeNum = $(el).find('.episodeNum').text().trim().replace(/\s+/g, ' ');
@@ -1611,116 +1602,17 @@ async function startServer() {
         return res.status(400).send("Invalid player URL");
       }
 
-      let targetUrl = decryptedUrl;
-
-      // Handle Google redirect unwrapping
-      if (targetUrl.includes('google.com/url?')) {
-        try {
-          const searchParams = new URL(targetUrl).searchParams;
-          const q = searchParams.get('q') || searchParams.get('url');
-          if (q) {
-            targetUrl = q;
-            console.log(`[3isk Player Proxy] Unwrapped Google redirect to: ${targetUrl}`);
-          }
-        } catch (e) {
-          console.warn('[3isk Player Proxy] Google unwrap failed:', e);
-        }
-      }
-
-      // Handle Dailymotion specific conversion to embed format if it's a standard video link
-      const dmMatch = targetUrl.match(/dailymotion\.com\/video\/([a-zA-Z0-9]+)/);
-      if (dmMatch) {
-        try {
-          const videoId = dmMatch[1];
-          const queryParam = targetUrl.includes('?') ? '?' + targetUrl.split('?')[1] : '';
-          targetUrl = `https://www.dailymotion.com/embed/video/${videoId}${queryParam}`;
-          console.log(`[3isk Player Proxy] Converted Dailymotion URL to embed: ${targetUrl}`);
-        } catch (e) {
-          console.warn('[3isk Player Proxy] Dailymotion conversion failed:', e);
-        }
-      }
-
-      // Implement a "Click to Watch" landing page ONLY for Dailymotion to open in a new window
-      // per user request "فقط اذا كان في سيرفر حلقة دايلي موشن يوجه الى رابط"
-      const domainsWithLanding = ['dailymotion.com'];
-      const isLandingDomain = domainsWithLanding.some(d => targetUrl.toLowerCase().includes(d));
-
-      if (isLandingDomain && !req.query.confirmed) {
-        console.log(`[3isk Player Proxy] Showing landing page for: ${targetUrl}`);
-        return res.send(`
-          <!DOCTYPE html>
-          <html dir="rtl">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>مشغل الفيديو</title>
-            <style>
-              body {
-                margin: 0;
-                padding: 0;
-                background: #000;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                height: 100vh;
-                color: #fff;
-                font-family: system-ui, -apple-system, sans-serif;
-                overflow: hidden;
-              }
-              .container {
-                text-align: center;
-                animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-              }
-              @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(10px); }
-                to { opacity: 1; transform: translateY(0); }
-              }
-              .watch-button {
-                padding: 14px 28px;
-                font-size: 16px;
-                background: linear-gradient(135deg, #e50914 0%, #b20710 100%);
-                color: #fff;
-                text-decoration: none;
-                border-radius: 8px;
-                font-weight: 800;
-                display: inline-block;
-                transition: all 0.25s ease;
-                box-shadow: 0 5px 15px rgba(229, 9, 20, 0.3);
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                cursor: pointer;
-                text-transform: uppercase;
-              }
-              .watch-button:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 8px 20px rgba(229, 9, 20, 0.5);
-                border-color: rgba(255, 255, 255, 0.3);
-              }
-              .hint {
-                margin-top: 18px;
-                color: rgba(255, 255, 255, 0.4);
-                font-size: 12px;
-              }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <a href="${targetUrl}" target="_blank" class="watch-button" onclick="window.open('${targetUrl}', '_blank'); return false;">
-                اضغط هنا لمشاهده حلقه
-              </a>
-              <div class="hint">سيتم فتح المشغل في نافذة جديدة لضمان أفضل جودة</div>
-            </div>
-          </body>
-          </html>
-        `);
-      }
-
-      // If the target URL is a known protected embed provider (like Ok.ru, etc.),
+      // If the target URL is a known protected embed provider (like ArabHD, EStream, Ok.ru, etc.),
       // we immediately redirect the user's browser iframe to load it natively instead of server proxying.
       // This completely bypasses Cloudflare Turnstile / anti-bot challenge issues (e.g. error code 232403) and CORS blocks!
-      const lowerDecrypted = targetUrl.toLowerCase();
+      const lowerDecrypted = decryptedUrl.toLowerCase();
       const shouldDirectRedirect = 
+        lowerDecrypted.includes('arabhd') ||
+        lowerDecrypted.includes('estream') ||
         lowerDecrypted.includes('ok.ru') ||
-        lowerDecrypted.includes('dailymotion.com') ||
+        lowerDecrypted.includes('redplay') ||
+        lowerDecrypted.includes('redhd') ||
+        lowerDecrypted.includes('dailymotion') ||
         lowerDecrypted.includes('youtube.com') ||
         lowerDecrypted.includes('google.com') ||
         lowerDecrypted.includes('vk.com') ||
@@ -1728,16 +1620,16 @@ async function startServer() {
         lowerDecrypted.includes('sibnet.ru');
 
       if (shouldDirectRedirect) {
-        console.log(`[3isk Player Proxy] Direct redirecting (bypass proxy) to: ${targetUrl}`);
-        return res.redirect(targetUrl);
+        console.log(`[3isk Player Proxy] Direct redirecting (bypass proxy) to: ${decryptedUrl}`);
+        return res.redirect(decryptedUrl);
       }
 
-      console.log(`[3isk Player Proxy] Fetching original player page: ${targetUrl}`);
+      console.log(`[3isk Player Proxy] Fetching original player page: ${decryptedUrl}`);
       
-      const response = await axios.get(targetUrl, {
+      const response = await axios.get(decryptedUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-          'Referer': targetUrl.includes('dailymotion.com') ? 'https://www.dailymotion.com/' : 'https://3iskk.xyz/',
+          'Referer': 'https://3iskk.xyz/',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
           'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
         },
@@ -1749,64 +1641,6 @@ async function startServer() {
       let html = response.data;
       if (typeof html !== 'string') {
         return res.status(500).send("Invalid player response structure.");
-      }
-
-      // Check for "File is no longer available" (expired/deleted)
-      if (html.includes("File is no longer available") || html.includes("expired or has been deleted") || html.includes("player_blank.jpg")) {
-        console.log(`[3isk Player Proxy] Detected expired/deleted file for: ${targetUrl}`);
-        return res.send(`
-          <!DOCTYPE html>
-          <html dir="rtl">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>الفيديو غير متوفر</title>
-            <style>
-              body {
-                margin: 0;
-                padding: 0;
-                background: #000;
-                color: #fff;
-                font-family: system-ui, -apple-system, sans-serif;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                height: 100vh;
-                text-align: center;
-              }
-              .error-box {
-                padding: 30px;
-                background: rgba(255, 255, 255, 0.05);
-                border-radius: 20px;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                max-width: 90%;
-              }
-              .icon {
-                font-size: 50px;
-                margin-bottom: 20px;
-                display: block;
-              }
-              h1 {
-                font-size: 18px;
-                margin: 0 0 10px 0;
-                color: #e50914;
-              }
-              p {
-                font-size: 14px;
-                color: #aaa;
-                margin: 0;
-              }
-            </style>
-          </head>
-          <body>
-            <div class="error-box">
-              <span class="icon">⚠️</span>
-              <h1>عذراً، هذا الفيديو لم يعد متوفراً</h1>
-              <p>يبدو أن الرابط قد انتهت صلاحيته أو تم حذفه من المصدر.</p>
-            </div>
-          </body>
-          </html>
-        `);
       }
 
       const $ = cheerio.load(html);
@@ -1827,43 +1661,6 @@ async function startServer() {
       const spoofScript = `
         <script id="bypass-script">
           (function() {
-            // Spoof mobile iOS Safari user agent to force mobile player behavior and bypass desktop CORS/232011 blocks
-            try {
-              const mobileUA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
-              Object.defineProperty(navigator, 'userAgent', { get: function() { return mobileUA; }, configurable: true });
-              Object.defineProperty(navigator, 'platform', { get: function() { return 'iPhone'; }, configurable: true });
-              Object.defineProperty(navigator, 'vendor', { get: function() { return 'Apple Computer, Inc.'; }, configurable: true });
-              Object.defineProperty(navigator, 'maxTouchPoints', { get: function() { return 5; }, configurable: true });
-              
-              // Force mobile screen dimensions to trigger mobile players and bypass desktop restrictions
-              // We use 390x844 (iPhone 12/13/14 size) as a standard mobile baseline
-              try {
-                Object.defineProperty(window, 'innerWidth', { get: function() { return 390; }, configurable: true });
-                Object.defineProperty(window, 'innerHeight', { get: function() { return 844; }, configurable: true });
-                Object.defineProperty(window, 'outerWidth', { get: function() { return 390; }, configurable: true });
-                Object.defineProperty(window, 'outerHeight', { get: function() { return 844; }, configurable: true });
-                
-                const mockScreen = {
-                  width: 390,
-                  height: 844,
-                  availWidth: 390,
-                  availHeight: 844,
-                  colorDepth: 24,
-                  pixelDepth: 24,
-                  orientation: { type: 'portrait-primary', angle: 0 }
-                };
-                Object.defineProperty(window, 'screen', { get: function() { return mockScreen; }, configurable: true });
-                // Also spoof matchMedia for mobile-first checks
-                const originalMatchMedia = window.matchMedia;
-                window.matchMedia = function(query) {
-                  if (query.includes('max-width') || query.includes('pointer: coarse') || query.includes('hover: none')) {
-                    return { matches: true, media: query, onchange: null, addListener: function(){}, removeListener: function(){}, addEventListener: function(){}, removeEventListener: function(){}, dispatchEvent: function(){ return true; } };
-                  }
-                  return originalMatchMedia.call(window, query);
-                };
-              } catch (e) { console.warn('[Proxy Player] Dimension spoofing failed:', e); }
-            } catch (e) { console.warn('[Proxy Player] UserAgent spoofing failed:', e); }
-
             // Safe independent wrappers
             try {
               Object.defineProperty(window, 'parent', { get: function() { return window; }, configurable: true });
@@ -1974,24 +1771,6 @@ async function startServer() {
         const src = $(el).attr('src');
         if (src && !src.startsWith('http') && !src.startsWith('data:') && !src.startsWith('//') && !src.startsWith('javascript:')) {
           $(el).attr('src', makeAbsoluteUrl(src, decryptedUrl));
-        }
-      });
-
-      // Proxy any external iframe embeds so they also get our spoofScript injected and can play CORS-blocked HLS streams seamlessly!
-      $('iframe').each((i, el) => {
-        let src = $(el).attr('src');
-        if (src) {
-          if (src.startsWith('//')) {
-            src = 'https:' + src;
-          }
-          if (src.startsWith('http') && !src.includes('/api/v1/3isk-player') && !src.includes('youtube.com') && !src.includes('google.com') && !src.includes('recaptcha')) {
-            try {
-              const encryptedTarget = encryptValue(src);
-              $(el).attr('src', `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`);
-            } catch (err) {
-              console.warn('[3isk Player Proxy] Failed to encrypt iframe src:', src, err);
-            }
-          }
         }
       });
 
@@ -2248,9 +2027,6 @@ async function startServer() {
         const isQesehSource = currentUrl.includes('qeseh') || currentUrl.includes('sayyarh');
         const isAlooyTv = currentUrl.includes('alooytv');
         const isArabHd = currentUrl.includes('arabhd');
-        const isEStream = currentUrl.includes('estream');
-        const isDailymotion = currentUrl.includes('dailymotion.com');
-        const isRedPlay = currentUrl.includes('redplay') || currentUrl.includes('redhd');
         const is3iskkSource = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive|thenextstop|fitnur|bshra/i);
 
         if (isQesehSource) {
@@ -2262,15 +2038,6 @@ async function startServer() {
         } else if (isArabHd) {
            headersOptions['Referer'] = 'https://arabhd.onl/';
            headersOptions['Origin'] = 'https://arabhd.onl';
-        } else if (isEStream) {
-           headersOptions['Referer'] = 'https://estream.to/';
-           headersOptions['Origin'] = 'https://estream.to';
-        } else if (isDailymotion) {
-           headersOptions['Referer'] = 'https://www.dailymotion.com/';
-           headersOptions['Origin'] = 'https://www.dailymotion.com';
-        } else if (isRedPlay) {
-           headersOptions['Referer'] = 'https://redplay.to/';
-           headersOptions['Origin'] = 'https://redplay.to';
         } else if (is3iskkSource) {
            headersOptions['Referer'] = 'https://3iskk.xyz/';
            headersOptions['Origin'] = 'https://3iskk.xyz';
@@ -4045,8 +3812,7 @@ document.head.appendChild(s);
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Environment PORT is: ${process.env.PORT}`);
-    console.log(`Server running on port: ${PORT}`);
+    console.log(`Environment PORT is: ${process.env.PORT}`); console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 

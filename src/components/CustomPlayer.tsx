@@ -14,7 +14,6 @@ import { progressService } from '../services/progressService';
 import HorizontalEpisodeList from './HorizontalEpisodeList';
 import { useDevice } from '../context/DeviceAndNavigationContext';
 import { formatEpisodeTitle } from './EpisodeGrid';
-import { decryptValue, encryptValue } from '../lib/security';
 
 interface CustomPlayerProps {
   videoUrl: string;
@@ -67,13 +66,16 @@ const ShadowVideo: React.FC<ShadowVideoProps> = ({
   onCanPlayThrough,
 }) => {
   const { isTV, isMobile } = useDevice();
+  const hostRef = useRef<HTMLDivElement>(null);
+  const videoElementRef = useRef<HTMLVideoElement | null>(null);
+
   const isIOS = typeof window !== 'undefined' ? 
     (/iPhone|iPad|iPod/.test(window.navigator.userAgent) || 
      (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1)) : false;
 
   // Enforce zero controls on smart TV, iOS, and mobile browser fallbacks
   React.useEffect(() => {
-    if (!videoRef.current) return;
+    if ((!isTV && !isIOS && !isMobile) || !videoRef.current) return;
     const video = videoRef.current;
     
     // Force controls off at load
@@ -94,43 +96,179 @@ const ShadowVideo: React.FC<ShadowVideoProps> = ({
     }, 500); // Increased interval to 500ms for better performance
     
     return () => clearInterval(interval);
-  }, [videoRef]);
+  }, [isTV, isMobile, videoRef]);
 
-  return (
-    <video
-      ref={videoRef as any}
-      className={className}
-      playsInline
-      autoPlay
-      muted={isMuted}
-      x-webkit-airplay="deny"
-      controls={false}
-      disablePictureInPicture
-      controlsList="nodownload nofullscreen noremoteplayback"
-      onTimeUpdate={onTimeUpdate}
-      onLoadedMetadata={onLoadedMetadata}
-      onError={onError}
-      onWaiting={onWaiting}
-      onPlaying={onPlaying}
-      onSeeking={onSeeking}
-      onSeeked={onSeeked}
-      onStalled={onStalled}
-      onCanPlay={onCanPlay}
-      onCanPlayThrough={onCanPlayThrough}
-      style={{
-        width: '100%',
-        height: '100%',
-        objectFit: 'contain',
-        pointerEvents: 'none',
-        backgroundColor: 'transparent',
-        transition: 'all 500ms ease',
-        opacity: isPlaying ? '1' : '0.9',
-        filter: 'none'
-      }}
-    />
-  );
+  // If it's a TV, iOS device (Safari mobile), or mobile browser, fallback to standard React video tag
+  // Web browser engines fail to respect playsinline and trigger native player hijack when placed inside Closed Shadow Roots.
+  if (isTV || isIOS || isMobile) {
+    return (
+      <video
+        ref={videoRef as any}
+        className={className}
+        playsInline
+        autoPlay
+        muted={isMuted}
+        x-webkit-airplay="deny"
+        controls={false}
+        disablePictureInPicture
+        controlsList="nodownload nofullscreen noremoteplayback"
+        onTimeUpdate={onTimeUpdate}
+        onLoadedMetadata={onLoadedMetadata}
+        onError={onError}
+        onWaiting={onWaiting}
+        onPlaying={onPlaying}
+        onSeeking={onSeeking}
+        onSeeked={onSeeked}
+        onStalled={onStalled}
+        onCanPlay={onCanPlay}
+        onCanPlayThrough={onCanPlayThrough}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          pointerEvents: 'none',
+          backgroundColor: 'transparent',
+          transition: 'all 500ms ease',
+          opacity: '1',
+          filter: 'none'
+        }}
+      />
+    );
+  }
+
+  // Non-TV standard behavior (Shadow DOM)
+  return <ShadowVideoInternal 
+      videoRef={videoRef} isPlaying={isPlaying} isMuted={isMuted} className={className} 
+      onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata} onError={onError}
+      onWaiting={onWaiting} onPlaying={onPlaying} onSeeking={onSeeking}
+      onSeeked={onSeeked} onStalled={onStalled} onCanPlay={onCanPlay} onCanPlayThrough={onCanPlayThrough}
+  />;
 };
 
+// Extracted internal component to prevent hook rules violation
+const ShadowVideoInternal: React.FC<ShadowVideoProps> = ({
+  videoRef,
+  isPlaying,
+  isMuted,
+  className,
+  onTimeUpdate,
+  onLoadedMetadata,
+  onError,
+  onWaiting,
+  onPlaying,
+  onSeeking,
+  onSeeked,
+  onStalled,
+  onCanPlay,
+  onCanPlayThrough,
+}) => {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const videoElementRef = useRef<HTMLVideoElement | null>(null);
+
+  React.useEffect(() => {
+    if (videoElementRef.current) {
+      videoElementRef.current.muted = isMuted;
+    }
+  }, [isMuted]);
+  
+  React.useLayoutEffect(() => {
+    if (!hostRef.current) return;
+    
+    const shadowRoot = hostRef.current.attachShadow({ mode: 'closed' });
+    const video = document.createElement('video');
+    video.muted = isMuted; // Set initial muted state
+    video.preload = 'auto';
+
+    video.tabIndex = -1;
+    video.controls = false;
+    video.playsInline = true;
+    (video as any).webkitPlaysInline = true;
+    
+    // Prevent downloads, PiP, etc.
+    video.setAttribute('controlsList', 'nodownload nofullscreen noremoteplayback');
+    (video as any).disablePictureInPicture = true;
+    (video as any).disableRemotePlayback = true;
+
+    // Mobile/TV browser inline plays attributes
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('webkit-playsinline', 'true');
+    video.setAttribute('x5-playsinline', 'true');
+    video.setAttribute('x5-video-player-type', 'h5-page');
+    video.setAttribute('x5-video-player-fullscreen', 'false');
+    video.setAttribute('x-webkit-airplay', 'deny');
+    video.setAttribute('aria-hidden', 'true');
+
+    // CSS Styling for Shadow Root (Tailwind cannot enter a closed shadow)
+    video.style.width = '100%';
+    video.style.height = '100%';
+    video.style.objectFit = 'contain';
+    video.style.pointerEvents = 'none';
+    video.style.backgroundColor = 'transparent';
+    video.style.transition = 'all 500ms ease';
+    video.style.opacity = isPlaying ? '1' : '0.9'; // Increased opacity for better visibility
+    // Removed blur filter for mobile/TV performance optimization
+    
+    shadowRoot.appendChild(video);
+    videoElementRef.current = video;
+
+    // Constantly suppress controls via frequency intervals
+    const interval = setInterval(() => {
+      if (video.controls) {
+        video.controls = false;
+        video.removeAttribute('controls');
+      }
+    }, 500);
+
+    // Bind ref
+    if (videoRef) {
+      (videoRef as any).current = video;
+    }
+
+    // Forward listeners safely to replicate React element behaviour
+    const listeners: { [key: string]: (e: Event) => void } = {
+      timeupdate: (e) => onTimeUpdate?.(e),
+      loadedmetadata: (e) => onLoadedMetadata?.(e),
+      error: (e) => onError?.(e),
+      waiting: (e) => onWaiting?.(e),
+      playing: (e) => onPlaying?.(e),
+      seeking: (e) => onSeeking?.(e),
+      seeked: (e) => onSeeked?.(e),
+      stalled: (e) => onStalled?.(e),
+      canplay: (e) => onCanPlay?.(e),
+      canplaythrough: (e) => onCanPlayThrough?.(e),
+    };
+
+    Object.keys(listeners).forEach((event) => {
+      video.addEventListener(event, listeners[event]);
+    });
+
+    return () => {
+      clearInterval(interval);
+      Object.keys(listeners).forEach((event) => {
+        video.removeEventListener(event, listeners[event]);
+      });
+      try {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      } catch (err) {
+        console.warn('ShadowVideo cleanup error on unmount:', err);
+      }
+      if (videoRef) {
+        (videoRef as any).current = null;
+      }
+    };
+  }, [videoRef]);
+
+  // Handle playing style update dynamically
+  useEffect(() => {
+    if (videoElementRef.current) {
+      videoElementRef.current.style.opacity = isPlaying ? '1' : '0.9';
+    }
+  }, [isPlaying]);
+
+  return <div ref={hostRef} className={className} style={{ width: '100%', height: '100%' }} />;
+};
 
 const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   const {
@@ -152,50 +290,12 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
 
   const resolvedVideoUrl = React.useMemo(() => {
     if (!videoUrl) return '';
-    
-    let target = videoUrl;
-
-    // Handle Google redirect unwrapping (common in some sources)
-    if (target.includes('google.com/url?')) {
-      try {
-        const searchParams = new URL(target).searchParams;
-        const q = searchParams.get('q') || searchParams.get('url');
-        if (q) target = q;
-      } catch (e) {}
-    }
-
-    // Handle Dailymotion conversion to embed format
-    if (target.includes('dailymotion.com/video/')) {
-      const dmMatch = target.match(/dailymotion\.com\/video\/([a-zA-Z0-9]+)/);
-      if (dmMatch) {
-        const videoId = dmMatch[1];
-        const queryParam = target.includes('?') ? '?' + target.split('?')[1] : '';
-        target = `https://www.dailymotion.com/embed/video/${videoId}${queryParam}`;
-      }
-    }
-
-    // Handle ArabHD ID conversion (if target is just the server ID like 'oz2zsec7kt8x')
-    if (/^[a-zA-Z0-9]{12}$/.test(target) && !target.includes('/')) {
-      target = `https://arabhd.onl/embed-${target}.html`;
-    }
-
-    // If it's a Dailymotion URL, wrap it in our proxy to show the landing page button ("اضغط هنا")
-    if (target.includes('dailymotion.com')) {
-      try {
-        const encrypted = encryptValue(target);
-        return `/api/v1/3isk-player?url=${encodeURIComponent(encrypted)}`;
-      } catch (e) {
-        console.warn('[CustomPlayer] Encryption for proxy failed:', e);
-        return target;
-      }
-    }
-
-    if (target.includes('mega.nz')) {
+    if (videoUrl.includes('mega.nz')) {
       // Convert standard Mega file URLs into the embed URL representation
       // e.g. /file/... -> /embed/...
-      return target.replace(/\/file\//i, '/embed/');
+      return videoUrl.replace(/\/file\//i, '/embed/');
     }
-    return target;
+    return videoUrl;
   }, [videoUrl]);
 
   const { profile } = useAuth();
@@ -380,37 +480,6 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
   const [isIframeFallback, setIsIframeFallback] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showTimeoutOptions, setShowTimeoutOptions] = useState(false);
-  const [currentVideoUrl, setCurrentVideoUrl] = useState(resolvedVideoUrl);
-
-  useEffect(() => {
-    setCurrentVideoUrl(resolvedVideoUrl);
-  }, [resolvedVideoUrl]);
-
-  const tryAutoDecryptedPlayback = (): boolean => {
-    if (currentVideoUrl && (currentVideoUrl.includes('/api/v1/stream-proxy/') || currentVideoUrl.includes('/api/v1/3isk-player?url='))) {
-      try {
-        let encrypted = '';
-        if (currentVideoUrl.includes('/api/v1/stream-proxy/')) {
-          encrypted = currentVideoUrl.split('/api/v1/stream-proxy/')[1];
-        } else if (currentVideoUrl.includes('/api/v1/3isk-player?url=')) {
-          encrypted = currentVideoUrl.split('/api/v1/3isk-player?url=')[1];
-        }
-        if (encrypted) {
-          const decrypted = decryptValue(decodeURIComponent(encrypted));
-          if (decrypted && decrypted.startsWith('http')) {
-            console.log("[Auto Decrypted Playback] Switching to direct URL:", decrypted);
-            setCurrentVideoUrl(decrypted);
-            setIsIframeFallback(false);
-            setIsLoading(true);
-            return true;
-          }
-        }
-      } catch (err) {
-        console.error("[Auto Decrypted Playback] Decryption failed:", err);
-      }
-    }
-    return false;
-  };
   const [isBuffering, setIsBuffering] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const isLocalOfflineVideo = videoUrl && videoUrl.startsWith('blob:');
@@ -1100,7 +1169,7 @@ const SafariNotification = () => {
 
   // Initialize PlayerJS if loaded and direct stream is used (non-embed)
   useEffect(() => {
-    if (!playerjsLoaded || isIframeFallback || !currentVideoUrl) return;
+    if (!playerjsLoaded || isIframeFallback || !resolvedVideoUrl) return;
 
     const PlayerjsClass = (window as any).Playerjs;
     if (!PlayerjsClass) return;
@@ -1125,7 +1194,7 @@ const SafariNotification = () => {
     try {
       const pjs = new PlayerjsClass({
         id: 'pjs-player',
-        file: currentVideoUrl,
+        file: resolvedVideoUrl,
         autoplay: true,
       });
 
@@ -1139,12 +1208,12 @@ const SafariNotification = () => {
         try {
           playerjsInstanceRef.current.api('destroy');
         } catch (e) {
-          console.warn('Error destroying playerjs:', e);
+          console.warn('Error destroying playerjs on cleanup:', e);
         }
         playerjsInstanceRef.current = null;
       }
     };
-  }, [playerjsLoaded, currentVideoUrl, isIframeFallback]);
+  }, [playerjsLoaded, resolvedVideoUrl, isIframeFallback]);
 
   // Check if link is iframe/embed only or a standard direct video
   useEffect(() => {
@@ -1152,11 +1221,11 @@ const SafariNotification = () => {
     setIsBuffering(false);
     setIsIframeFallback(false);
     
-    if (!currentVideoUrl) {
+    if (!resolvedVideoUrl) {
       return;
     }
     
-    const urlLower = currentVideoUrl.toLowerCase();
+    const urlLower = resolvedVideoUrl.toLowerCase();
     
       // Explicitly handle our secure frame proxies
       if (urlLower.startsWith('/api/v1/secured-player') || urlLower.startsWith('/api/v1/titanic-player')) {
@@ -1222,7 +1291,7 @@ const SafariNotification = () => {
           manifestLoadingMaxRetry: 8,
           levelLoadingMaxRetry: 8,
         });
-        hls.loadSource(currentVideoUrl);
+        hls.loadSource(resolvedVideoUrl);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           setIsLoading(false);
@@ -1243,23 +1312,6 @@ const SafariNotification = () => {
             switch (data.type) {
               case Hls.ErrorTypes.NETWORK_ERROR:
                 console.warn("HLS network error, attempting recovery level reload:", data);
-                // Decrypt and retry direct playback fallback if proxy failed
-                if (currentVideoUrl && currentVideoUrl.includes('/api/v1/stream-proxy/')) {
-                  try {
-                    const parts = currentVideoUrl.split('/api/v1/stream-proxy/');
-                    const encrypted = parts[1];
-                    if (encrypted) {
-                      const decrypted = decryptValue(decodeURIComponent(encrypted));
-                      if (decrypted && decrypted.startsWith('http')) {
-                        console.log("[HLS Network Error Fallback] Decrypting and switching to direct stream URL:", decrypted);
-                        setCurrentVideoUrl(decrypted);
-                        return;
-                      }
-                    }
-                  } catch (err) {
-                    console.error("Failed HLS fatal network decryption:", err);
-                  }
-                }
                 hls?.startLoad();
                 break;
               case Hls.ErrorTypes.MEDIA_ERROR:
@@ -1267,13 +1319,8 @@ const SafariNotification = () => {
                 hls?.recoverMediaError();
                 break;
               default:
-                console.warn("HLS unrecoverable fatal error, attempting auto-decryption:", data);
-                {
-                  const fellBack = tryAutoDecryptedPlayback();
-                  if (!fellBack) {
-                    setShowTimeoutOptions(true);
-                  }
-                }
+                console.warn("HLS unrecoverable fatal error, staying in player for retry logic:", data);
+                setShowTimeoutOptions(true); // Let user decide rather than auto-switching to inferior player
                 setIsLoading(false);
                 break;
             }
@@ -1289,7 +1336,7 @@ const SafariNotification = () => {
           }
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = currentVideoUrl;
+        video.src = resolvedVideoUrl;
         video.load(); // Explicitly trigger hardware media system on Safari & iOS
         video.addEventListener('loadedmetadata', () => {
           setIsLoading(false);
@@ -1306,18 +1353,13 @@ const SafariNotification = () => {
           });
         });
       } else {
-        console.warn("HLS not supported in this environment, attempting auto-decryption:");
-        {
-          const fellBack = tryAutoDecryptedPlayback();
-          if (!fellBack) {
-            setShowTimeoutOptions(true);
-          }
-        }
+        console.warn("HLS not supported in this environment, showing options");
+        setShowTimeoutOptions(true);
         setIsLoading(false);
       }
     } else {
       // Regular streaming files (MP4/WebM)
-      video.src = currentVideoUrl;
+      video.src = resolvedVideoUrl;
       video.load(); // Explicitly call .load() for instant cross-browser parsing
       const onPlayable = () => {
         setIsLoading(false);
@@ -1346,7 +1388,7 @@ const SafariNotification = () => {
         video.src = '';
       }
     };
-  }, [currentVideoUrl, episodeIndex, playerjsLoaded]);
+  }, [resolvedVideoUrl, episodeIndex, playerjsLoaded]);
 
   // Resume progress logic
   const resumeWatchProgress = () => {
@@ -1360,7 +1402,7 @@ const SafariNotification = () => {
       const mins = Math.floor(savedSecond / 60);
       const secs = Math.floor(savedSecond % 60);
       const formattedEpClean = formatEpisodeTitle(episodes[episodeIndex]?.title || "", episodeIndex, false);
-      setResumeTimeText(`تم الاستئناف: ${formattedEpClean}`);
+      setResumeTimeText(`تم الاستئناف: ${formattedEpClean} عند الدقيقة ${mins}:${secs.toString().padStart(2, '0')}`);
       setShowResumeNotification(true);
       setTimeout(() => setShowResumeNotification(false), 4500);
     }
@@ -1375,7 +1417,7 @@ const SafariNotification = () => {
         const mins = Math.floor(savedSecond / 60);
         const secs = Math.floor(savedSecond % 60);
         const formattedEpClean = formatEpisodeTitle(episodes[episodeIndex]?.title || "", episodeIndex, false);
-        setResumeTimeText(`تم الاستئناف: ${formattedEpClean}`);
+        setResumeTimeText(`تم الاستئناف: ${formattedEpClean} عند الدقيقة ${mins}:${secs.toString().padStart(2, '0')}`);
         setShowResumeNotification(true);
         const timer = setTimeout(() => setShowResumeNotification(false), 4500);
         return () => clearTimeout(timer);
@@ -1630,11 +1672,8 @@ const SafariNotification = () => {
     if (isLoading) {
       setShowTimeoutOptions(false);
       timer = setTimeout(() => {
-        // Try auto-decrypted playback first to bypass 232011/CORS silently!
-        const fellBack = tryAutoDecryptedPlayback();
-        if (!fellBack) {
-          setShowTimeoutOptions(true);
-        }
+        // Only show options, never switch to iframe automatically anymore
+        setShowTimeoutOptions(true);
       }, isTV ? 10000 : 15000); // More generous loading time
     } else {
       setShowTimeoutOptions(false);
@@ -1923,12 +1962,6 @@ const SafariNotification = () => {
 
   const handleVideoError = (e: any) => {
     console.warn("Native video playback encountered an issue:", e?.type || e?.message || "unknown_error");
-    
-    const fellBack = tryAutoDecryptedPlayback();
-    if (fellBack) {
-      return;
-    }
-
     // Instead of immediate fallback, try to wait or show timeout options
     if (!showTimeoutOptions) {
       setShowTimeoutOptions(true);
@@ -2493,7 +2526,6 @@ const SafariNotification = () => {
             >
               {playbackRate}x
             </button>
-
             {!isLocalOfflineVideo && (
               <>
                 <button
@@ -2728,7 +2760,7 @@ const SafariNotification = () => {
         )}
       </AnimatePresence>
 
-      {!currentVideoUrl ? (
+      {!resolvedVideoUrl ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 gap-4">
           <div className="w-14 h-14 border-4 border-primary border-t-transparent rounded-full animate-spin shadow-lg shadow-primary/20" />
           <p className="text-zinc-400 text-sm font-bold tracking-widest text-center px-4">جاري تجهيز سيرفرات المشغل المباشر...</p>
@@ -2800,13 +2832,13 @@ const SafariNotification = () => {
           {isIframeFallback ? (
             <div className={cn(
               "w-full h-full relative",
-              currentVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
+              resolvedVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
             )}>
               <iframe
-                src={currentVideoUrl}
+                src={resolvedVideoUrl}
                 className={cn(
                   "w-full h-full border-0 animate-fade-in",
-                  currentVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
+                  resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
                 )}
                 allowFullScreen
                 allow="autoplay; encrypted-media; picture-in-picture"
@@ -2823,7 +2855,7 @@ const SafariNotification = () => {
                   zIndex: 10,
                 }}
               />
-              {currentVideoUrl.includes('streamimdb') && (
+              {resolvedVideoUrl.includes('streamimdb') && (
                 <div className="absolute top-4 left-4 z-20 pointer-events-none">
                   <div className="bg-amber-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
                     <Sparkles className="w-3 h-3 fill-current" />
@@ -2987,7 +3019,6 @@ const SafariNotification = () => {
               {/* Floating navigation icons for Embeds */}
               {isIframeFallback && (
                 <div className="absolute top-4 right-4 z-[1000] flex items-center gap-2 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)]">
-
                   <button
                     onClick={(e) => { e.stopPropagation(); setShowEpisodeMenu(!showEpisodeMenu); }}
                     className="flex items-center gap-2 bg-black/85 px-3 py-2 rounded-xl border border-white/10 text-white text-[10px] font-black uppercase tracking-wider shadow-2xl pointer-events-auto"
@@ -3023,15 +3054,15 @@ const SafariNotification = () => {
               <AnimatePresence>
                 {showResumeNotification && (
                   <motion.div
-                    initial={{ opacity: 0, scale: 0.8, x: -20 }}
-                    animate={{ opacity: 1, scale: 1, x: 0 }}
-                    exit={{ opacity: 0, scale: 0.8, x: -20 }}
-                    className="absolute bottom-4 left-4 z-[1500] bg-zinc-950/90 backdrop-blur-sm rounded-lg border border-red-500/20 text-white px-2 py-1.5 shadow-xl flex items-center gap-2 font-bold pointer-events-none select-none text-right max-w-[180px]"
+                    initial={{ opacity: 0, x: -50 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -50 }}
+                    className="absolute bottom-20 sm:bottom-24 left-4 sm:left-6 z-[1500] bg-zinc-950/92 backdrop-blur-md rounded-xl border border-red-500/10 text-white px-4 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.8)] flex items-center gap-2.5 font-bold pointer-events-none select-none text-right max-w-xs"
                   >
-                    <span className="text-xs">⏰</span>
+                    <span className="text-sm">⏰</span>
                     <div className="flex flex-col text-right">
-                      <span className="text-[9px] font-black text-red-500/80 tracking-tight leading-none">تم الاستئناف</span>
-                      <span className="text-[10px] text-zinc-300 mt-0.5 leading-tight truncate">{resumeTimeText}</span>
+                      <span className="text-[10px] sm:text-[11px] font-black text-red-500 tracking-wider">تم الاستئناف</span>
+                      <span className="text-[11px] sm:text-[12px] text-zinc-200 mt-0.5">{resumeTimeText}</span>
                     </div>
                   </motion.div>
                 )}
@@ -3164,36 +3195,6 @@ const SafariNotification = () => {
                   )}
                 </AnimatePresence>
               </div>
-
-              {/* DYNAMIC ERROR & FALLBACK OVERLAY */}
-              {showTimeoutOptions && (
-                <div className="absolute inset-0 z-[8500] flex flex-col items-center justify-center bg-black/95 p-6 text-center animate-fade-in pointer-events-auto">
-                  <div className="w-16 h-16 bg-red-500/10 border border-red-500/20 rounded-full flex items-center justify-center text-red-500 mb-4 animate-pulse">
-                    <AlertTriangle className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-white text-base font-black mb-2">تعذر تشغيل هذا البث</h3>
-                  <p className="text-zinc-400 text-xs max-w-sm mb-6 leading-relaxed">
-                    يبدو أن مشغل الفيديو يواجه صعوبة مؤقتة في الاتصال بسيرفر البث. يرجى إعادة المحاولة.
-                  </p>
-                  
-                  <div className="flex gap-3 w-full max-w-xs justify-center">
-                    <button
-                      onClick={() => {
-                        setShowTimeoutOptions(false);
-                        setIsLoading(true);
-                        const temp = currentVideoUrl;
-                        setCurrentVideoUrl('');
-                        setTimeout(() => {
-                          setCurrentVideoUrl(temp);
-                        }, 100);
-                      }}
-                      className="w-full px-5 py-3 bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-white font-black text-xs sm:text-sm rounded-2xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-                    >
-                      <span>إعادة المحاولة 🔄</span>
-                    </button>
-                  </div>
-                </div>
-              )}
             </>
           )}
         </>

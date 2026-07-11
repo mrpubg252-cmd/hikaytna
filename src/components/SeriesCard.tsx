@@ -51,12 +51,10 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
       item.image.includes('default_image') || 
       item.image.includes('thumbnail.jpg') || 
       item.image.includes('logo.png') ||
+      item.image.includes('3iskk') ||
       item.image.includes('video_thumb');
 
-    // User requested to use Qeseh images directly for the main interface (home)
-    const isQeseh = item.image?.includes('qeseh.com') || item.image?.includes('qeseh.net');
-
-    if (isPlaceholder && !isQeseh) {
+    if (isPlaceholder) {
       getTMDBPoster(item.title, item.category).then((healedUrl) => {
         if (healedUrl) {
           setCurrentSrc(healedUrl);
@@ -118,7 +116,7 @@ const SeriesCard = React.memo(({ item, onPress }: SeriesCardProps) => {
         decoding="async"
         referrerPolicy="no-referrer"
         className={cn(
-          "absolute inset-0 w-full h-full object-fill transition-all duration-500 will-change-transform z-10",
+          "absolute inset-0 w-full h-full object-cover transition-all duration-500 will-change-transform z-10",
           imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95',
           isLegendary && "scale-[1.01]"
         )}
