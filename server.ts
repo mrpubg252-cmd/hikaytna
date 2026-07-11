@@ -1720,20 +1720,12 @@ async function startServer() {
           <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<<<<<<< HEAD
-            <title>مشغل Dailymotion</title>
-=======
             <title>مشغل Dailymotion الآمن</title>
->>>>>>> 8037c95 (update code)
             <style>
               body {
                 margin: 0;
                 padding: 0;
-<<<<<<< HEAD
-                background: #000;
-=======
                 background: #050505;
->>>>>>> 8037c95 (update code)
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -1744,54 +1736,6 @@ async function startServer() {
               }
               .container {
                 text-align: center;
-<<<<<<< HEAD
-                animation: fadeIn 0.5s ease-out;
-                padding: 20px;
-                background: rgba(255,255,255,0.05);
-                border-radius: 20px;
-                border: 1px solid rgba(255,255,255,0.1);
-                max-width: 90%;
-              }
-              @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(20px); }
-                to { opacity: 1; transform: translateY(0); }
-              }
-              .logo {
-                font-size: 24px;
-                font-weight: 900;
-                margin-bottom: 20px;
-                color: #ff0000;
-                display: block;
-              }
-              .watch-button {
-                padding: 16px 32px;
-                font-size: 18px;
-                background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%);
-                color: #fff;
-                text-decoration: none;
-                border-radius: 12px;
-                font-weight: 800;
-                display: inline-block;
-                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                box-shadow: 0 10px 25px rgba(255, 0, 0, 0.4);
-                cursor: pointer;
-                border: none;
-              }
-              .watch-button:hover {
-                transform: scale(1.05);
-                box-shadow: 0 15px 35px rgba(255, 0, 0, 0.6);
-              }
-              .hint {
-                margin-top: 25px;
-                color: rgba(255, 255, 255, 0.6);
-                font-size: 14px;
-                line-height: 1.6;
-              }
-              .dm-logo {
-                width: 40px;
-                height: 40px;
-                margin-bottom: 15px;
-=======
                 animation: fadeIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
                 padding: 30px 24px;
                 background: rgba(10, 10, 10, 0.8);
@@ -1890,24 +1834,11 @@ async function startServer() {
               .dm-logo {
                 width: 32px;
                 height: 32px;
->>>>>>> 8037c95 (update code)
               }
             </style>
           </head>
           <body>
             <div class="container">
-<<<<<<< HEAD
-              <svg class="dm-logo" viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
-              <div class="logo">Dailymotion</div>
-              <a href="${targetUrl}" target="_blank" class="watch-button">
-                اضغط هنا لمشاهدة الحلقة
-              </a>
-              <div class="hint">
-                يتعذر تشغيل هذا السيرفر داخل الموقع مباشرة.<br>
-                سيتم فتح الحلقة في نافذة جديدة لضمان أفضل جودة.
-              </div>
-            </div>
-=======
               <div class="logo">
                 <svg class="dm-logo" viewBox="0 0 24 24" fill="#E50914"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
                 <span>Dailymotion الآمن 🛡️</span>
@@ -1989,7 +1920,6 @@ async function startServer() {
                 clearInterval(timer);
               });
             </script>
->>>>>>> 8037c95 (update code)
           </body>
           </html>
         `);

@@ -2924,11 +2924,7 @@ const SafariNotification = () => {
                     <div className="absolute inset-0 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
                     <span className="text-primary font-black text-xl font-mono">{dailymotionSeconds !== null ? dailymotionSeconds : 6}</span>
                   </div>
-<<<<<<< HEAD
-                  <h3 className="text-white text-sm sm:text-base font-black mb-2 font-sans tracking-wide">جاري حظر الإعلانات وتحويلك للحلقة... 🛡️</h3>
-=======
                   <h3 className="text-white text-sm sm:text-base font-black mb-2 font-sans tracking-wide">جاري  تحويلك للحلقة... </h3>
->>>>>>> 8037c95 (update code)
                   <p className="text-zinc-400 text-xs max-w-xs leading-relaxed mb-6">
                     سيتم فتح الحلقة تلقائياً وبأمان في غضون <span className="text-primary font-bold">{dailymotionSeconds !== null ? dailymotionSeconds : 6} ثوانٍ</span> دون نوافذ منبثقة مزعجة.
                   </p>
