@@ -1749,7 +1749,22 @@ async function startServer() {
         return res.status(500).send("Invalid player response structure.");
       }
 
+      // Pre-clean frame-busting or block-redirect scripts from raw HTML string
+      html = html.replace(/<script[^>]*>[\s\S]*?blocked\.html[\s\S]*?<\/script>/gi, '<!-- stripped frame-busting script -->');
+      html = html.replace(/<script[^>]*>[\s\S]*?Chrome PDF Viewer[\s\S]*?<\/script>/gi, '<!-- stripped pdf script -->');
+
       const $ = cheerio.load(html);
+
+      // Clean any leftover frame-busting/sandbox-busting scripts via Cheerio selector
+      $('script').each((i, el) => {
+         const scriptContent = $(el).html() || '';
+         if (scriptContent.includes('blocked.html') || scriptContent.includes('Chrome PDF Viewer') || scriptContent.includes('sandbox')) {
+            if (scriptContent.includes('frameElement') || scriptContent.includes('ancestorOrigins')) {
+               console.log(`[3isk Player Proxy] Stripped frame-busting script element from DOM`);
+               $(el).remove();
+            }
+         }
+      });
       const parsedUrl = new URL(decryptedUrl);
       const originalOrigin = parsedUrl.origin;
 
@@ -2196,8 +2211,8 @@ async function startServer() {
         const isArabHd = currentUrl.includes('arabhd');
         const isNextStop = currentUrl.includes('thenextstop.net');
         const isIPlayer = currentUrl.includes('iplayerhls.com') || currentUrl.includes('huntrexus.com');
-        const isCdnz = currentUrl.includes('cdnz.online') || currentUrl.includes('artrk.online');
-        const isArabVetUrk = currentUrl.includes('arabveturk.com');
+        const isArabVetUrk = currentUrl.includes('arabveturk.com') || currentUrl.includes('arbtrk') || currentUrl.includes('artrk');
+        const isCdnz = (currentUrl.includes('cdnz.online') || currentUrl.includes('artrk.online')) && !isArabVetUrk;
         const is3iskkSource = currentUrl.match(/vid[0-9]|3iskk|zvde-dsn|cdn|archive|thenextstop|fitnur|bshra/i);
 
         if (isQesehSource) {
