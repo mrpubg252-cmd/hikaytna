@@ -1063,10 +1063,13 @@ export default function WatchScreen() {
   }
 
   async function handleServerSelect(rawUrl: string) {
+     if (rawUrl.toLowerCase().includes('dailymotion.com') || rawUrl.toLowerCase().includes('syndication')) {
+       window.open(rawUrl, '_blank');
+       return;
+     }
      if (playControllerRef.current) playControllerRef.current.abort("Server switched");
      const controller = new AbortController();
      playControllerRef.current = controller;
-
      setVideoUrl(''); // loader
      let url = await getSecuredUrl(rawUrl, controller.signal);
      if (controller.signal.aborted) return;
@@ -1130,6 +1133,34 @@ export default function WatchScreen() {
         </AnimatePresence>
 
         {/* Professional Video Player Section */}
+        {activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion.com') || activeServerUrl.toLowerCase().includes('syndication')) && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full mb-4"
+          >
+            <a
+              href={activeServerUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-red-600/20 to-zinc-900 border border-red-500/30 rounded-2xl group hover:border-red-500/60 transition-all shadow-[0_0_20px_rgba(220,38,38,0.15)]"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-red-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                  <Play className="w-6 h-6 text-white fill-white" />
+                </div>
+                <div className="text-right">
+                  <h3 className="text-white font-black text-sm sm:text-base mb-0.5">تشغيل عبر سيرفر Dailymotion الخارجي 🚀</h3>
+                  <p className="text-zinc-400 text-[10px] sm:text-xs font-medium">اضغط هنا لفتح الحلقة في صفحة جديدة بجودة عالية وبدون تقطيع</p>
+                </div>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-red-600 transition-colors">
+                <ExternalLink className="w-5 h-5 text-zinc-400 group-hover:text-white" />
+              </div>
+            </a>
+          </motion.div>
+        )}
+
         {loading ? (
           <div className="w-full aspect-video flex items-center justify-center bg-black">
             <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
@@ -1196,20 +1227,24 @@ export default function WatchScreen() {
                       <span className="text-xs font-black text-zinc-400">سيرفرات المشاهدة المتوفرة:</span>
                     </div>
                     <div className="flex flex-wrap gap-2 items-center justify-center">
-                      {servers.map((srv, idx) => (
+                      {servers.map((srv, idx) => {
+                        const isDailymotion = srv.url.toLowerCase().includes('dailymotion.com') || srv.url.toLowerCase().includes('syndication');
+                        return (
                         <button
                           key={idx}
                           onClick={() => handleServerSelect(srv.url)}
                           className={cn(
                             "px-4 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm active:scale-95 cursor-pointer",
-                            srv.url === activeServerUrl
+                            srv.url === activeServerUrl && !isDailymotion
                               ? "bg-primary border-primary text-white font-extrabold shadow-[0_0_15px_rgba(229,9,20,0.2)]"
+                              : isDailymotion
+                              ? "bg-red-600 border-red-500 text-white font-black shadow-[0_0_15px_rgba(220,38,38,0.3)] animate-pulse"
                               : "bg-zinc-800/30 border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-800"
                           )}
                         >
-                          سيرفر {idx + 1}
+                          {isDailymotion ? `سيرفر Dailymotion خارجي 🚀` : `سيرفر ${idx + 1}`}
                         </button>
-                      ))}
+                      )})}
                     </div>
                   </div>
                 )}
