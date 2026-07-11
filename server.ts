@@ -1701,29 +1701,14 @@ async function startServer() {
          decryptedUrl = await resolveTurkVeArabUrlAsync(decryptedUrl);
       }
 
-      // 4.1.1. Dailymotion Landing Page (External Redirect)
-      // Per user request: "فقط اذا كان متوفر سيرفر حلقه من Dailymotion يقلي فقط Dailymotion"
-      // "اذا كان كذا يودي الى رابط"
-      if (decryptedUrl.includes('dailymotion.com') && !req.query.confirmed) {
-        let targetUrl = decryptedUrl;
-        // Convert to standard video URL if it's an embed, or keep as is if it's already a video URL
-        // Standard: dailymotion.com/video/x...
-        // Embed: dailymotion.com/embed/video/x...
+      // 4.1.1. Dailymotion Embed Redirect
+      if (decryptedUrl.includes('dailymotion.com')) {
         const dmIdMatch = decryptedUrl.match(/dailymotion\.com\/(?:embed\/)?video\/([a-zA-Z0-9]+)/);
         if (dmIdMatch) {
-          targetUrl = `https://www.dailymotion.com/video/${dmIdMatch[1]}`;
+          const embedUrl = `https://www.dailymotion.com/embed/video/${dmIdMatch[1]}?autoplay=1`;
+          console.log(`[3isk Player Proxy] Redirecting Dailymotion to Embed: ${embedUrl}`);
+          return res.redirect(embedUrl);
         }
-
-        return res.send(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <style>body { margin: 0; background: #000; }</style>
-          </head>
-          <body></body>
-          </html>
-        `);
       }
 
       // If the target URL is a known protected embed provider (like ArabHD, EStream, Ok.ru, etc.),
