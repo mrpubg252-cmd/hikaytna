@@ -59,31 +59,9 @@ async function startServer() {
       const servers = [];
       
       for (let serverNum = 1; serverNum <= 3; serverNum++) {
-        try {
-          const embedUrl = `https://3iskk.xyz/embed/${serverNum}/${postId}/2/`;
-          const embedRes = await fetch(embedUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-              'Referer': mainUrl
-            }
-          });
-          const embedHtml = await embedRes.text();
-          const finalUrlMatch = embedHtml.match(/https?:\/\/[^\s\"'>]+embed[^\s\"'>]+/i);
-          if (finalUrlMatch) {
-            servers.push({
-              name: `سيرفر ${serverNum}`,
-              url: finalUrlMatch[0]
-            });
-          }
-        } catch (err) {
-          console.error(`Error scraping server ${serverNum}:`, err);
-        }
-      }
-
-      if (servers.length === 0) {
-        return res.json({
-          success: false,
-          servers: [{ name: "سيرفر رئيسي", url: watchUrl }]
+        servers.push({
+          name: `سيرفر ${serverNum}`,
+          url: `https://3iskk.xyz/embed/${serverNum}/${postId}/2/`
         });
       }
 
