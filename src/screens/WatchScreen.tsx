@@ -1201,17 +1201,20 @@ export default function WatchScreen() {
                    animate={{ scale: 1, opacity: 1 }}
                    className="flex items-center justify-center gap-2 mb-4"
                 >
-                  {(() => {
-                    const dmKeywords = ['dailymotion', 'syndication', 'dm.com', 'dmcdn.net', 'dai.ly', 'dai.ly/'];
+                   {(() => {
+                    const dmKeywords = ['dailymotion', 'syndication', 'dm.com', 'dmcdn.net', 'dai.ly', '3isk-player'];
                     const lowerActive = (activeServerUrl || '').toLowerCase();
                     const lowerVideo = (videoUrl || '').toLowerCase();
-                    const isDM = dmKeywords.some(kw => lowerActive.includes(kw) || lowerVideo.includes(kw));
+                    
+                    // Comprehensive detection including current server list
+                    const isDM = dmKeywords.some(kw => 
+                      lowerActive.includes(kw) || 
+                      lowerVideo.includes(kw) ||
+                      servers?.some(s => s.url.toLowerCase().includes(kw) && s.url === activeServerUrl)
+                    );
                     
                     if (isDM) {
-                      const rawUrl = activeServerUrl || videoUrl || '';
-                      const targetUrl = rawUrl.startsWith('/api/v1/') 
-                        ? rawUrl 
-                        : `/api/v1/3isk-player?url=${encodeURIComponent(encryptValue(rawUrl))}`;
+                      const targetUrl = activeServerUrl || videoUrl || '';
                       
                       return (
                         <motion.a 
@@ -1222,24 +1225,24 @@ export default function WatchScreen() {
                           animate={{ scale: 1, opacity: 1, y: 0 }}
                           whileHover={{ scale: 1.05, filter: "brightness(1.2)" }}
                           whileTap={{ scale: 0.95 }}
-                          className="group relative bg-gradient-to-r from-red-600 via-red-500 to-red-800 bg-[length:200%_auto] hover:bg-[100%_center] text-white border-2 border-white/30 px-12 py-5 rounded-2xl text-base sm:text-xl font-black italic uppercase animate-pulse flex items-center gap-5 cursor-pointer shadow-[0_0_80px_rgba(220,38,38,1)] transition-all duration-700 ring-4 ring-red-600/40 hover:ring-red-600/70 overflow-hidden"
+                          className="group relative bg-gradient-to-r from-red-600 via-red-500 to-red-800 bg-[length:200%_auto] hover:bg-[100%_center] text-white border-2 border-white/30 px-14 py-6 rounded-3xl text-lg sm:text-2xl font-black italic uppercase animate-pulse flex items-center gap-6 cursor-pointer shadow-[0_0_100px_rgba(220,38,38,1)] transition-all duration-700 ring-8 ring-red-600/30 hover:ring-red-600/70 overflow-hidden"
                         >
-                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
-                          <div className="p-2 bg-white/10 rounded-full group-hover:bg-white/20 transition-colors">
-                            <Play className="w-8 h-8 fill-current animate-bounce drop-shadow-lg" />
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
+                          <div className="p-3 bg-white/20 rounded-2xl group-hover:bg-white/30 transition-colors shadow-inner">
+                            <Play className="w-10 h-10 fill-current animate-bounce drop-shadow-lg" />
                           </div>
                           <div className="flex flex-col items-start leading-none text-right">
-                            <span className="text-[10px] sm:text-[11px] opacity-90 not-italic font-black tracking-[0.3em] mb-1.5 text-white/90">FAST EXTERNAL SERVER</span>
-                            <span className="tracking-tighter drop-shadow-2xl text-2xl sm:text-3xl font-sans">ذهاب إلى الحلقة</span>
+                            <span className="text-[11px] sm:text-[13px] opacity-90 not-italic font-black tracking-[0.4em] mb-2 text-white/95 border-b border-white/20 pb-1">EXTERNAL SERVER • DIRECT ACCESS</span>
+                            <span className="tracking-tighter drop-shadow-2xl text-3xl sm:text-4xl font-sans">ذهاب إلى الحلقة</span>
                           </div>
-                          <div className="flex items-center gap-1">
-                            <span className="text-3xl group-hover:translate-x-3 transition-transform duration-500 drop-shadow-2xl">🚀</span>
+                          <div className="flex items-center">
+                            <span className="text-4xl group-hover:translate-x-4 transition-transform duration-500 drop-shadow-2xl">🚀</span>
                           </div>
                         </motion.a>
                       );
                     }
                     return (
-                      <span className="bg-red-600 text-white px-4 py-1.5 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] shadow-lg shadow-red-600/20">Now Playing</span>
+                      <span className="bg-red-600/10 text-red-500 border border-red-500/20 px-6 py-2 rounded-full text-[11px] sm:text-xs font-black uppercase tracking-[0.3em] shadow-inner backdrop-blur-sm">Now Playing</span>
                     );
                   })()}
                 </motion.div>

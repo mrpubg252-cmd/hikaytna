@@ -2865,42 +2865,34 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
             </div>
           )}
 
-          {isIframeFallback ? (
+              {isIframeFallback ? (
             (() => {
-              const dmKeywords = ['dailymotion', 'syndication', 'dmcdn.net', 'dm.com'];
+              const dmKeywords = ['dailymotion', 'syndication', 'dmcdn.net', 'dm.com', 'dai.ly', '3isk-player'];
               const isDailymotion = dmKeywords.some(kw => 
                 (resolvedVideoUrl && resolvedVideoUrl.toLowerCase().includes(kw)) || 
                 (activeServerUrl && activeServerUrl.toLowerCase().includes(kw)) ||
-                (videoUrl && videoUrl.toLowerCase().includes(kw))
+                (videoUrl && videoUrl.toLowerCase().includes(kw)) ||
+                (typeof window !== 'undefined' && window.location.href.toLowerCase().includes('dailymotion'))
               );
               
               if (isDailymotion) {
-                const rawTarget = activeServerUrl || videoUrl || resolvedVideoUrl || '';
-                const targetUrl = rawTarget.startsWith('/api/v1/') ? rawTarget : `/api/v1/3isk-player?url=${encodeURIComponent(encryptValue(rawTarget))}`;
-                
                 return (
-                  <div className="w-full h-full relative bg-black flex flex-col items-center justify-center overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent"></div>
-                    
-                    {/* Minimal Lightweight UI */}
-                    <div className="relative z-10 text-center space-y-6 px-4">
-                      <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-primary/10 rounded-full flex items-center justify-center border border-primary/20 mb-4 shadow-[0_0_40px_rgba(229,9,20,0.2)]">
-                         <Play className="w-8 h-8 sm:w-10 sm:h-10 text-primary animate-pulse" />
+                  <div className="w-full h-full relative bg-zinc-950 flex flex-col items-center justify-center overflow-hidden">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.15),transparent_70%)]"></div>
+                    <div className="z-10 flex flex-col items-center gap-6 p-8 text-center max-w-lg">
+                      <div className="relative">
+                        <div className="absolute -inset-4 bg-red-600/20 blur-2xl rounded-full"></div>
+                        <Play className="w-16 h-16 text-red-600 relative animate-pulse" />
                       </div>
-                      
-                      <h3 className="text-xl sm:text-3xl font-black text-white italic tracking-tighter">
-                         اضغط على زر <span className="text-primary underline underline-offset-8 decoration-primary/30">"ذهاب إلى الحلقة"</span> بالأسفل
-                      </h3>
-                      
-                      <div className="flex flex-col items-center gap-4">
-                        <p className="text-zinc-500 text-sm sm:text-base font-bold max-w-sm leading-relaxed">
-                           يرجى النزول للأسفل والضغط على الزر الملون لبدء المشاهدة فوراً وبأعلى جودة ممكنة.
+                      <div className="space-y-3">
+                        <h2 className="text-2xl sm:text-3xl font-black text-white italic tracking-tighter">سيرفر خارجي سريع</h2>
+                        <p className="text-zinc-400 text-sm sm:text-base font-medium leading-relaxed">
+                          يرجى النزول لأسفل المشغل والضغط على زر <span className="text-red-500 font-black">"ذهاب إلى الحلقة"</span> لبدء المشاهدة فوراً.
                         </p>
-                        
-                        <div className="flex flex-col items-center gap-2 text-primary animate-bounce pt-4">
-                           <span className="text-[10px] font-black uppercase tracking-[0.2em]">Scroll Down</span>
-                           <span className="text-2xl">👇</span>
-                        </div>
+                      </div>
+                      <div className="mt-4 flex flex-col items-center gap-2 text-red-600 animate-bounce">
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em]">انزل للأسفل</span>
+                        <span className="text-2xl">👇</span>
                       </div>
                     </div>
                   </div>
