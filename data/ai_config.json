@@ -1,6 +1,0 @@
-{
-  "key": "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",
-  "baseUrl": "https://openrouter.ai/api/v1",
-  "model": "google/gemini-2.5-flash",
-  "type": "openai"
-}
