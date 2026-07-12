@@ -2928,13 +2928,13 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                           سيرفر Dailymotion المباشر 🍿🚀
                         </h3>
                         <p className="text-sm sm:text-base text-zinc-400 font-bold leading-relaxed px-6">
-                          يرجى الضغط على زر "ذهاب إلى الحلقة" الموضح بالأسفل 👇 لمشاهدة الحلقة خارج الموقع وضمان أفضل جودة بدون تقطيع.
+                          يرجى الضغط على زر "ذهاب إلى الحلقة" بالأسفل 👇 لمشاهدة الحلقة خارج الموقع وضمان أفضل جودة بدون تقطيع.
                         </p>
                         
                         <div className="flex flex-col items-center gap-3 mt-4">
                           <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20 animate-bounce">
-                             <span className="text-[10px] font-black text-primary">اضغط على زر "ذهاب إلى الحلقة" بالأسفل</span>
-                             <span className="text-xs">👇</span>
+                             <span className="text-[10px] font-black text-primary italic">اضغط على الزر الموضح بالأسفل مباشرة</span>
+                             <span className="text-sm">👇</span>
                           </div>
                           
                           <div className="flex flex-wrap items-center justify-center gap-4">
