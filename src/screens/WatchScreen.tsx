@@ -1075,14 +1075,19 @@ export default function WatchScreen() {
       const controller = new AbortController();
       playControllerRef.current = controller;
 
-      const isDailymotion = rawUrl.toLowerCase().includes('dailymotion.com') || rawUrl.toLowerCase().includes('syndication=');
+      const isDailymotion = 
+        rawUrl.toLowerCase().includes('dailymotion') || 
+        rawUrl.toLowerCase().includes('syndication=') || 
+        rawUrl.toLowerCase().includes('dmcdn.net') ||
+        rawUrl.toLowerCase().includes('dm.com');
       
       if (isDailymotion) {
-        // According to user request: redirect Dailymotion servers outside the site
-        window.open(rawUrl, '_blank');
+        // Update UI state first
         setActiveServerUrl(rawUrl);
-        // We still set a placeholder videoUrl to show the custom button UI as backup
         setVideoUrl(rawUrl);
+        
+        // Then open in new tab
+        window.open(rawUrl, '_blank');
         return;
       }
 
@@ -1196,16 +1201,21 @@ export default function WatchScreen() {
                    animate={{ x: 0, opacity: 1 }}
                    className="flex items-center justify-center gap-2 mb-2"
                 >
-                  {activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion') || activeServerUrl.toLowerCase().includes('syndication')) ? (
+                  {activeServerUrl && (
+                    activeServerUrl.toLowerCase().includes('dailymotion') || 
+                    activeServerUrl.toLowerCase().includes('syndication') || 
+                    activeServerUrl.toLowerCase().includes('dm.com') ||
+                    activeServerUrl.toLowerCase().includes('dmcdn.net')
+                  ) ? (
                     <a 
                       href={activeServerUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="bg-primary text-white border border-primary/40 px-6 py-2.5 rounded-full text-[11px] sm:text-sm font-black italic uppercase animate-pulse flex items-center gap-2 cursor-pointer shadow-[0_0_30px_rgba(229,9,20,0.5)] hover:scale-110 active:scale-95 transition-all duration-300 ring-4 ring-primary/20"
+                      className="group bg-gradient-to-r from-primary to-red-700 text-white border border-white/20 px-8 py-3 rounded-full text-xs sm:text-sm font-black italic uppercase animate-pulse flex items-center gap-3 cursor-pointer shadow-[0_0_50px_rgba(229,9,20,0.7)] hover:scale-110 active:scale-95 transition-all duration-500 ring-4 ring-primary/20 hover:ring-primary/40"
                     >
-                      <Play className="w-4 h-4 fill-current" />
-                      <span>ذهاب إلى الحلقة</span>
-                      <span className="text-lg">🚀</span>
+                      <Play className="w-5 h-5 fill-current" />
+                      <span className="tracking-tighter">ذهاب إلى الحلقة</span>
+                      <span className="text-xl group-hover:rotate-12 transition-transform">🚀</span>
                     </a>
                   ) : (
                     <span className="bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded text-[8px] sm:text-[10px] font-black italic uppercase">Now Playing</span>

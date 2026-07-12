@@ -2867,7 +2867,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
 
           {isIframeFallback ? (
             (() => {
-              const dmKeywords = ['dailymotion', 'syndication', 'dmcdn.net'];
+              const dmKeywords = ['dailymotion', 'syndication', 'dmcdn.net', 'dm.com'];
               const isDailymotion = dmKeywords.some(kw => 
                 (resolvedVideoUrl && resolvedVideoUrl.toLowerCase().includes(kw)) || 
                 (activeServerUrl && activeServerUrl.toLowerCase().includes(kw)) ||
@@ -2927,13 +2927,13 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                         <h3 className="text-2xl sm:text-4xl font-black text-white tracking-tight drop-shadow-xl font-sans italic">
                           سيرفر Dailymotion المباشر 🍿🚀
                         </h3>
-                        <p className="text-sm sm:text-base text-zinc-400 font-bold leading-relaxed px-6">
-                          يرجى الضغط على زر "ذهاب إلى الحلقة" بالأسفل 👇 لمشاهدة الحلقة خارج الموقع وضمان أفضل جودة بدون تقطيع.
+                        <p className="text-sm sm:text-lg text-zinc-300 font-bold leading-relaxed px-6 drop-shadow-lg">
+                          يرجى الضغط على زر "ذهاب إلى الحلقة" الموضح بالأسفل 👇 لمشاهدة الحلقة بشكل خارجي سريع وبدون تقطيع.
                         </p>
                         
-                        <div className="flex flex-col items-center gap-3 mt-4">
-                          <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20 animate-bounce">
-                             <span className="text-[10px] font-black text-primary italic">اضغط على الزر الموضح بالأسفل مباشرة</span>
+                        <div className="flex flex-col items-center gap-4 mt-6">
+                          <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/20 rounded-full border border-primary/40 animate-bounce shadow-[0_0_15px_rgba(229,9,20,0.3)]">
+                             <span className="text-[11px] font-black text-primary italic uppercase tracking-wider">اضغط على زر ذهاب إلى الحلقة بالأسفل</span>
                              <span className="text-sm">👇</span>
                           </div>
                           
