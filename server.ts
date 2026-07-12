@@ -1701,12 +1701,124 @@ async function startServer() {
          decryptedUrl = await resolveTurkVeArabUrlAsync(decryptedUrl);
       }
 
-      // 4.1.1. Dailymotion Redirect
+      // 4.1.1. Dailymotion Embed / Landing Page
       if (decryptedUrl.includes('dailymotion')) {
         const dmIdMatch = decryptedUrl.match(/dailymotion\.com\/(?:embed\/)?video\/([a-zA-Z0-9]+)/);
         const finalUrl = dmIdMatch ? `https://www.dailymotion.com/video/${dmIdMatch[1]}` : decryptedUrl;
-        console.log(`[3isk Player Proxy] Redirecting Dailymotion to: ${finalUrl}`);
-        return res.redirect(finalUrl);
+        
+        console.log(`[3isk Player Proxy] Serving Dailymotion Landing Page for: ${finalUrl}`);
+        
+        return res.send(`
+          <!DOCTYPE html>
+          <html dir="rtl">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>مشاهدة الحلقة</title>
+            <style>
+              body { 
+                margin: 0; 
+                background: #050505; 
+                color: #fff; 
+                font-family: system-ui, -apple-system, sans-serif;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 100vh;
+                text-align: center;
+                padding: 24px;
+                overflow: hidden;
+              }
+              .container {
+                position: relative;
+                z-index: 10;
+                width: 100%;
+                max-width: 400px;
+                animation: fadeIn 0.8s ease-out;
+              }
+              @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(20px); }
+                to { opacity: 1; transform: translateY(0); }
+              }
+              .icon {
+                width: 72px;
+                height: 72px;
+                background: #e11d48;
+                border-radius: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin: 0 auto 24px;
+                box-shadow: 0 0 40px rgba(225, 29, 72, 0.4);
+                animation: float 3s ease-in-out infinite;
+              }
+              @keyframes float {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-10px); }
+              }
+              h3 { 
+                font-size: 22px; 
+                font-weight: 900; 
+                margin: 0 0 12px; 
+                color: #fff;
+                letter-spacing: -0.5px;
+              }
+              p { 
+                color: #71717a; 
+                margin-bottom: 32px; 
+                font-size: 13px; 
+                line-height: 1.6;
+                font-weight: 500;
+              }
+              .btn {
+                background: #e11d48;
+                color: #fff;
+                padding: 18px 32px;
+                border-radius: 18px;
+                text-decoration: none;
+                font-weight: 900;
+                font-size: 16px;
+                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                box-shadow: 0 15px 30px rgba(225, 29, 72, 0.3);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+              }
+              .btn:hover { 
+                transform: scale(1.03) translateY(-4px); 
+                background: #f43f5e; 
+                box-shadow: 0 20px 40px rgba(225, 29, 72, 0.5);
+              }
+              .btn:active { transform: scale(0.98); }
+              .bg-glow {
+                position: absolute;
+                inset: 0;
+                background: radial-gradient(circle at center, rgba(225, 29, 72, 0.05) 0%, transparent 70%);
+              }
+              .external-icon {
+                opacity: 0.8;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="bg-glow"></div>
+            <div class="container">
+              <div class="icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <h3>سيرفر Dailymotion الخاص 🚀</h3>
+              <p>لضمان تجربة مشاهدة مستقرة وبأعلى جودة ممكنة وبدون تقطيع، يرجى فتح الحلقة في صفحة مستقلة.</p>
+              <a href="${finalUrl}" target="_blank" class="btn">
+                <span>مشاهدة الحلقة اضغط هنا</span>
+                <svg class="external-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+              </a>
+            </div>
+          </body>
+          </html>
+        `);
       }
 
       // If the target URL is a known protected embed provider (like ArabHD, EStream, Ok.ru, etc.),
