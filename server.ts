@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import { Readable } from "node:stream";
 
 async function startServer() {
   const app = express();
@@ -100,7 +101,6 @@ async function startServer() {
       if (!embedUrl) return res.status(400).send("URL is required");
 
       const targetUrlObj = new URL(embedUrl);
-      const origin = targetUrlObj.origin;
 
       const response = await fetch(embedUrl, {
         headers: {
@@ -115,13 +115,17 @@ async function startServer() {
 
       let html = await response.text();
 
-      // 1. Rewrite any absolute secure/insecure links to miravd, mwdy, grzcdn, etc. through our server proxy
-      const domainsToProxy = ["miravd.com", "cdn.miravd.com", "miravid.club", "mwdy.cc", "arthur.grzcdn.com", "alexa.grzcdn.com", "llvpn.com"];
-      for (const d of domainsToProxy) {
-        html = html.replaceAll(`https://${d}/`, `/api/proxy-resource/https/${d}/`);
-        html = html.replaceAll(`http://${d}/`, `/api/proxy-resource/http/${d}/`);
-        html = html.replaceAll(`//${d}/`, `/api/proxy-resource/https/${d}/`);
-      }
+      // 1. Rewrite any absolute secure/insecure links to miravd, mwdy, grzcdn, etc. through our server proxy using a dynamic subdomain matcher
+      const domainsToProxy = ["miravd.com", "miravid.club", "mwdy.cc", "grzcdn.com", "llvpn.com", "3iskk.xyz", "3isk.video", "3skk.xyz", "3iskk.co"];
+      const domainRegex = /(https?:)?\/\/([a-zA-Z0-9-._]+)\//gi;
+      html = html.replace(domainRegex, (match, protocol, domain) => {
+        const lowerDomain = domain.toLowerCase();
+        const shouldProxy = domainsToProxy.some(d => lowerDomain === d || lowerDomain.endsWith("." + d));
+        if (shouldProxy) {
+          return `/api/proxy-resource/https/${lowerDomain}/`;
+        }
+        return match;
+      });
 
       // 2. Set a base tag so relative assets in iframe load through our proxy
       const hostClean = targetUrlObj.hostname;
@@ -170,12 +174,12 @@ async function startServer() {
         'Origin': 'https://3iskk.xyz'
       };
 
-      // Forward request headers if present
-      if (req.headers["content-type"]) {
-        headers["content-type"] = req.headers["content-type"];
-      }
-      if (req.headers["cookie"]) {
-        headers["cookie"] = req.headers["cookie"] as string;
+      // Forward client's headers if they exist (especially Range for video buffers)
+      const headersToForward = ["range", "accept", "accept-language", "cookie", "content-type"];
+      for (const h of headersToForward) {
+        if (req.headers[h]) {
+          headers[h] = req.headers[h] as string;
+        }
       }
 
       // Forward request body for POST/PUT/PATCH requests
@@ -205,10 +209,23 @@ async function startServer() {
         body
       });
 
-      // Forward response content-type
-      const resContentType = response.headers.get("content-type");
-      if (resContentType) {
-        res.setHeader("Content-Type", resContentType);
+      // Set target status code (crucial for 206 Partial Content video buffering!)
+      res.status(response.status);
+
+      // Copy response headers
+      const headersToCopy = [
+        "content-type",
+        "content-length",
+        "content-range",
+        "accept-ranges",
+        "cache-control",
+        "etag"
+      ];
+      for (const h of headersToCopy) {
+        const val = response.headers.get(h);
+        if (val) {
+          res.setHeader(h, val);
+        }
       }
 
       // Set broad CORS headers to completely avoid cross-origin blocks
@@ -216,8 +233,11 @@ async function startServer() {
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
       res.setHeader("Access-Control-Allow-Headers", "*");
 
+      const resContentType = response.headers.get("content-type") || "";
+      const isM3U8 = cleanPath.toLowerCase().includes(".m3u8") || resContentType.includes("mpegurl") || resContentType.includes("apple.mpegurl");
+
       // For binary files (images, audio, video TS segments, stream keys, etc.)
-      const isBinary = resContentType && (
+      const isBinary = !isM3U8 && (
         resContentType.includes("image") || 
         resContentType.includes("video") || 
         resContentType.includes("octet-stream") ||
@@ -226,22 +246,29 @@ async function startServer() {
       );
 
       if (isBinary) {
-        const arrayBuffer = await response.arrayBuffer();
-        res.status(response.status).send(Buffer.from(arrayBuffer));
+        if (response.body) {
+          Readable.fromWeb(response.body as any).pipe(res);
+        } else {
+          res.end();
+        }
       } else {
         let text = await response.text();
 
-        // Rewrite relative and absolute urls inside HTML/JS responses to redirect them back to our secure proxy
-        if (resContentType && (resContentType.includes("text/html") || resContentType.includes("javascript") || resContentType.includes("application/x-mpegURL") || cleanPath.endsWith(".m3u8"))) {
-          const domainsToProxy = ["miravd.com", "cdn.miravd.com", "miravid.club", "mwdy.cc", "arthur.grzcdn.com", "alexa.grzcdn.com", "llvpn.com"];
-          for (const d of domainsToProxy) {
-            text = text.replaceAll(`https://${d}/`, `/api/proxy-resource/https/${d}/`);
-            text = text.replaceAll(`http://${d}/`, `/api/proxy-resource/http/${d}/`);
-            text = text.replaceAll(`//${d}/`, `/api/proxy-resource/https/${d}/`);
-          }
+        // Rewrite relative and absolute urls inside HTML/JS/M3U8 responses to redirect them back to our secure proxy
+        if (resContentType.includes("text/html") || resContentType.includes("javascript") || isM3U8 || cleanPath.endsWith(".js") || cleanPath.endsWith(".css")) {
+          const domainsToProxy = ["miravd.com", "miravid.club", "mwdy.cc", "grzcdn.com", "llvpn.com", "3iskk.xyz", "3isk.video", "3skk.xyz", "3iskk.co"];
+          const domainRegex = /(https?:)?\/\/([a-zA-Z0-9-._]+)\//gi;
+          text = text.replace(domainRegex, (match, protocol, domain) => {
+            const lowerDomain = domain.toLowerCase();
+            const shouldProxy = domainsToProxy.some(d => lowerDomain === d || lowerDomain.endsWith("." + d));
+            if (shouldProxy) {
+              return `/api/proxy-resource/https/${lowerDomain}/`;
+            }
+            return match;
+          });
         }
 
-        res.status(response.status).send(text);
+        res.send(text);
       }
     } catch (error) {
       console.error("Proxy Resource Error:", error);
