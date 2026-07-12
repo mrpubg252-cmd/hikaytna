@@ -4,6 +4,124 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { Readable } from "node:stream";
 
+const DOMAINS_TO_PROXY = [
+  "miravd.com", 
+  "miravid.club", 
+  "mwdy.cc", 
+  "mwdy.club",
+  "mwdy.org",
+  "mwdy.live",
+  "mwdy.info",
+  "grzcdn.com", 
+  "llvpn.com", 
+  "3iskk.xyz", 
+  "3isk.video", 
+  "3skk.xyz", 
+  "3iskk.co"
+];
+
+const CLIENT_INJECT_SCRIPT = `
+<script>
+  (function() {
+    // 1. Intercept network requests (fetch / XHR) to route them through our secure server proxy
+    const DOMAINS_TO_PROXY = ${JSON.stringify(DOMAINS_TO_PROXY)};
+
+    function shouldProxy(urlStr) {
+      if (!urlStr) return false;
+      try {
+        const url = new URL(urlStr, window.location.href);
+        const host = url.hostname.toLowerCase();
+        return DOMAINS_TO_PROXY.some(d => host === d || host.endsWith("." + d));
+      } catch(e) {
+        return false;
+      }
+    }
+
+    function getProxyUrl(urlStr) {
+      try {
+        const url = new URL(urlStr, window.location.href);
+        const proto = url.protocol.replace(":", "");
+        const host = url.hostname;
+        const pathAndQuery = url.pathname + url.search + url.hash;
+        return "/api/proxy-resource/" + proto + "/" + host + pathAndQuery;
+      } catch(e) {
+        return urlStr;
+      }
+    }
+
+    // Intercept XMLHttpRequest
+    const OriginalXHR = window.XMLHttpRequest;
+    window.XMLHttpRequest = function() {
+      const xhr = new OriginalXHR();
+      const originalOpen = xhr.open;
+      xhr.open = function(method, url, ...args) {
+        if (typeof url === 'string' && shouldProxy(url)) {
+          url = getProxyUrl(url);
+        }
+        return originalOpen.call(this, method, url, ...args);
+      };
+      return xhr;
+    };
+    window.XMLHttpRequest.prototype = OriginalXHR.prototype;
+    Object.assign(window.XMLHttpRequest, OriginalXHR);
+
+    // Intercept Fetch
+    const originalFetch = window.fetch;
+    window.fetch = async function(input, init) {
+      if (typeof input === 'string' && shouldProxy(input)) {
+        input = getProxyUrl(input);
+      } else if (input && typeof input === 'object' && 'url' in input && typeof input.url === 'string' && shouldProxy(input.url)) {
+        const newUrl = getProxyUrl(input.url);
+        Object.defineProperty(input, 'url', { value: newUrl, writable: false });
+      }
+      return originalFetch.call(this, input, init);
+    };
+
+    // 2. Clear out intrusive ad overlays & ADB alerts
+    function cleanUp() {
+      try {
+        const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT, null, false);
+        const nodesToHide = [];
+        let node;
+        while (node = walker.nextNode()) {
+          const textVal = node.nodeValue || "";
+          if (textVal.includes("Disable ADB") || textVal.includes("ADBlock") || textVal.includes("Upgrade you account") || textVal.includes("watch videos with no limits")) {
+            let parent = node.parentElement;
+            if (parent) {
+              let container = parent;
+              if (container.parentElement && container.parentElement.id !== 'vplayer' && !container.parentElement.innerHTML.includes('vplayer')) {
+                 container = container.parentElement;
+              }
+              nodesToHide.push(container);
+            }
+          }
+        }
+        nodesToHide.forEach(el => {
+          if (el && el.style) {
+            el.style.setProperty('display', 'none', 'important');
+          }
+        });
+
+        const adbd = document.getElementById("adbd");
+        if (adbd && adbd.style) adbd.style.setProperty('display', 'none', 'important');
+        const playLimit = document.getElementById("play_limit_box");
+        if (playLimit && playLimit.style) playLimit.style.setProperty('display', 'none', 'important');
+      } catch (e) {
+        console.error("Adblock cleanup error:", e);
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', cleanUp);
+    } else {
+      cleanUp();
+    }
+    window.addEventListener('load', cleanUp);
+    setInterval(cleanUp, 500);
+  })();
+</script>
+`;
+
 function resolveM3U8RelativeUrls(text: string, baseUrl: string): string {
   const lines = text.split("\n");
   const resolvedLines = lines.map(line => {
@@ -129,10 +247,7 @@ async function startServer() {
       let refererToUse = refererParam;
       const lowerEmbedUrl = embedUrl.toLowerCase();
       
-      const is3iskTarget = lowerEmbedUrl.includes("3iskk.xyz") || 
-                           lowerEmbedUrl.includes("mwdy.cc") || 
-                           lowerEmbedUrl.includes("miravd.com") || 
-                           lowerEmbedUrl.includes("miravid.club");
+      const is3iskTarget = DOMAINS_TO_PROXY.some(d => lowerEmbedUrl.includes(d));
 
       if (is3iskTarget) {
         if (!refererToUse || !refererToUse.includes("3iskk.xyz")) {
@@ -158,11 +273,10 @@ async function startServer() {
       let html = await response.text();
 
       // 1. Rewrite any absolute secure/insecure links to miravd, mwdy, grzcdn, etc. through our server proxy using a dynamic subdomain matcher
-      const domainsToProxy = ["miravd.com", "miravid.club", "mwdy.cc", "grzcdn.com", "llvpn.com", "3iskk.xyz", "3isk.video", "3skk.xyz", "3iskk.co"];
       const domainRegex = /(https?:)?\/\/([a-zA-Z0-9-._]+)\//gi;
       html = html.replace(domainRegex, (match, protocol, domain) => {
         const lowerDomain = domain.toLowerCase();
-        const shouldProxy = domainsToProxy.some(d => lowerDomain === d || lowerDomain.endsWith("." + d));
+        const shouldProxy = DOMAINS_TO_PROXY.some(d => lowerDomain === d || lowerDomain.endsWith("." + d));
         if (shouldProxy) {
           return `/api/proxy-resource/https/${lowerDomain}/`;
         }
@@ -173,11 +287,11 @@ async function startServer() {
       const hostClean = targetUrlObj.hostname;
       const baseTag = `<base href="/api/proxy-resource/https/${hostClean}/">`;
       if (html.includes("<head>")) {
-        html = html.replace("<head>", `<head>${baseTag}`);
+        html = html.replace("<head>", `<head>${baseTag}${CLIENT_INJECT_SCRIPT}`);
       } else if (html.includes("<HEAD>")) {
-        html = html.replace("<HEAD>", `<HEAD>${baseTag}`);
+        html = html.replace("<HEAD>", `<HEAD>${baseTag}${CLIENT_INJECT_SCRIPT}`);
       } else {
-        html = baseTag + html;
+        html = baseTag + CLIENT_INJECT_SCRIPT + html;
       }
 
       res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -214,8 +328,7 @@ async function startServer() {
       let referer = `${proto}://${host}/`;
       let origin = `${proto}://${host}`;
 
-      const domainsToProxy = ["miravd.com", "miravid.club", "mwdy.cc", "grzcdn.com", "llvpn.com", "3iskk.xyz", "3isk.video", "3skk.xyz", "3iskk.co"];
-      const isDomainToProxy = domainsToProxy.some(d => lowerHost === d || lowerHost.endsWith("." + d));
+      const isDomainToProxy = DOMAINS_TO_PROXY.some(d => lowerHost === d || lowerHost.endsWith("." + d));
 
       // 1. Determine dynamic Referer and Origin based on how the browser requested it
       const clientReferer = req.headers.referer;
@@ -359,66 +472,26 @@ async function startServer() {
 
         // Rewrite relative and absolute urls inside HTML/JS/M3U8 responses to redirect them back to our secure proxy
         if (resContentType.includes("text/html") || resContentType.includes("javascript") || isM3U8 || cleanPath.endsWith(".js") || cleanPath.endsWith(".css")) {
-          const domainsToProxy = ["miravd.com", "miravid.club", "mwdy.cc", "grzcdn.com", "llvpn.com", "3iskk.xyz", "3isk.video", "3skk.xyz", "3iskk.co"];
           const domainRegex = /(https?:)?\/\/([a-zA-Z0-9-._]+)\//gi;
           text = text.replace(domainRegex, (match, protocol, domain) => {
             const lowerDomain = domain.toLowerCase();
-            const shouldProxy = domainsToProxy.some(d => lowerDomain === d || lowerDomain.endsWith("." + d));
+            const shouldProxy = DOMAINS_TO_PROXY.some(d => lowerDomain === d || lowerDomain.endsWith("." + d));
             if (shouldProxy) {
               return `/api/proxy-resource/https/${lowerDomain}/`;
             }
             return match;
           });
 
-          // Inject anti-adblock warning remover inside HTML responses
+          // Inject base tag & CLIENT_INJECT_SCRIPT inside HTML responses
           if (resContentType.includes("text/html")) {
-            const removerScript = `
-<script>
-  (function() {
-    function cleanUp() {
-      try {
-        const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT, null, false);
-        const nodesToHide = [];
-        let node;
-        while (node = walker.nextNode()) {
-          const textVal = node.nodeValue || "";
-          if (textVal.includes("Disable ADB") || textVal.includes("ADBlock") || textVal.includes("Upgrade you account") || textVal.includes("watch videos with no limits")) {
-            let parent = node.parentElement;
-            if (parent) {
-              // Find container or self to hide
-              let container = parent;
-              // Go up to find the closest wrapper div to hide the entire warning box
-              for (let i = 0; i < 3; i++) {
-                if (container.parentElement && container.parentElement !== document.body && container.parentElement !== document.documentElement) {
-                  container = container.parentElement;
-                } else {
-                  break;
-                }
-              }
-              nodesToHide.push(container);
+            const baseTag = `<base href="/api/proxy-resource/${proto}/${host}/">`;
+            if (text.includes("<head>")) {
+              text = text.replace("<head>", `<head>${baseTag}${CLIENT_INJECT_SCRIPT}`);
+            } else if (text.includes("<HEAD>")) {
+              text = text.replace("<HEAD>", `<HEAD>${baseTag}${CLIENT_INJECT_SCRIPT}`);
+            } else {
+              text = baseTag + CLIENT_INJECT_SCRIPT + text;
             }
-          }
-        }
-        nodesToHide.forEach(el => {
-          if (el && el.style) {
-            el.style.setProperty('display', 'none', 'important');
-          }
-        });
-      } catch (e) {
-        console.error("Adblock cleanup error:", e);
-      }
-    }
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', cleanUp);
-    } else {
-      cleanUp();
-    }
-    window.addEventListener('load', cleanUp);
-    setInterval(cleanUp, 500);
-  })();
-</script>
-            `;
-            text = text.replace("</head>", `${removerScript}</head>`);
           }
         }
 

@@ -185,7 +185,7 @@ export default function Player() {
                   <h3 className="text-sm font-bold text-white">مركز التحكم في وضع تشغيل البث</h3>
                 </div>
                 <p className="text-xs text-zinc-400 max-w-2xl leading-relaxed">
-                  إذا واجهت شاشة خطأ <span className="text-red-500 font-bold">Cloudflare Error 1005</span> أو شاشة سوداء، فهذا يعني أن خوادم الاستضافة محظورة من قِبل جدار الحماية للمصدر. يرجى التبديل فوراً إلى <span className="text-[#e50914] font-bold">المشغل المباشر (المتصفح)</span> ليتصل مشغلك مباشرة بالمصدر باستخدام اتصالك الخاص دون المرور بالخادم.
+                  يُفضل دائماً استخدام <span className="text-[#e50914] font-bold">مشغل الحماية (بروكسي)</span> لأنه يقوم تلقائياً بتزوير المصدر وتخطي حجب <span className="text-red-400 font-bold">"لمشاهدة الحلقة اضغط هنا..."</span>. في حال قمت بالتبديل إلى <span className="text-yellow-500 font-bold">المشغل المباشر (المتصفح)</span>، سيقوم متصفحك بإرسال عنوان موقعنا كمصدر، مما يدفع خوادم قصة عشق لحجب البث عنك وعرض رسالة التحويل لموقعهم.
                 </p>
               </div>
 
