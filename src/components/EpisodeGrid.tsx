@@ -204,7 +204,7 @@ export default function EpisodeGrid({
             className={cn(
               "flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-black transition-all border",
               isReversed 
-                ? "bg-primary text-white border-primary shadow-[0_0_15px_rgba(229,9,20,0.3)]" 
+                ? "bg-primary text-black border-primary shadow-[0_0_15px_rgba(201,162,75,0.4)]" 
                 : "bg-zinc-900 text-zinc-400 border-white/5 hover:text-white"
             )}
           >
@@ -371,7 +371,7 @@ function EpisodeGridItem({
       <div className={cn(
         "relative aspect-[16/9] w-full rounded-2xl overflow-hidden bg-zinc-900 border transition-all duration-300 shadow-lg group-hover:shadow-[0_12px_40px_rgba(0,0,0,0.7)] group-hover:scale-[1.03]",
         isActive
-          ? "border-primary/60 ring-2 ring-primary/40 shadow-[0_0_20px_rgba(229,9,20,0.3)]"
+          ? "border-primary/60 ring-2 ring-primary/40 shadow-[0_0_20px_rgba(201,162,75,0.35)]"
           : "border-white/5 group-hover:border-white/10"
       )}>
         {thumbnail ? (
@@ -413,13 +413,13 @@ function EpisodeGridItem({
         {/* Play overlay / pulse state */}
         {isActive ? (
           <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-            <div className="w-11 h-11 rounded-full bg-primary text-black flex items-center justify-center border border-primary shadow-[0_0_25px_rgba(229,9,20,0.6)] animate-pulse">
+            <div className="w-11 h-11 rounded-full bg-primary text-black flex items-center justify-center border border-primary shadow-[0_0_25px_rgba(201,162,75,0.6)] animate-pulse">
               <Play className="w-4 h-4 fill-current translate-x-[-0.5px]" />
             </div>
           </div>
         ) : (
           <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-            <div className="w-10 h-10 rounded-full bg-primary text-black flex items-center justify-center border border-primary shadow-[0_0_20px_rgba(229,9,20,0.5)] transform scale-90 group-hover:scale-100 transition-transform duration-300">
+            <div className="w-10 h-10 rounded-full bg-primary text-black flex items-center justify-center border border-primary shadow-[0_0_20px_rgba(201,162,75,0.5)] transform scale-90 group-hover:scale-100 transition-transform duration-300">
               <Play className="w-3.5 h-3.5 fill-current translate-x-[-0.5px]" />
             </div>
           </div>

@@ -212,8 +212,8 @@ export default function WatchScreen() {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center space-y-4 select-none">
         <div className="relative">
-          <Loader2 className="w-10 h-10 text-red-650 animate-spin relative z-10" />
-          <div className="absolute inset-0 bg-red-600/20 blur-lg rounded-full scale-150 animate-pulse" />
+          <Loader2 className="w-10 h-10 text-[#C9A24B] animate-spin relative z-10" />
+          <div className="absolute inset-0 bg-[#C9A24B]/20 blur-lg rounded-full scale-150 animate-pulse" />
         </div>
         <span className="text-xs text-zinc-400 font-black">جاري تحميل وتجهيز خادم الفيديو... 🍿</span>
       </div>
@@ -224,11 +224,11 @@ export default function WatchScreen() {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center select-none relative overflow-hidden">
         {/* Ambient premium glowing background */}
-        <div className="absolute inset-0 bg-red-600/5 pointer-events-none opacity-40 animate-pulse" />
+        <div className="absolute inset-0 bg-[#C9A24B]/5 pointer-events-none opacity-40 animate-pulse" />
         <div className="relative z-10 flex flex-col items-center max-w-sm w-full space-y-5">
           <div className="relative">
-            <Loader2 className="w-12 h-12 text-red-500 animate-spin relative z-10" />
-            <div className="absolute inset-0 bg-red-600/25 blur-xl rounded-full scale-150 animate-pulse" />
+            <Loader2 className="w-12 h-12 text-[#C9A24B] animate-spin relative z-10" />
+            <div className="absolute inset-0 bg-[#C9A24B]/25 blur-xl rounded-full scale-150 animate-pulse" />
           </div>
           <div className="space-y-1.5">
             <h3 className="text-white text-sm font-black tracking-tight">جاري تهيئة البث المباشر...</h3>
@@ -1203,7 +1203,7 @@ export default function WatchScreen() {
                           className={cn(
                             "px-4 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm active:scale-95 cursor-pointer",
                             srv.url === activeServerUrl
-                              ? "bg-primary border-primary text-white font-extrabold shadow-[0_0_15px_rgba(229,9,20,0.2)]"
+                              ? "bg-primary border-primary text-black font-extrabold shadow-[0_0_15px_rgba(201,162,75,0.35)]"
                               : "bg-zinc-800/30 border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-800"
                           )}
                         >
@@ -1266,7 +1266,7 @@ export default function WatchScreen() {
                       className={cn(
                         "px-4 py-2 rounded-xl text-[10px] sm:text-xs font-black italic uppercase transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer",
                         isPinned 
-                          ? "bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30"
+                          ? "bg-[#8B3A3A]/15 hover:bg-[#8B3A3A]/25 text-[#E0A0A0] border border-[#8B3A3A]/30"
                           : "bg-yellow-500 hover:bg-yellow-500/90 text-black border border-yellow-600/30 font-extrabold"
                       )}
                     >
@@ -1690,7 +1690,7 @@ export default function WatchScreen() {
               toastMessage.type === 'success' 
                 ? 'bg-[#062016]/95 border-emerald-500/30'
                 : toastMessage.type === 'error'
-                  ? 'bg-[#290a0a]/95 border-red-500/30'
+                  ? 'bg-[#290a0a]/95 border-[#8B3A3A]/40'
                   : 'bg-[#12121c]/95 border-primary/30'
             )}>
               <span className={cn(
@@ -1698,7 +1698,7 @@ export default function WatchScreen() {
                 toastMessage.type === 'success' 
                   ? 'bg-emerald-400' 
                   : toastMessage.type === 'error'
-                    ? 'bg-red-400'
+                    ? 'bg-[#C97575]'
                     : 'bg-primary'
               )} />
               <span className="flex-1">{toastMessage.text}</span>
