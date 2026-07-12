@@ -1743,8 +1743,11 @@ async function startServer() {
       }
 
       // 4.1.1. Dailymotion Embed / Landing Page
-      if (decryptedUrl.toLowerCase().includes('dailymotion') || decryptedUrl.toLowerCase().includes('syndication') || decryptedUrl.toLowerCase().includes('dmcdn.net')) {
-        const dmIdMatch = decryptedUrl.match(/dailymotion\.com\/(?:embed\/)?video\/([a-zA-Z0-9]+)/);
+      if (decryptedUrl.toLowerCase().includes('dailymotion') || 
+          decryptedUrl.toLowerCase().includes('syndication') || 
+          decryptedUrl.toLowerCase().includes('dmcdn.net') || 
+          decryptedUrl.toLowerCase().includes('dai.ly')) {
+        const dmIdMatch = decryptedUrl.match(/(?:dailymotion\.com\/(?:embed\/)?video\/|dai\.ly\/)([a-zA-Z0-9]+)/);
         const finalUrl = dmIdMatch ? `https://www.dailymotion.com/video/${dmIdMatch[1]}` : decryptedUrl;
         
         console.log(`[3isk Player Proxy] Serving Professional Dailymotion Gateway for: ${finalUrl}`);

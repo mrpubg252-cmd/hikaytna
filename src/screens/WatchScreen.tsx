@@ -1201,25 +1201,39 @@ export default function WatchScreen() {
                    className="flex items-center justify-center gap-2 mb-4"
                 >
                   {(() => {
-                    const dmKeywords = ['dailymotion', 'syndication', 'dm.com', 'dmcdn.net', 'dai.ly'];
+                    const dmKeywords = ['dailymotion', 'syndication', 'dm.com', 'dmcdn.net', 'dai.ly', 'dai.ly/'];
                     const currentUrl = (activeServerUrl || videoUrl || '').toLowerCase();
                     const isDM = dmKeywords.some(kw => currentUrl.includes(kw));
                     
                     if (isDM) {
                       const rawUrl = activeServerUrl || videoUrl || '';
-                      const targetUrl = rawUrl.startsWith('/api/v1/') ? rawUrl : `/api/v1/3isk-player?url=${encodeURIComponent(encryptValue(rawUrl))}`;
+                      const targetUrl = rawUrl.startsWith('/api/v1/') 
+                        ? rawUrl 
+                        : `/api/v1/3isk-player?url=${encodeURIComponent(encryptValue(rawUrl))}`;
                       
                       return (
-                        <a 
+                        <motion.a 
                           href={targetUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="group bg-gradient-to-r from-red-600 via-red-500 to-red-700 bg-[length:200%_auto] hover:bg-[100%_center] text-white border-2 border-white/20 px-10 py-4 rounded-2xl text-sm sm:text-base font-black italic uppercase animate-pulse flex items-center gap-4 cursor-pointer shadow-[0_0_60px_rgba(220,38,38,0.8)] hover:scale-110 active:scale-95 transition-all duration-700 ring-4 ring-red-600/20 hover:ring-red-600/50"
+                          initial={{ scale: 0.8, opacity: 0, y: 20 }}
+                          animate={{ scale: 1, opacity: 1, y: 0 }}
+                          whileHover={{ scale: 1.05, filter: "brightness(1.2)" }}
+                          whileTap={{ scale: 0.95 }}
+                          className="group relative bg-gradient-to-r from-red-600 via-red-500 to-red-800 bg-[length:200%_auto] hover:bg-[100%_center] text-white border-2 border-white/30 px-12 py-5 rounded-2xl text-base sm:text-xl font-black italic uppercase animate-pulse flex items-center gap-5 cursor-pointer shadow-[0_0_80px_rgba(220,38,38,1)] transition-all duration-700 ring-4 ring-red-600/40 hover:ring-red-600/70 overflow-hidden"
                         >
-                          <Play className="w-6 h-6 fill-current animate-bounce" />
-                          <span className="tracking-tight drop-shadow-lg">ذهاب إلى الحلقة الآن</span>
-                          <span className="text-2xl group-hover:rotate-45 transition-transform duration-500">🚀</span>
-                        </a>
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
+                          <div className="p-2 bg-white/10 rounded-full group-hover:bg-white/20 transition-colors">
+                            <Play className="w-8 h-8 fill-current animate-bounce drop-shadow-lg" />
+                          </div>
+                          <div className="flex flex-col items-start leading-none text-right">
+                            <span className="text-[10px] sm:text-[11px] opacity-90 not-italic font-black tracking-[0.3em] mb-1.5 text-white/90">FAST EXTERNAL SERVER</span>
+                            <span className="tracking-tighter drop-shadow-2xl text-2xl sm:text-3xl font-sans">ذهاب إلى الحلقة</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-3xl group-hover:translate-x-3 transition-transform duration-500 drop-shadow-2xl">🚀</span>
+                          </div>
+                        </motion.a>
                       );
                     }
                     return (
