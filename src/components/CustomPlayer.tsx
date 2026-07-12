@@ -2875,7 +2875,9 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
               );
               
               if (isDailymotion) {
-                const targetUrl = activeServerUrl || videoUrl || resolvedVideoUrl || '';
+                const rawTarget = activeServerUrl || videoUrl || resolvedVideoUrl || '';
+                const targetUrl = rawTarget.startsWith('/api/v1/') ? rawTarget : `/api/v1/3isk-player?url=${encodeURIComponent(encryptValue(rawTarget))}`;
+                
                 return (
                   <div className="w-full h-full relative bg-black flex items-center justify-center overflow-hidden group">
                     {/* Background Layer with extreme blur */}
@@ -3205,7 +3207,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
 
               {/* RESUME PROGRESS NOTIFICATION TOAST */}
               <AnimatePresence>
-                {showResumeNotification && (
+                {showResumeNotification && !['dailymotion', 'syndication', 'dmcdn.net'].some(kw => videoUrl?.toLowerCase().includes(kw) || activeServerUrl?.toLowerCase().includes(kw)) && (
                   <motion.div
                     initial={{ opacity: 0, x: -50 }}
                     animate={{ opacity: 1, x: 0 }}

@@ -1086,8 +1086,12 @@ export default function WatchScreen() {
         setActiveServerUrl(rawUrl);
         setVideoUrl(rawUrl);
         
-        // Then open in new tab
-        window.open(rawUrl, '_blank');
+        // Use professional proxy for redirection
+        const encrypted = encryptValue(rawUrl);
+        const proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encrypted)}`;
+        
+        // Open in new tab
+        window.open(proxyUrl, '_blank');
         return;
       }
 
@@ -1197,29 +1201,37 @@ export default function WatchScreen() {
             <div className="flex flex-col items-center justify-center text-center gap-4 sm:gap-6">
               <div className="flex flex-col items-center justify-center">
                 <motion.div 
-                   initial={{ x: 20, opacity: 0 }}
+                   initial={{ x: -20, opacity: 0 }}
                    animate={{ x: 0, opacity: 1 }}
                    className="flex items-center justify-center gap-2 mb-2"
                 >
-                  {activeServerUrl && (
-                    activeServerUrl.toLowerCase().includes('dailymotion') || 
-                    activeServerUrl.toLowerCase().includes('syndication') || 
-                    activeServerUrl.toLowerCase().includes('dm.com') ||
-                    activeServerUrl.toLowerCase().includes('dmcdn.net')
-                  ) ? (
-                    <a 
-                      href={activeServerUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group bg-gradient-to-r from-primary to-red-700 text-white border border-white/20 px-8 py-3 rounded-full text-xs sm:text-sm font-black italic uppercase animate-pulse flex items-center gap-3 cursor-pointer shadow-[0_0_50px_rgba(229,9,20,0.7)] hover:scale-110 active:scale-95 transition-all duration-500 ring-4 ring-primary/20 hover:ring-primary/40"
-                    >
-                      <Play className="w-5 h-5 fill-current" />
-                      <span className="tracking-tighter">ذهاب إلى الحلقة</span>
-                      <span className="text-xl group-hover:rotate-12 transition-transform">🚀</span>
-                    </a>
-                  ) : (
-                    <span className="bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded text-[8px] sm:text-[10px] font-black italic uppercase">Now Playing</span>
-                  )}
+                  {(() => {
+                    const dmKeywords = ['dailymotion', 'syndication', 'dm.com', 'dmcdn.net'];
+                    const isDM = activeServerUrl && dmKeywords.some(kw => activeServerUrl.toLowerCase().includes(kw));
+                    const isProxiedDM = videoUrl && (videoUrl.includes('dailymotion') || videoUrl.includes('syndication') || videoUrl.includes('dmcdn.net'));
+                    
+                    if (isDM || isProxiedDM) {
+                      const rawUrl = activeServerUrl || videoUrl || '';
+                      // Ensure we are sending a clean URL to the proxy
+                      const targetUrl = rawUrl.startsWith('/api/v1/') ? rawUrl : `/api/v1/3isk-player?url=${encodeURIComponent(encryptValue(rawUrl))}`;
+                      
+                      return (
+                        <a 
+                          href={targetUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group bg-gradient-to-r from-primary to-red-700 text-white border border-white/20 px-8 py-3 rounded-full text-xs sm:text-sm font-black italic uppercase animate-pulse flex items-center gap-3 cursor-pointer shadow-[0_0_50px_rgba(229,9,20,0.7)] hover:scale-110 active:scale-95 transition-all duration-500 ring-4 ring-primary/20 hover:ring-primary/40"
+                        >
+                          <Play className="w-5 h-5 fill-current" />
+                          <span className="tracking-tighter">ذهاب إلى الحلقة</span>
+                          <span className="text-xl group-hover:rotate-12 transition-transform">🚀</span>
+                        </a>
+                      );
+                    }
+                    return (
+                      <span className="bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded text-[8px] sm:text-[10px] font-black italic uppercase">Now Playing</span>
+                    );
+                  })()}
                 </motion.div>
                 <motion.h1 
                   initial={{ x: 20, opacity: 0 }}

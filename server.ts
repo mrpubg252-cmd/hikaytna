@@ -1743,120 +1743,81 @@ async function startServer() {
       }
 
       // 4.1.1. Dailymotion Embed / Landing Page
-      if (decryptedUrl.includes('dailymotion')) {
+      if (decryptedUrl.toLowerCase().includes('dailymotion') || decryptedUrl.toLowerCase().includes('syndication') || decryptedUrl.toLowerCase().includes('dmcdn.net')) {
         const dmIdMatch = decryptedUrl.match(/dailymotion\.com\/(?:embed\/)?video\/([a-zA-Z0-9]+)/);
         const finalUrl = dmIdMatch ? `https://www.dailymotion.com/video/${dmIdMatch[1]}` : decryptedUrl;
         
-        console.log(`[3isk Player Proxy] Serving Dailymotion Landing Page for: ${finalUrl}`);
+        console.log(`[3isk Player Proxy] Serving Professional Dailymotion Gateway for: ${finalUrl}`);
         
         return res.send(`
           <!DOCTYPE html>
-          <html dir="rtl">
+          <html lang="ar" dir="rtl">
           <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>مشاهدة الحلقة</title>
-            <style>
-              body { 
-                margin: 0; 
-                background: #050505; 
-                color: #fff; 
-                font-family: system-ui, -apple-system, sans-serif;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                height: 100vh;
-                text-align: center;
-                padding: 24px;
-                overflow: hidden;
-              }
-              .container {
-                position: relative;
-                z-index: 10;
-                width: 100%;
-                max-width: 400px;
-                animation: fadeIn 0.8s ease-out;
-              }
-              @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(20px); }
-                to { opacity: 1; transform: translateY(0); }
-              }
-              .icon {
-                width: 72px;
-                height: 72px;
-                background: #e11d48;
-                border-radius: 24px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                margin: 0 auto 24px;
-                box-shadow: 0 0 40px rgba(225, 29, 72, 0.4);
-                animation: float 3s ease-in-out infinite;
-              }
-              @keyframes float {
-                0%, 100% { transform: translateY(0); }
-                50% { transform: translateY(-10px); }
-              }
-              h3 { 
-                font-size: 22px; 
-                font-weight: 900; 
-                margin: 0 0 12px; 
-                color: #fff;
-                letter-spacing: -0.5px;
-              }
-              p { 
-                color: #71717a; 
-                margin-bottom: 32px; 
-                font-size: 13px; 
-                line-height: 1.6;
-                font-weight: 500;
-              }
-              .btn {
-                background: #e11d48;
-                color: #fff;
-                padding: 18px 32px;
-                border-radius: 18px;
-                text-decoration: none;
-                font-weight: 900;
-                font-size: 16px;
-                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 12px;
-                box-shadow: 0 15px 30px rgba(225, 29, 72, 0.3);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-              }
-              .btn:hover { 
-                transform: scale(1.03) translateY(-4px); 
-                background: #f43f5e; 
-                box-shadow: 0 20px 40px rgba(225, 29, 72, 0.5);
-              }
-              .btn:active { transform: scale(0.98); }
-              .bg-glow {
-                position: absolute;
-                inset: 0;
-                background: radial-gradient(circle at center, rgba(225, 29, 72, 0.05) 0%, transparent 70%);
-              }
-              .external-icon {
-                opacity: 0.8;
-              }
-            </style>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>جاري تحويلك للمشغل المباشر... 🚀</title>
+              <script src="https://cdn.tailwindcss.com"></script>
+              <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+              <style>
+                  body { font-family: 'Inter', sans-serif; background-color: #050505; color: white; overflow: hidden; }
+                  .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+                  @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .7; transform: scale(1.02); } }
+                  .glow-primary { box-shadow: 0 0 50px rgba(229, 9, 20, 0.3); }
+              </style>
           </head>
-          <body>
-            <div class="bg-glow"></div>
-            <div class="container">
-              <div class="icon">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+          <body class="flex items-center justify-center min-h-screen bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-zinc-900/20 via-black to-black">
+              <div class="text-center space-y-10 p-10 max-w-lg w-full bg-zinc-900/40 border border-white/5 rounded-[2.5rem] shadow-2xl backdrop-blur-2xl animate-in fade-in zoom-in duration-700 relative overflow-hidden group">
+                  <div class="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-50"></div>
+                  
+                  <div class="relative w-36 h-36 mx-auto">
+                      <div class="absolute inset-0 bg-primary blur-3xl opacity-30 animate-pulse-slow"></div>
+                      <div class="relative w-full h-full bg-zinc-900 rounded-full flex items-center justify-center border-2 border-white/10 shadow-2xl group-hover:scale-105 transition-transform duration-500">
+                          <img src="/logo.png" class="w-20 h-20 object-contain drop-shadow-2xl" alt="Logo" onerror="this.src='https://cdn-icons-png.flaticon.com/512/716/716429.png'">
+                      </div>
+                  </div>
+                  
+                  <div class="space-y-5 relative">
+                      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/20 mb-2">
+                         <div class="w-2 h-2 rounded-full bg-primary animate-ping"></div>
+                         <span class="text-[10px] font-black text-primary uppercase italic tracking-widest">Premium Gateway Active</span>
+                      </div>
+                      <h1 class="text-4xl font-black italic text-white tracking-tighter leading-tight">
+                         جاري تحويلك الآن <span class="text-primary underline decoration-primary/30 underline-offset-8">للمشغل</span>... ⚡
+                      </h1>
+                      <p class="text-zinc-400 font-bold text-base leading-relaxed px-4">
+                          يتم الآن فك تشفير الرابط وتوجيهك إلى سيرفر Dailymotion الرسمي لضمان استقرار البث وتجنب أي مشاكل تقنية.
+                      </p>
+                  </div>
+
+                  <div class="flex flex-col items-center gap-6 pt-6 relative">
+                      <div class="w-full bg-white/5 h-2 rounded-full overflow-hidden border border-white/5 p-0.5">
+                          <div class="bg-gradient-to-r from-primary to-red-500 h-full w-0 rounded-full animate-[loading_3s_ease-in-out_forwards] shadow-[0_0_15px_rgba(229,9,20,0.5)]"></div>
+                      </div>
+                      <div class="flex items-center gap-3">
+                        <div class="flex -space-x-2">
+                           <div class="w-6 h-6 rounded-full border-2 border-black bg-zinc-800 flex items-center justify-center text-[8px] font-bold">1</div>
+                           <div class="w-6 h-6 rounded-full border-2 border-black bg-zinc-800 flex items-center justify-center text-[8px] font-bold">2</div>
+                           <div class="w-6 h-6 rounded-full border-2 border-black bg-zinc-800 flex items-center justify-center text-[8px] font-bold">3</div>
+                        </div>
+                        <p class="text-[11px] text-zinc-500 font-black uppercase tracking-widest italic">Verifying Secure Connection...</p>
+                      </div>
+                  </div>
+
+                  <style>
+                      @keyframes loading { 
+                        0% { width: 0%; } 
+                        30% { width: 40%; }
+                        70% { width: 85%; }
+                        100% { width: 100%; } 
+                      }
+                  </style>
+
+                  <script>
+                      setTimeout(() => {
+                          window.location.href = "${finalUrl}";
+                      }, 3200);
+                  </script>
               </div>
-              <h3>سيرفر Dailymotion الخاص 🚀</h3>
-              <p>لضمان تجربة مشاهدة مستقرة وبأعلى جودة ممكنة وبدون تقطيع، يرجى فتح الحلقة في صفحة مستقلة.</p>
-              <a href="${finalUrl}" target="_blank" class="btn">
-                <span>مشاهدة الحلقة اضغط هنا</span>
-                <svg class="external-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-              </a>
-            </div>
           </body>
           </html>
         `);
