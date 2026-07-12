@@ -1201,11 +1201,11 @@ export default function WatchScreen() {
                    className="flex items-center justify-center gap-2 mb-4"
                 >
                   {(() => {
-                    const dmKeywords = ['dailymotion', 'syndication', 'dm.com', 'dmcdn.net'];
-                    const isDM = activeServerUrl && dmKeywords.some(kw => activeServerUrl.toLowerCase().includes(kw));
-                    const isProxiedDM = videoUrl && (videoUrl.includes('dailymotion') || videoUrl.includes('syndication') || videoUrl.includes('dmcdn.net'));
+                    const dmKeywords = ['dailymotion', 'syndication', 'dm.com', 'dmcdn.net', 'dai.ly'];
+                    const currentUrl = (activeServerUrl || videoUrl || '').toLowerCase();
+                    const isDM = dmKeywords.some(kw => currentUrl.includes(kw));
                     
-                    if (isDM || isProxiedDM) {
+                    if (isDM) {
                       const rawUrl = activeServerUrl || videoUrl || '';
                       const targetUrl = rawUrl.startsWith('/api/v1/') ? rawUrl : `/api/v1/3isk-player?url=${encodeURIComponent(encryptValue(rawUrl))}`;
                       
@@ -1214,7 +1214,7 @@ export default function WatchScreen() {
                           href={targetUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="group bg-gradient-to-r from-primary via-red-600 to-primary bg-[length:200%_auto] hover:bg-[100%_center] text-white border-2 border-white/20 px-10 py-4 rounded-2xl text-sm sm:text-base font-black italic uppercase animate-pulse flex items-center gap-4 cursor-pointer shadow-[0_0_60px_rgba(229,9,20,0.8)] hover:scale-110 active:scale-95 transition-all duration-700 ring-4 ring-primary/20 hover:ring-primary/50"
+                          className="group bg-gradient-to-r from-red-600 via-red-500 to-red-700 bg-[length:200%_auto] hover:bg-[100%_center] text-white border-2 border-white/20 px-10 py-4 rounded-2xl text-sm sm:text-base font-black italic uppercase animate-pulse flex items-center gap-4 cursor-pointer shadow-[0_0_60px_rgba(220,38,38,0.8)] hover:scale-110 active:scale-95 transition-all duration-700 ring-4 ring-red-600/20 hover:ring-red-600/50"
                         >
                           <Play className="w-6 h-6 fill-current animate-bounce" />
                           <span className="tracking-tight drop-shadow-lg">ذهاب إلى الحلقة الآن</span>
@@ -1223,7 +1223,7 @@ export default function WatchScreen() {
                       );
                     }
                     return (
-                      <span className="bg-primary/10 text-primary border border-primary/20 px-3 py-1 rounded-full text-[10px] sm:text-xs font-black italic uppercase tracking-widest">Now Playing</span>
+                      <span className="bg-red-600 text-white px-4 py-1.5 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] shadow-lg shadow-red-600/20">Now Playing</span>
                     );
                   })()}
                 </motion.div>
