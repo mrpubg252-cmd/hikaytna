@@ -2931,26 +2931,33 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                           تم تجهيز السيرفر الخارجي بنجاح. اضغط على المشغل أعلاه للانتقال لمشاهدة الحلقة خارج الموقع لتجنب مشاكل مانع الإعلانات.
                         </p>
                         
-                        <div className="flex flex-wrap items-center justify-center gap-4 mt-4">
-                          <a 
-                            href={targetUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 px-10 py-4 bg-primary hover:bg-primary/90 text-white text-xs font-black rounded-full transition-all border border-primary/20 shadow-xl shadow-primary/20 hover:scale-105 active:scale-95"
-                          >
-                            <Play className="w-4 h-4 fill-current" />
-                            فتح الحلقة الآن ⚡
-                          </a>
+                        <div className="flex flex-col items-center gap-3 mt-4">
+                          <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full border border-primary/20 animate-bounce">
+                             <span className="text-[10px] font-black text-primary">اضغط على "ذهاب إلى الحلقة" بالأسفل</span>
+                             <span className="text-xs">👇</span>
+                          </div>
                           
-                          <a 
-                            href={targetUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 px-8 py-4 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white text-xs font-bold rounded-full transition-all border border-white/10"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                            رابط بديل
-                          </a>
+                          <div className="flex flex-wrap items-center justify-center gap-4">
+                            <a 
+                              href={targetUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 px-10 py-4 bg-primary hover:bg-primary/90 text-white text-xs font-black rounded-full transition-all border border-primary/20 shadow-xl shadow-primary/20 hover:scale-105 active:scale-95"
+                            >
+                              <Play className="w-4 h-4 fill-current" />
+                              ذهاب إلى الحلقة ⚡
+                            </a>
+                            
+                            <a 
+                              href={targetUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 px-8 py-4 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white text-xs font-bold rounded-full transition-all border border-white/10"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                              رابط بديل
+                            </a>
+                          </div>
                         </div>
                       </div>
                     </div>

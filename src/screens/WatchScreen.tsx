@@ -1196,7 +1196,19 @@ export default function WatchScreen() {
                    animate={{ x: 0, opacity: 1 }}
                    className="flex items-center justify-center gap-2 mb-2"
                 >
-                  <span className="bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded text-[8px] sm:text-[10px] font-black italic uppercase">Now Playing</span>
+                  {activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion') || activeServerUrl.toLowerCase().includes('syndication')) ? (
+                    <a 
+                      href={activeServerUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-primary text-white border border-primary px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-black italic uppercase animate-pulse flex items-center gap-2 cursor-pointer shadow-xl shadow-primary/30 hover:scale-105 transition-transform"
+                    >
+                      <span>ذهاب الى الحلقة</span>
+                      <span className="text-sm">👇</span>
+                    </a>
+                  ) : (
+                    <span className="bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded text-[8px] sm:text-[10px] font-black italic uppercase">Now Playing</span>
+                  )}
                 </motion.div>
                 <motion.h1 
                   initial={{ x: 20, opacity: 0 }}
