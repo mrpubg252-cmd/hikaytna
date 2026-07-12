@@ -1077,9 +1077,10 @@ export default function WatchScreen() {
 
       const isDailymotion = 
         rawUrl.toLowerCase().includes('dailymotion') || 
-        rawUrl.toLowerCase().includes('syndication=') || 
+        rawUrl.toLowerCase().includes('syndication') || 
         rawUrl.toLowerCase().includes('dmcdn.net') ||
-        rawUrl.toLowerCase().includes('dm.com');
+        rawUrl.toLowerCase().includes('dm.com') ||
+        rawUrl.toLowerCase().includes('dai.ly');
       
       if (isDailymotion) {
         // Update UI state to trigger the Dailymotion view
@@ -1202,8 +1203,9 @@ export default function WatchScreen() {
                 >
                   {(() => {
                     const dmKeywords = ['dailymotion', 'syndication', 'dm.com', 'dmcdn.net', 'dai.ly', 'dai.ly/'];
-                    const currentUrl = (activeServerUrl || videoUrl || '').toLowerCase();
-                    const isDM = dmKeywords.some(kw => currentUrl.includes(kw));
+                    const lowerActive = (activeServerUrl || '').toLowerCase();
+                    const lowerVideo = (videoUrl || '').toLowerCase();
+                    const isDM = dmKeywords.some(kw => lowerActive.includes(kw) || lowerVideo.includes(kw));
                     
                     if (isDM) {
                       const rawUrl = activeServerUrl || videoUrl || '';
