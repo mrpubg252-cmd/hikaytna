@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
 import { 
   ArrowRight, Play, Server, AlertCircle, Loader2, MessageCircle, 
-  Send, Instagram, Video, MessageSquare, ChevronDown, SlidersHorizontal, Search, Eye 
+  Send, Instagram, Video, MessageSquare, ChevronDown, SlidersHorizontal, Search, Eye,
+  Shield, Zap
 } from "lucide-react";
 import { seriesData } from "../lib/data";
 import Chat from "../components/Chat";
@@ -34,6 +35,7 @@ export default function Player() {
   const [selectedServerIdx, setSelectedServerIdx] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDirectMode, setIsDirectMode] = useState<boolean>(false);
 
   const [showChat, setShowChat] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -81,6 +83,9 @@ export default function Player() {
 
   // Proxy third-party player embeds to bypass Referer anti-embed blocks
   const getIframeSrc = (url: string) => {
+    if (isDirectMode) {
+      return url;
+    }
     if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
       return `/api/proxy-embed?url=${encodeURIComponent(url)}&referer=${encodeURIComponent(watchUrl || "")}`;
     }
@@ -170,17 +175,51 @@ export default function Player() {
           )}
         </div>
 
-        {/* Tips & Instructions Info Bar */}
+        {/* Tips & Playback Control Center Panel */}
         {!isLoading && (
-          <div className="max-w-5xl mx-auto mt-4 px-4">
-            <div className="p-3 bg-[#111] border border-zinc-800/60 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-400">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-[#e50914]" />
-                <span>في حال عدم عمل السيرفر، يرجى التبديل لسيرفر آخر من شريط السيرفرات بالأعلى.</span>
+          <div className="max-w-5xl mx-auto mt-6 px-4">
+            <div className="bg-[#0c0c0c] border border-zinc-900 rounded-2xl p-5 md:p-6 shadow-xl flex flex-col lg:flex-row items-center justify-between gap-6">
+              <div className="space-y-2 text-right w-full lg:w-auto">
+                <div className="flex items-center gap-2 text-[#e50914]">
+                  <SlidersHorizontal className="w-5 h-5" />
+                  <h3 className="text-sm font-bold text-white">مركز التحكم في وضع تشغيل البث</h3>
+                </div>
+                <p className="text-xs text-zinc-400 max-w-2xl leading-relaxed">
+                  إذا واجهت شاشة خطأ <span className="text-red-500 font-bold">Cloudflare Error 1005</span> أو شاشة سوداء، فهذا يعني أن خوادم الاستضافة محظورة من قِبل جدار الحماية للمصدر. يرجى التبديل فوراً إلى <span className="text-[#e50914] font-bold">المشغل المباشر (المتصفح)</span> ليتصل مشغلك مباشرة بالمصدر باستخدام اتصالك الخاص دون المرور بالخادم.
+                </p>
               </div>
-              <div className="font-mono text-[10px] text-zinc-600 truncate max-w-xs sm:max-w-md bg-black/40 px-2.5 py-1 rounded-md" dir="ltr">
-                Source: {activeServerUrl}
+
+              {/* Mode Toggle Buttons */}
+              <div className="flex items-center gap-2.5 p-1 bg-black rounded-xl border border-zinc-800/80 w-full sm:w-auto justify-center">
+                <button
+                  onClick={() => setIsDirectMode(false)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all ${
+                    !isDirectMode
+                      ? "bg-[#e50914] text-white shadow-md shadow-red-600/10 scale-[1.02]"
+                      : "text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >
+                  <Shield className="w-4 h-4" />
+                  <span>مشغل الحماية (بروكسي)</span>
+                </button>
+                <button
+                  onClick={() => setIsDirectMode(true)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-bold transition-all ${
+                    isDirectMode
+                      ? "bg-[#e50914] text-white shadow-md shadow-red-600/10 scale-[1.02]"
+                      : "text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >
+                  <Zap className="w-4 h-4" />
+                  <span>مشغل مباشر (تخطي الحجب)</span>
+                </button>
               </div>
+            </div>
+
+            {/* Current Source Indicator */}
+            <div className="mt-3 flex items-center justify-between gap-3 text-[10px] text-zinc-500 font-mono bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-900/60" dir="ltr">
+              <span className="text-zinc-600">Mode: {!isDirectMode ? "PROXY_SHIELD" : "DIRECT_BROWSER"}</span>
+              <span className="truncate max-w-[250px] sm:max-w-md">Source: {activeServerUrl}</span>
             </div>
           </div>
         )}

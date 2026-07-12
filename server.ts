@@ -124,11 +124,30 @@ async function startServer() {
 
       const refererParam = req.query.referer as string;
       const targetUrlObj = new URL(embedUrl);
+      const targetOrigin = targetUrlObj.origin;
+
+      let refererToUse = refererParam;
+      const lowerEmbedUrl = embedUrl.toLowerCase();
+      
+      const is3iskTarget = lowerEmbedUrl.includes("3iskk.xyz") || 
+                           lowerEmbedUrl.includes("mwdy.cc") || 
+                           lowerEmbedUrl.includes("miravd.com") || 
+                           lowerEmbedUrl.includes("miravid.club");
+
+      if (is3iskTarget) {
+        if (!refererToUse || !refererToUse.includes("3iskk.xyz")) {
+          refererToUse = "https://3iskk.xyz/";
+        }
+      } else {
+        if (!refererToUse) {
+          refererToUse = targetOrigin + "/";
+        }
+      }
 
       const response = await fetch(embedUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-          'Referer': refererParam || 'https://3iskk.xyz/'
+          'Referer': refererToUse
         }
       });
 
@@ -350,6 +369,57 @@ async function startServer() {
             }
             return match;
           });
+
+          // Inject anti-adblock warning remover inside HTML responses
+          if (resContentType.includes("text/html")) {
+            const removerScript = `
+<script>
+  (function() {
+    function cleanUp() {
+      try {
+        const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT, null, false);
+        const nodesToHide = [];
+        let node;
+        while (node = walker.nextNode()) {
+          const textVal = node.nodeValue || "";
+          if (textVal.includes("Disable ADB") || textVal.includes("ADBlock") || textVal.includes("Upgrade you account") || textVal.includes("watch videos with no limits")) {
+            let parent = node.parentElement;
+            if (parent) {
+              // Find container or self to hide
+              let container = parent;
+              // Go up to find the closest wrapper div to hide the entire warning box
+              for (let i = 0; i < 3; i++) {
+                if (container.parentElement && container.parentElement !== document.body && container.parentElement !== document.documentElement) {
+                  container = container.parentElement;
+                } else {
+                  break;
+                }
+              }
+              nodesToHide.push(container);
+            }
+          }
+        }
+        nodesToHide.forEach(el => {
+          if (el && el.style) {
+            el.style.setProperty('display', 'none', 'important');
+          }
+        });
+      } catch (e) {
+        console.error("Adblock cleanup error:", e);
+      }
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', cleanUp);
+    } else {
+      cleanUp();
+    }
+    window.addEventListener('load', cleanUp);
+    setInterval(cleanUp, 500);
+  })();
+</script>
+            `;
+            text = text.replace("</head>", `${removerScript}</head>`);
+          }
         }
 
         res.send(text);
