@@ -1247,11 +1247,13 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     
     // Explicitly handle Dailymotion and other embed-only servers
     const isEmbedOnly = 
-      urlLower.includes('dailymotion') || 
-      urlLower.includes('syndication') ||
-      urlLower.includes('vimeo') ||
-      urlLower.includes('youtube') ||
-      urlLower.includes('ok.ru') ||
+      (urlLower && (
+        urlLower.includes('dailymotion') || 
+        urlLower.includes('syndication') ||
+        urlLower.includes('vimeo') ||
+        urlLower.includes('youtube') ||
+        urlLower.includes('ok.ru')
+      )) ||
       (activeServerUrl && (
         activeServerUrl.toLowerCase().includes('dailymotion') || 
         activeServerUrl.toLowerCase().includes('syndication') ||
@@ -1263,7 +1265,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
         activeServerName.toLowerCase().includes('ok.ru')
       ));
 
-    if (isEmbedOnly || urlLower.startsWith('/api/v1/secured-player') || urlLower.startsWith('/api/v1/titanic-player') || urlLower.startsWith('/api/v1/3isk-player')) {
+    if (isEmbedOnly || (urlLower && (urlLower.startsWith('/api/v1/secured-player') || urlLower.startsWith('/api/v1/titanic-player') || urlLower.startsWith('/api/v1/3isk-player')))) {
       setIsIframeFallback(true);
       setIsLoading(false);
       setIsPlaying(true);
@@ -1271,20 +1273,22 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     }
     
     const isDirectVideo = 
-      urlLower.startsWith('blob:') ||
-      urlLower.startsWith('/api/v1/stream-proxy') ||
-      urlLower.includes('.mp4') || 
-      urlLower.includes('.m3u8') || 
-      urlLower.includes('.webm') || 
-      urlLower.includes('.ogg') || 
-      urlLower.includes('.mov') ||
-      urlLower.includes('.jpg') ||
-      urlLower.includes('.png') ||
-      (activeServerUrl && (
-        activeServerUrl.toLowerCase().includes('.mp4') ||
-        activeServerUrl.toLowerCase().includes('.m3u8') ||
-        activeServerUrl.toLowerCase().includes('.webm')
-      ));
+      urlLower && (
+        urlLower.startsWith('blob:') ||
+        urlLower.startsWith('/api/v1/stream-proxy') ||
+        urlLower.includes('.mp4') || 
+        urlLower.includes('.m3u8') || 
+        urlLower.includes('.webm') || 
+        urlLower.includes('.ogg') || 
+        urlLower.includes('.mov') ||
+        urlLower.includes('.jpg') ||
+        urlLower.includes('.png') ||
+        (activeServerUrl && (
+          activeServerUrl.toLowerCase().includes('.mp4') ||
+          activeServerUrl.toLowerCase().includes('.m3u8') ||
+          activeServerUrl.toLowerCase().includes('.webm')
+        ))
+      );
 
     if (!isDirectVideo) {
       setIsIframeFallback(true);
@@ -2872,16 +2876,19 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                                     (activeServerName && activeServerName.toLowerCase().includes('dailymotion'));
               
               if (isDailymotion) {
-                const targetUrl = activeServerUrl || resolvedVideoUrl;
+                const targetUrl = activeServerUrl || resolvedVideoUrl || '';
                 return (
                   <div className="w-full h-full relative bg-black flex items-center justify-center overflow-hidden group">
                     {/* Background Layer */}
                     <div className="absolute inset-0 opacity-40 group-hover:opacity-60 transition-opacity duration-500 pointer-events-none">
                       <img 
-                        src="/episode.jpg" 
+                        src="/episode.png" 
                         alt="" 
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover blur-sm scale-105"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = seriesImage || '';
+                        }}
                       />
                     </div>
                     
@@ -2892,15 +2899,15 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="relative block w-full max-w-2xl aspect-video rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 hover:border-primary/50 transition-all duration-300 hover:scale-[1.02] cursor-pointer"
-                        onClick={(e) => {
-                          console.log("Dailymotion link clicked:", targetUrl);
-                        }}
                       >
                         <img 
-                          src="/episode.jpg" 
+                          src="/episode.png" 
                           alt="اضغط لمشاهدة الحلقة" 
                           referrerPolicy="no-referrer"
                           className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = seriesImage || '';
+                          }}
                         />
                         <div className="absolute inset-0 bg-black/20 hover:bg-black/0 transition-colors duration-300 flex items-center justify-center">
                           <div className="w-20 h-20 rounded-full bg-primary/90 text-white flex items-center justify-center shadow-2xl transition-transform duration-300 hover:scale-110">
@@ -2937,13 +2944,13 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
               return (
                 <div className={cn(
                   "w-full h-full relative",
-                  resolvedVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
+                  resolvedVideoUrl && resolvedVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
                 )}>
                   <iframe
-                    src={resolvedVideoUrl}
+                    src={resolvedVideoUrl || ''}
                     className={cn(
                       "w-full h-full border-0 animate-fade-in",
-                      resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
+                      resolvedVideoUrl && resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
                     )}
                     allowFullScreen
                     allow="autoplay; encrypted-media; picture-in-picture"
