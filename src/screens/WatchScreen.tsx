@@ -1201,10 +1201,10 @@ export default function WatchScreen() {
                       href={activeServerUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="bg-primary text-white border border-primary px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-black italic uppercase animate-pulse flex items-center gap-2 cursor-pointer shadow-xl shadow-primary/30 hover:scale-105 transition-transform"
+                      className="bg-primary text-white border border-primary/20 px-5 py-2 rounded-full text-[10px] sm:text-xs font-black italic uppercase animate-pulse flex items-center gap-2 cursor-pointer shadow-2xl shadow-primary/40 hover:scale-105 transition-all"
                     >
-                      <span>ذهاب الى الحلقة</span>
-                      <span className="text-sm">👇</span>
+                      <span>ذهاب إلى الحلقة</span>
+                      <span className="text-sm">🚀</span>
                     </a>
                   ) : (
                     <span className="bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded text-[8px] sm:text-[10px] font-black italic uppercase">Now Playing</span>
