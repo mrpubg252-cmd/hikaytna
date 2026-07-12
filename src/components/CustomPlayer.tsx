@@ -1245,13 +1245,30 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     
     const urlLower = resolvedVideoUrl.toLowerCase();
     
-      // Explicitly handle our secure frame proxies
-      if (urlLower.startsWith('/api/v1/secured-player') || urlLower.startsWith('/api/v1/titanic-player')) {
-        setIsIframeFallback(true);
-        setIsLoading(false);
-        setIsPlaying(true);
-        return;
-      }
+    // Explicitly handle Dailymotion and other embed-only servers
+    const isEmbedOnly = 
+      urlLower.includes('dailymotion') || 
+      urlLower.includes('syndication') ||
+      urlLower.includes('vimeo') ||
+      urlLower.includes('youtube') ||
+      urlLower.includes('ok.ru') ||
+      (activeServerUrl && (
+        activeServerUrl.toLowerCase().includes('dailymotion') || 
+        activeServerUrl.toLowerCase().includes('syndication') ||
+        activeServerUrl.toLowerCase().includes('vimeo') ||
+        activeServerUrl.toLowerCase().includes('ok.ru')
+      )) ||
+      (activeServerName && (
+        activeServerName.toLowerCase().includes('dailymotion') ||
+        activeServerName.toLowerCase().includes('ok.ru')
+      ));
+
+    if (isEmbedOnly || urlLower.startsWith('/api/v1/secured-player') || urlLower.startsWith('/api/v1/titanic-player') || urlLower.startsWith('/api/v1/3isk-player')) {
+      setIsIframeFallback(true);
+      setIsLoading(false);
+      setIsPlaying(true);
+      return;
+    }
     
     const isDirectVideo = 
       urlLower.startsWith('blob:') ||
@@ -2851,16 +2868,19 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
           {isIframeFallback ? (
             (() => {
               const isDailymotion = (resolvedVideoUrl && (resolvedVideoUrl.toLowerCase().includes('dailymotion') || resolvedVideoUrl.toLowerCase().includes('syndication'))) ||
-                                    (activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion') || activeServerUrl.toLowerCase().includes('syndication')));
+                                    (activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion') || activeServerUrl.toLowerCase().includes('syndication'))) ||
+                                    (activeServerName && activeServerName.toLowerCase().includes('dailymotion'));
               
               if (isDailymotion) {
+                const targetUrl = activeServerUrl || resolvedVideoUrl;
                 return (
-                  <div className="w-full h-full relative bg-black flex items-center justify-center overflow-hidden group cursor-pointer">
+                  <div className="w-full h-full relative bg-black flex items-center justify-center overflow-hidden group">
                     {/* Background Layer */}
-                    <div className="absolute inset-0 opacity-40 group-hover:opacity-60 transition-opacity duration-500">
+                    <div className="absolute inset-0 opacity-40 group-hover:opacity-60 transition-opacity duration-500 pointer-events-none">
                       <img 
-                        src="/episode.png" 
-                        alt="Dailymotion Server" 
+                        src="/episode.jpg" 
+                        alt="" 
+                        referrerPolicy="no-referrer"
                         className="w-full h-full object-cover blur-sm scale-105"
                       />
                     </div>
@@ -2868,30 +2888,46 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                     {/* Content Layer */}
                     <div className="relative z-10 w-full h-full flex flex-col items-center justify-center p-4">
                       <a
-                        href={resolvedVideoUrl}
+                        href={targetUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="relative block w-full max-w-2xl aspect-video rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 group-hover:border-primary/50 transition-all duration-300 group-hover:scale-[1.02]"
+                        className="relative block w-full max-w-2xl aspect-video rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 hover:border-primary/50 transition-all duration-300 hover:scale-[1.02] cursor-pointer"
+                        onClick={(e) => {
+                          console.log("Dailymotion link clicked:", targetUrl);
+                        }}
                       >
                         <img 
-                          src="/episode.png" 
+                          src="/episode.jpg" 
                           alt="اضغط لمشاهدة الحلقة" 
+                          referrerPolicy="no-referrer"
                           className="w-full h-full object-cover"
                         />
-                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/0 transition-colors duration-300 flex items-center justify-center">
-                          <div className="w-20 h-20 rounded-full bg-primary/90 text-white flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform duration-300">
+                        <div className="absolute inset-0 bg-black/20 hover:bg-black/0 transition-colors duration-300 flex items-center justify-center">
+                          <div className="w-20 h-20 rounded-full bg-primary/90 text-white flex items-center justify-center shadow-2xl transition-transform duration-300 hover:scale-110">
                             <Play className="w-10 h-10 fill-current ml-1" />
                           </div>
                         </div>
                       </a>
                       
-                      <div className="mt-8 text-center space-y-2 animate-fade-in pointer-events-none">
+                      <div className="mt-8 text-center space-y-3 animate-fade-in">
                         <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight drop-shadow-md">
                           سيرفر Dailymotion الخاص 🚀
                         </h3>
-                        <p className="text-sm text-zinc-300 font-medium">
-                          اضغط على الصورة أعلاه لمشاهدة الحلقة بجودة عالية
+                        <p className="text-sm text-zinc-300 font-medium max-w-md">
+                          اضغط على الصورة أعلاه لمشاهدة الحلقة بجودة عالية.
+                          <br/>
+                          تم تعطيل مانع الإعلانات لهذا السيرفر لضمان التشغيل.
                         </p>
+                        
+                        <a 
+                          href={targetUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-6 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-full transition-colors border border-white/10"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          فتح في صفحة جديدة
+                        </a>
                       </div>
                     </div>
                   </div>
