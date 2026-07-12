@@ -1245,29 +1245,46 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
     
     const urlLower = resolvedVideoUrl.toLowerCase();
     
-      // Explicitly handle our secure frame proxies
-      if (urlLower.startsWith('/api/v1/secured-player') || urlLower.startsWith('/api/v1/titanic-player')) {
-        setIsIframeFallback(true);
-        setIsLoading(false);
-        setIsPlaying(true);
-        return;
-      }
+    // Explicitly handle Dailymotion and other embed-only servers
+    const isEmbedOnly = 
+      (resolvedVideoUrl && (
+        resolvedVideoUrl.toLowerCase().includes('dailymotion') || 
+        resolvedVideoUrl.toLowerCase().includes('syndication') ||
+        resolvedVideoUrl.toLowerCase().includes('vimeo') ||
+        resolvedVideoUrl.toLowerCase().includes('youtube') ||
+        resolvedVideoUrl.toLowerCase().includes('ok.ru')
+      )) ||
+      (activeServerUrl && (
+        activeServerUrl.toLowerCase().includes('dailymotion') || 
+        activeServerUrl.toLowerCase().includes('syndication') ||
+        activeServerUrl.toLowerCase().includes('vimeo') ||
+        activeServerUrl.toLowerCase().includes('ok.ru')
+      ));
+
+    if (isEmbedOnly || (resolvedVideoUrl && (resolvedVideoUrl.startsWith('/api/v1/secured-player') || resolvedVideoUrl.startsWith('/api/v1/titanic-player') || resolvedVideoUrl.startsWith('/api/v1/3isk-player')))) {
+      setIsIframeFallback(true);
+      setIsLoading(false);
+      setIsPlaying(true);
+      return;
+    }
     
     const isDirectVideo = 
-      urlLower.startsWith('blob:') ||
-      urlLower.startsWith('/api/v1/stream-proxy') ||
-      urlLower.includes('.mp4') || 
-      urlLower.includes('.m3u8') || 
-      urlLower.includes('.webm') || 
-      urlLower.includes('.ogg') || 
-      urlLower.includes('.mov') ||
-      urlLower.includes('.jpg') ||
-      urlLower.includes('.png') ||
-      (activeServerUrl && (
-        activeServerUrl.toLowerCase().includes('.mp4') ||
-        activeServerUrl.toLowerCase().includes('.m3u8') ||
-        activeServerUrl.toLowerCase().includes('.webm')
-      ));
+      resolvedVideoUrl && (
+        resolvedVideoUrl.startsWith('blob:') ||
+        resolvedVideoUrl.startsWith('/api/v1/stream-proxy') ||
+        resolvedVideoUrl.includes('.mp4') || 
+        resolvedVideoUrl.includes('.m3u8') || 
+        resolvedVideoUrl.includes('.webm') || 
+        resolvedVideoUrl.includes('.ogg') || 
+        resolvedVideoUrl.includes('.mov') ||
+        resolvedVideoUrl.includes('.jpg') ||
+        resolvedVideoUrl.includes('.png') ||
+        (activeServerUrl && (
+          activeServerUrl.toLowerCase().includes('.mp4') ||
+          activeServerUrl.toLowerCase().includes('.m3u8') ||
+          activeServerUrl.toLowerCase().includes('.webm')
+        ))
+      );
 
     if (!isDirectVideo) {
       setIsIframeFallback(true);
@@ -2850,19 +2867,107 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
 
           {isIframeFallback ? (
             (() => {
-              const isDailymotion = (resolvedVideoUrl && (resolvedVideoUrl.toLowerCase().includes('dailymotion') || resolvedVideoUrl.toLowerCase().includes('syndication'))) ||
-                                    (activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion') || activeServerUrl.toLowerCase().includes('syndication')));
+              const dmKeywords = ['dailymotion', 'syndication', 'dmcdn.net'];
+              const isDailymotion = dmKeywords.some(kw => 
+                (resolvedVideoUrl && resolvedVideoUrl.toLowerCase().includes(kw)) || 
+                (activeServerUrl && activeServerUrl.toLowerCase().includes(kw)) ||
+                (videoUrl && videoUrl.toLowerCase().includes(kw))
+              );
               
+              if (isDailymotion) {
+                const targetUrl = activeServerUrl || videoUrl || resolvedVideoUrl || '';
+                return (
+                  <div className="w-full h-full relative bg-black flex items-center justify-center overflow-hidden group">
+                    {/* Background Layer with extreme blur */}
+                    <div className="absolute inset-0 opacity-40 group-hover:opacity-60 transition-opacity duration-500 pointer-events-none">
+                      <img 
+                        src="/episode.png" 
+                        alt="" 
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover blur-2xl scale-110"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = seriesImage || 'https://images.unsplash.com/photo-1542204172-3c1f81edf4a1?q=80&w=400&auto=format&fit=crop';
+                        }}
+                      />
+                    </div>
+                    
+                    {/* Content Layer */}
+                    <div className="relative z-10 w-full h-full flex flex-col items-center justify-center p-4">
+                      <a
+                        href={targetUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="relative block w-full max-w-2xl aspect-video rounded-3xl overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.9)] border border-white/10 hover:border-primary/50 transition-all duration-500 hover:scale-[1.03] cursor-pointer"
+                      >
+                        <img 
+                          src="/episode.png" 
+                          alt="اضغط لمشاهدة الحلقة" 
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            // High-quality fallback chain
+                            const target = e.target as HTMLImageElement;
+                            if (target.src.includes('episode.png')) {
+                              target.src = seriesImage || 'https://images.unsplash.com/photo-1542204172-3c1f81edf4a1?q=80&w=800&auto=format&fit=crop';
+                            }
+                          }}
+                        />
+                        <div className="absolute inset-0 bg-black/40 hover:bg-black/10 transition-colors duration-500 flex items-center justify-center">
+                          <div className="w-24 h-24 rounded-full bg-primary/95 text-black flex items-center justify-center shadow-[0_0_30px_rgba(229,9,20,0.5)] transition-all duration-500 hover:scale-110 hover:rotate-12">
+                            <Play className="w-12 h-12 fill-current ml-1.5" />
+                          </div>
+                        </div>
+                      </a>
+                      
+                      <div className="mt-10 text-center space-y-4 animate-fade-in max-w-lg">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 border border-primary/30 mb-2">
+                           <Shield className="w-3.5 h-3.5 text-primary" />
+                           <span className="text-[10px] font-black text-primary uppercase italic">Premium Safe Server</span>
+                        </div>
+                        <h3 className="text-2xl sm:text-4xl font-black text-white tracking-tight drop-shadow-xl font-sans italic">
+                          سيرفر Dailymotion المباشر 🍿🚀
+                        </h3>
+                        <p className="text-sm sm:text-base text-zinc-400 font-bold leading-relaxed px-6">
+                          تم تجهيز السيرفر الخارجي بنجاح. اضغط على المشغل أعلاه للانتقال لمشاهدة الحلقة خارج الموقع لتجنب مشاكل مانع الإعلانات.
+                        </p>
+                        
+                        <div className="flex flex-wrap items-center justify-center gap-4 mt-4">
+                          <a 
+                            href={targetUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 px-10 py-4 bg-primary hover:bg-primary/90 text-white text-xs font-black rounded-full transition-all border border-primary/20 shadow-xl shadow-primary/20 hover:scale-105 active:scale-95"
+                          >
+                            <Play className="w-4 h-4 fill-current" />
+                            فتح الحلقة الآن ⚡
+                          </a>
+                          
+                          <a 
+                            href={targetUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 px-8 py-4 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white text-xs font-bold rounded-full transition-all border border-white/10"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                            رابط بديل
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div className={cn(
                   "w-full h-full relative",
-                  resolvedVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
+                  resolvedVideoUrl && resolvedVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
                 )}>
                   <iframe
-                    src={resolvedVideoUrl}
+                    src={resolvedVideoUrl || ''}
                     className={cn(
                       "w-full h-full border-0 animate-fade-in",
-                      resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
+                      resolvedVideoUrl && resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
                     )}
                     allowFullScreen
                     allow="autoplay; encrypted-media; picture-in-picture"
@@ -2882,7 +2987,7 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                       zIndex: 10,
                     }}
                   />
-                  {resolvedVideoUrl.includes('streamimdb') && (
+                  {resolvedVideoUrl && resolvedVideoUrl.includes('streamimdb') && (
                     <div className="absolute top-4 left-4 z-20 pointer-events-none">
                       <div className="bg-amber-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
                         <Sparkles className="w-3 h-3 fill-current" />

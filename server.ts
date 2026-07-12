@@ -1078,36 +1078,63 @@ async function startServer() {
 
       // Try multiple domains or failovers if rate-limited or blocked
       let html = "";
-      const domains = ['https://qeseh.net', 'https://wwv.qeseh.com'];
+      const domains = [
+        'https://qeseh.net',
+        'https://qeseh.cc',
+        'https://qeseh.pro',
+        'https://wwv.qeseh.com',
+        'https://qeseh.vip',
+        'https://qeseh.top'
+      ];
       let lastErr = null;
 
       for (const domain of domains) {
         let fetchUrl = realUrl;
-        if (realUrl.includes('qeseh.com') && domain.includes('qeseh.net')) {
-          fetchUrl = realUrl.replace('wwv.qeseh.com', 'qeseh.net').replace('qeseh.com', 'qeseh.net');
-        } else if (realUrl.includes('qeseh.net') && domain.includes('qeseh.com')) {
-          fetchUrl = realUrl.replace('qeseh.net', 'wwv.qeseh.com');
+        
+        // Dynamic domain swapping to overcome hardcoded 404s if the source moved
+        try {
+          const urlObj = new URL(realUrl);
+          const domainObj = new URL(domain);
+          urlObj.hostname = domainObj.hostname;
+          urlObj.protocol = domainObj.protocol;
+          fetchUrl = urlObj.toString();
+        } catch (e) {
+          // Fallback to manual replacement if URL constructor fails for any reason
+          fetchUrl = realUrl
+            .replace(/qeseh\.net/gi, domain.replace('https://', ''))
+            .replace(/qeseh\.com/gi, domain.replace('https://', ''))
+            .replace(/wwv\./gi, '');
+          
+          if (!fetchUrl.startsWith('http')) {
+            fetchUrl = domain + (fetchUrl.startsWith('/') ? fetchUrl : '/' + fetchUrl);
+          }
         }
 
         try {
+          console.log(`[Series Scraping] Attempting fetch from: ${fetchUrl}`);
           const response = await axios.get(fetchUrl, {
             headers: { 
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
               'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
             },
-            timeout: 10000
+            timeout: 12000,
+            validateStatus: (status) => status === 200 // Only accept 200 to trigger retry on 404
           });
-          if (response.data) {
+          
+          if (response.data && response.data.length > 500) {
             html = response.data;
             break;
           }
-        } catch (err) {
-          lastErr = err;
+        } catch (error: any) {
+          lastErr = error;
+          console.warn(`[Series Scraping] Failover triggered for ${fetchUrl}: ${error.message}`);
+          continue;
         }
       }
 
       if (!html) {
-        throw lastErr || new Error("Failed to load Qeseh contents");
+        throw lastErr || new Error("Failed to retrieve content from all known domains");
       }
 
       const $ = cheerio.load(html);
@@ -1187,31 +1214,45 @@ async function startServer() {
       }
 
       let html = "";
-      const domains = ['https://qeseh.net', 'https://wwv.qeseh.com'];
+      const domains = [
+        'https://qeseh.net',
+        'https://qeseh.cc',
+        'https://qeseh.pro',
+        'https://wwv.qeseh.com',
+        'https://qeseh.vip'
+      ];
       let lastErr = null;
 
       for (const domain of domains) {
         let fetchUrl = realUrl;
-        if (realUrl.includes('qeseh.com') && domain.includes('qeseh.net')) {
-          fetchUrl = realUrl.replace('wwv.qeseh.com', 'qeseh.net').replace('qeseh.com', 'qeseh.net');
-        } else if (realUrl.includes('qeseh.net') && domain.includes('qeseh.com')) {
-          fetchUrl = realUrl.replace('qeseh.net', 'wwv.qeseh.com');
+        try {
+          const urlObj = new URL(realUrl);
+          const domainObj = new URL(domain);
+          urlObj.hostname = domainObj.hostname;
+          urlObj.protocol = domainObj.protocol;
+          fetchUrl = urlObj.toString();
+        } catch (e) {
+          fetchUrl = realUrl.replace(/qeseh\.net/gi, domain.replace('https://', ''))
+                            .replace(/qeseh\.com/gi, domain.replace('https://', ''))
+                            .replace(/wwv\./gi, '');
         }
 
         try {
           const response = await axios.get(fetchUrl, {
             headers: { 
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
               'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
             },
-            timeout: 10000
+            timeout: 12000,
+            validateStatus: (status) => status === 200
           });
-          if (response.data) {
+          if (response.data && response.data.length > 500) {
             html = response.data;
             break;
           }
         } catch (err) {
           lastErr = err;
+          continue;
         }
       }
 

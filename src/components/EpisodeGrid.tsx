@@ -128,11 +128,11 @@ export default function EpisodeGrid({
 
   // Range size for segments
   const RANGE_SIZE = 50;
-  const totalRanges = Math.ceil(episodes.length / RANGE_SIZE);
+  const totalRanges = Math.ceil((episodes?.length || 0) / RANGE_SIZE);
 
   // Auto-reset jumpToRange if current page index out of bounds
   useEffect(() => {
-    if (jumpToRange >= totalRanges && totalRanges > 0) {
+    if (totalRanges > 0 && jumpToRange >= totalRanges) {
       setJumpToRange(0);
     }
   }, [totalRanges, jumpToRange]);

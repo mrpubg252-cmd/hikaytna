@@ -216,6 +216,14 @@ export default function WatchScreen() {
           <div className="absolute inset-0 bg-red-600/20 blur-lg rounded-full scale-150 animate-pulse" />
         </div>
         <span className="text-xs text-zinc-400 font-black">جاري تحميل وتجهيز خادم الفيديو... 🍿</span>
+        
+        {/* Guard to prevent infinite loading if the fetch fails silently */}
+        <button 
+          onClick={() => navigate('/', { replace: true })}
+          className="mt-4 px-6 py-2 bg-zinc-900 text-zinc-500 rounded-full text-[10px] font-bold border border-white/5 hover:text-white transition-all"
+        >
+          العودة للرئيسية في حال تعذر التحميل
+        </button>
       </div>
     );
   }
@@ -1063,15 +1071,26 @@ export default function WatchScreen() {
   }
 
   async function handleServerSelect(rawUrl: string) {
-     if (playControllerRef.current) playControllerRef.current.abort("Server switched");
-     const controller = new AbortController();
-     playControllerRef.current = controller;
+      if (playControllerRef.current) playControllerRef.current.abort("Server switched");
+      const controller = new AbortController();
+      playControllerRef.current = controller;
 
-     setVideoUrl(''); // loader
-     let url = await getSecuredUrl(rawUrl, controller.signal);
-     if (controller.signal.aborted) return;
-     setVideoUrl(url);
-     setActiveServerUrl(rawUrl);
+      const isDailymotion = rawUrl.toLowerCase().includes('dailymotion.com') || rawUrl.toLowerCase().includes('syndication=');
+      
+      if (isDailymotion) {
+        // According to user request: redirect Dailymotion servers outside the site
+        window.open(rawUrl, '_blank');
+        setActiveServerUrl(rawUrl);
+        // We still set a placeholder videoUrl to show the custom button UI as backup
+        setVideoUrl(rawUrl);
+        return;
+      }
+
+      setVideoUrl(''); // loader
+      let url = await getSecuredUrl(rawUrl, controller.signal);
+      if (controller.signal.aborted) return;
+      setVideoUrl(url);
+      setActiveServerUrl(rawUrl);
   }
 
   if (!series) return null;
