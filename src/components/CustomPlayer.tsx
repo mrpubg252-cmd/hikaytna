@@ -2853,6 +2853,51 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
               const isDailymotion = (resolvedVideoUrl && (resolvedVideoUrl.toLowerCase().includes('dailymotion') || resolvedVideoUrl.toLowerCase().includes('syndication'))) ||
                                     (activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion') || activeServerUrl.toLowerCase().includes('syndication')));
               
+              if (isDailymotion) {
+                return (
+                  <div className="w-full h-full relative bg-black flex items-center justify-center overflow-hidden group cursor-pointer">
+                    {/* Background Layer */}
+                    <div className="absolute inset-0 opacity-40 group-hover:opacity-60 transition-opacity duration-500">
+                      <img 
+                        src="/episode.png" 
+                        alt="Dailymotion Server" 
+                        className="w-full h-full object-cover blur-sm scale-105"
+                      />
+                    </div>
+                    
+                    {/* Content Layer */}
+                    <div className="relative z-10 w-full h-full flex flex-col items-center justify-center p-4">
+                      <a
+                        href={resolvedVideoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="relative block w-full max-w-2xl aspect-video rounded-2xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] border border-white/10 group-hover:border-primary/50 transition-all duration-300 group-hover:scale-[1.02]"
+                      >
+                        <img 
+                          src="/episode.png" 
+                          alt="اضغط لمشاهدة الحلقة" 
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/0 transition-colors duration-300 flex items-center justify-center">
+                          <div className="w-20 h-20 rounded-full bg-primary/90 text-white flex items-center justify-center shadow-2xl group-hover:scale-110 transition-transform duration-300">
+                            <Play className="w-10 h-10 fill-current ml-1" />
+                          </div>
+                        </div>
+                      </a>
+                      
+                      <div className="mt-8 text-center space-y-2 animate-fade-in pointer-events-none">
+                        <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight drop-shadow-md">
+                          سيرفر Dailymotion الخاص 🚀
+                        </h3>
+                        <p className="text-sm text-zinc-300 font-medium">
+                          اضغط على الصورة أعلاه لمشاهدة الحلقة بجودة عالية
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div className={cn(
                   "w-full h-full relative",
@@ -2868,11 +2913,9 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                     allow="autoplay; encrypted-media; picture-in-picture"
                     referrerPolicy="no-referrer-when-downgrade"
                     sandbox={
-                      isDailymotion 
-                        ? undefined 
-                        : (blockPopups 
-                            ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
-                            : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox")
+                      blockPopups 
+                        ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
+                        : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
                     }
                     style={{
                       width: '100%',
