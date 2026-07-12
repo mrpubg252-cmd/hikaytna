@@ -1082,16 +1082,11 @@ export default function WatchScreen() {
         rawUrl.toLowerCase().includes('dm.com');
       
       if (isDailymotion) {
-        // Update UI state first
+        // Update UI state to trigger the Dailymotion view
         setActiveServerUrl(rawUrl);
         setVideoUrl(rawUrl);
         
-        // Use professional proxy for redirection
-        const encrypted = encryptValue(rawUrl);
-        const proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encrypted)}`;
-        
-        // Open in new tab
-        window.open(proxyUrl, '_blank');
+        // No automatic window.open here, user will click the professional button below
         return;
       }
 
@@ -1201,9 +1196,9 @@ export default function WatchScreen() {
             <div className="flex flex-col items-center justify-center text-center gap-4 sm:gap-6">
               <div className="flex flex-col items-center justify-center">
                 <motion.div 
-                   initial={{ x: -20, opacity: 0 }}
-                   animate={{ x: 0, opacity: 1 }}
-                   className="flex items-center justify-center gap-2 mb-2"
+                   initial={{ scale: 0.8, opacity: 0 }}
+                   animate={{ scale: 1, opacity: 1 }}
+                   className="flex items-center justify-center gap-2 mb-4"
                 >
                   {(() => {
                     const dmKeywords = ['dailymotion', 'syndication', 'dm.com', 'dmcdn.net'];
@@ -1212,7 +1207,6 @@ export default function WatchScreen() {
                     
                     if (isDM || isProxiedDM) {
                       const rawUrl = activeServerUrl || videoUrl || '';
-                      // Ensure we are sending a clean URL to the proxy
                       const targetUrl = rawUrl.startsWith('/api/v1/') ? rawUrl : `/api/v1/3isk-player?url=${encodeURIComponent(encryptValue(rawUrl))}`;
                       
                       return (
@@ -1220,16 +1214,16 @@ export default function WatchScreen() {
                           href={targetUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="group bg-gradient-to-r from-primary to-red-700 text-white border border-white/20 px-8 py-3 rounded-full text-xs sm:text-sm font-black italic uppercase animate-pulse flex items-center gap-3 cursor-pointer shadow-[0_0_50px_rgba(229,9,20,0.7)] hover:scale-110 active:scale-95 transition-all duration-500 ring-4 ring-primary/20 hover:ring-primary/40"
+                          className="group bg-gradient-to-r from-primary via-red-600 to-primary bg-[length:200%_auto] hover:bg-[100%_center] text-white border-2 border-white/20 px-10 py-4 rounded-2xl text-sm sm:text-base font-black italic uppercase animate-pulse flex items-center gap-4 cursor-pointer shadow-[0_0_60px_rgba(229,9,20,0.8)] hover:scale-110 active:scale-95 transition-all duration-700 ring-4 ring-primary/20 hover:ring-primary/50"
                         >
-                          <Play className="w-5 h-5 fill-current" />
-                          <span className="tracking-tighter">ذهاب إلى الحلقة</span>
-                          <span className="text-xl group-hover:rotate-12 transition-transform">🚀</span>
+                          <Play className="w-6 h-6 fill-current animate-bounce" />
+                          <span className="tracking-tight drop-shadow-lg">ذهاب إلى الحلقة الآن</span>
+                          <span className="text-2xl group-hover:rotate-45 transition-transform duration-500">🚀</span>
                         </a>
                       );
                     }
                     return (
-                      <span className="bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded text-[8px] sm:text-[10px] font-black italic uppercase">Now Playing</span>
+                      <span className="bg-primary/10 text-primary border border-primary/20 px-3 py-1 rounded-full text-[10px] sm:text-xs font-black italic uppercase tracking-widest">Now Playing</span>
                     );
                   })()}
                 </motion.div>

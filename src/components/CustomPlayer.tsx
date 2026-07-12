@@ -2879,87 +2879,27 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                 const targetUrl = rawTarget.startsWith('/api/v1/') ? rawTarget : `/api/v1/3isk-player?url=${encodeURIComponent(encryptValue(rawTarget))}`;
                 
                 return (
-                  <div className="w-full h-full relative bg-black flex items-center justify-center overflow-hidden group">
-                    {/* Background Layer with extreme blur */}
-                    <div className="absolute inset-0 opacity-40 group-hover:opacity-60 transition-opacity duration-500 pointer-events-none">
-                      <img 
-                        src="/episode.png" 
-                        alt="" 
-                        referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover blur-2xl scale-110"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = seriesImage || 'https://images.unsplash.com/photo-1542204172-3c1f81edf4a1?q=80&w=400&auto=format&fit=crop';
-                        }}
-                      />
-                    </div>
+                  <div className="w-full h-full relative bg-black flex flex-col items-center justify-center overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent"></div>
                     
-                    {/* Content Layer */}
-                    <div className="relative z-10 w-full h-full flex flex-col items-center justify-center p-4">
-                      <a
-                        href={targetUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="relative block w-full max-w-2xl aspect-video rounded-3xl overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.9)] border border-white/10 hover:border-primary/50 transition-all duration-500 hover:scale-[1.03] cursor-pointer"
-                      >
-                        <img 
-                          src="/episode.png" 
-                          alt="اضغط لمشاهدة الحلقة" 
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            // High-quality fallback chain
-                            const target = e.target as HTMLImageElement;
-                            if (target.src.includes('episode.png')) {
-                              target.src = seriesImage || 'https://images.unsplash.com/photo-1542204172-3c1f81edf4a1?q=80&w=800&auto=format&fit=crop';
-                            }
-                          }}
-                        />
-                        <div className="absolute inset-0 bg-black/40 hover:bg-black/10 transition-colors duration-500 flex items-center justify-center">
-                          <div className="w-24 h-24 rounded-full bg-primary/95 text-black flex items-center justify-center shadow-[0_0_30px_rgba(229,9,20,0.5)] transition-all duration-500 hover:scale-110 hover:rotate-12">
-                            <Play className="w-12 h-12 fill-current ml-1.5" />
-                          </div>
-                        </div>
-                      </a>
+                    {/* Minimal Lightweight UI */}
+                    <div className="relative z-10 text-center space-y-6 px-4">
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto bg-primary/10 rounded-full flex items-center justify-center border border-primary/20 mb-4 shadow-[0_0_40px_rgba(229,9,20,0.2)]">
+                         <Play className="w-8 h-8 sm:w-10 sm:h-10 text-primary animate-pulse" />
+                      </div>
                       
-                      <div className="mt-10 text-center space-y-4 animate-fade-in max-w-lg">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/20 border border-primary/30 mb-2">
-                           <Shield className="w-3.5 h-3.5 text-primary" />
-                           <span className="text-[10px] font-black text-primary uppercase italic">Premium Safe Server</span>
-                        </div>
-                        <h3 className="text-2xl sm:text-4xl font-black text-white tracking-tight drop-shadow-xl font-sans italic">
-                          سيرفر Dailymotion المباشر 🍿🚀
-                        </h3>
-                        <p className="text-sm sm:text-lg text-zinc-300 font-bold leading-relaxed px-6 drop-shadow-lg">
-                          يرجى الضغط على زر "ذهاب إلى الحلقة" الموضح بالأسفل 👇 لمشاهدة الحلقة بشكل خارجي سريع وبدون تقطيع.
+                      <h3 className="text-xl sm:text-3xl font-black text-white italic tracking-tighter">
+                         اضغط على زر <span className="text-primary underline underline-offset-8 decoration-primary/30">"ذهاب إلى الحلقة"</span> بالأسفل
+                      </h3>
+                      
+                      <div className="flex flex-col items-center gap-4">
+                        <p className="text-zinc-500 text-sm sm:text-base font-bold max-w-sm leading-relaxed">
+                           يرجى النزول للأسفل والضغط على الزر الملون لبدء المشاهدة فوراً وبأعلى جودة ممكنة.
                         </p>
                         
-                        <div className="flex flex-col items-center gap-4 mt-6">
-                          <div className="flex items-center gap-2 px-4 py-1.5 bg-primary/20 rounded-full border border-primary/40 animate-bounce shadow-[0_0_15px_rgba(229,9,20,0.3)]">
-                             <span className="text-[11px] font-black text-primary italic uppercase tracking-wider">اضغط على زر ذهاب إلى الحلقة بالأسفل</span>
-                             <span className="text-sm">👇</span>
-                          </div>
-                          
-                          <div className="flex flex-wrap items-center justify-center gap-4">
-                            <a 
-                              href={targetUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 px-10 py-4 bg-primary hover:bg-primary/90 text-white text-xs font-black rounded-full transition-all border border-primary/20 shadow-xl shadow-primary/20 hover:scale-105 active:scale-95"
-                            >
-                              <Play className="w-4 h-4 fill-current" />
-                              ذهاب إلى الحلقة ⚡
-                            </a>
-                            
-                            <a 
-                              href={targetUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 px-8 py-4 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white text-xs font-bold rounded-full transition-all border border-white/10"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                              رابط بديل
-                            </a>
-                          </div>
+                        <div className="flex flex-col items-center gap-2 text-primary animate-bounce pt-4">
+                           <span className="text-[10px] font-black uppercase tracking-[0.2em]">Scroll Down</span>
+                           <span className="text-2xl">👇</span>
                         </div>
                       </div>
                     </div>
