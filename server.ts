@@ -4,6 +4,50 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { Readable } from "node:stream";
 
+function resolveM3U8RelativeUrls(text: string, baseUrl: string): string {
+  const lines = text.split("\n");
+  const resolvedLines = lines.map(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return line;
+
+    // If it's a URI line (doesn't start with #)
+    if (!trimmed.startsWith("#")) {
+      if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://") && !trimmed.startsWith("//")) {
+        try {
+          return new URL(trimmed, baseUrl).href;
+        } catch (e) {
+          return line;
+        }
+      }
+    } else {
+      // Handle tags like URI="..." or URI=...
+      return line.replace(/URI=(["'])(.*?)\1/g, (match, quote, relUrl) => {
+        if (!relUrl.startsWith("http://") && !relUrl.startsWith("https://") && !relUrl.startsWith("//")) {
+          try {
+            const absUrl = new URL(relUrl, baseUrl).href;
+            return `URI=${quote}${absUrl}${quote}`;
+          } catch (e) {
+            return match;
+          }
+        }
+        return match;
+      }).replace(/URI=([^"'\s,]+)/g, (match, relUrl) => {
+        if (!relUrl.startsWith("http://") && !relUrl.startsWith("https://") && !relUrl.startsWith("//")) {
+          try {
+            const absUrl = new URL(relUrl, baseUrl).href;
+            return `URI=${absUrl}`;
+          } catch (e) {
+            return match;
+          }
+        }
+        return match;
+      });
+    }
+    return line;
+  });
+  return resolvedLines.join("\n");
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -78,12 +122,13 @@ async function startServer() {
       const embedUrl = req.query.url as string;
       if (!embedUrl) return res.status(400).send("URL is required");
 
+      const refererParam = req.query.referer as string;
       const targetUrlObj = new URL(embedUrl);
 
       const response = await fetch(embedUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-          'Referer': 'https://3iskk.xyz/'
+          'Referer': refererParam || 'https://3iskk.xyz/'
         }
       });
 
@@ -146,10 +191,67 @@ async function startServer() {
 
       const targetUrl = `${proto}://${host}${cleanPath}`;
 
+      const lowerHost = host.toLowerCase();
+      let referer = `${proto}://${host}/`;
+      let origin = `${proto}://${host}`;
+
+      const domainsToProxy = ["miravd.com", "miravid.club", "mwdy.cc", "grzcdn.com", "llvpn.com", "3iskk.xyz", "3isk.video", "3skk.xyz", "3iskk.co"];
+      const isDomainToProxy = domainsToProxy.some(d => lowerHost === d || lowerHost.endsWith("." + d));
+
+      // 1. Determine dynamic Referer and Origin based on how the browser requested it
+      const clientReferer = req.headers.referer;
+      let hasDynamicReferer = false;
+
+      if (clientReferer) {
+        try {
+          const clientRefererUrl = new URL(clientReferer);
+          // Case 1: Browser requested this within a proxy-embed iframe
+          if (clientRefererUrl.pathname.includes("/api/proxy-embed")) {
+            const originalEmbedUrl = clientRefererUrl.searchParams.get("url");
+            if (originalEmbedUrl) {
+              referer = originalEmbedUrl;
+              const origUrlObj = new URL(originalEmbedUrl);
+              origin = origUrlObj.origin;
+              hasDynamicReferer = true;
+            }
+          }
+          // Case 2: Browser requested this within a previously proxied resource (e.g. miravd loading JS/CSS/M3U8/TS)
+          else if (clientRefererUrl.pathname.includes("/api/proxy-resource")) {
+            const parts = clientRefererUrl.pathname.split("/api/proxy-resource/");
+            if (parts.length > 1) {
+              const resourcePath = parts[1];
+              const pathParts = resourcePath.split("/");
+              if (pathParts.length >= 2) {
+                const refProto = pathParts[0];
+                const refHost = pathParts[1];
+                const refCleanPath = "/" + pathParts.slice(2).join("/");
+                const refSearch = clientRefererUrl.search || "";
+                referer = `${refProto}://${refHost}${refCleanPath}${refSearch}`;
+                origin = `${refProto}://${refHost}`;
+                hasDynamicReferer = true;
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Error parsing client referer:", err);
+        }
+      }
+
+      // 2. Fallback to default spoofing if no dynamic Referer could be parsed
+      if (!hasDynamicReferer) {
+        if (isDomainToProxy) {
+          referer = 'https://3iskk.xyz/';
+          origin = 'https://3iskk.xyz';
+        } else {
+          referer = `${proto}://${host}/`;
+          origin = `${proto}://${host}`;
+        }
+      }
+
       const headers: Record<string, string> = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-        'Referer': 'https://3iskk.xyz/',
-        'Origin': 'https://3iskk.xyz'
+        'Referer': referer,
+        'Origin': origin
       };
 
       // Forward client's headers if they exist (especially Range for video buffers)
@@ -219,8 +321,8 @@ async function startServer() {
         resContentType.includes("image") || 
         resContentType.includes("video") || 
         resContentType.includes("octet-stream") ||
-        cleanPath.endsWith(".key") ||
-        cleanPath.endsWith(".ts")
+        cleanPath.toLowerCase().includes(".key") ||
+        cleanPath.toLowerCase().includes(".ts")
       );
 
       if (isBinary) {
@@ -231,6 +333,10 @@ async function startServer() {
         }
       } else {
         let text = await response.text();
+
+        if (isM3U8) {
+          text = resolveM3U8RelativeUrls(text, targetUrl);
+        }
 
         // Rewrite relative and absolute urls inside HTML/JS/M3U8 responses to redirect them back to our secure proxy
         if (resContentType.includes("text/html") || resContentType.includes("javascript") || isM3U8 || cleanPath.endsWith(".js") || cleanPath.endsWith(".css")) {

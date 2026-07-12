@@ -82,7 +82,7 @@ export default function Player() {
   // Proxy third-party player embeds to bypass Referer anti-embed blocks
   const getIframeSrc = (url: string) => {
     if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
-      return `/api/proxy-embed?url=${encodeURIComponent(url)}`;
+      return `/api/proxy-embed?url=${encodeURIComponent(url)}&referer=${encodeURIComponent(watchUrl || "")}`;
     }
     return url;
   };
