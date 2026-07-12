@@ -2867,12 +2867,11 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
 
               {isIframeFallback ? (
             (() => {
-              const dmKeywords = ['dailymotion', 'syndication', 'dmcdn.net', 'dm.com', 'dai.ly', '3isk-player'];
+              const dmKeywords = ['dailymotion', 'dmcdn.net', 'dm.com', 'dai.ly'];
               const isDailymotion = dmKeywords.some(kw => 
                 (resolvedVideoUrl && resolvedVideoUrl.toLowerCase().includes(kw)) || 
                 (activeServerUrl && activeServerUrl.toLowerCase().includes(kw)) ||
-                (videoUrl && videoUrl.toLowerCase().includes(kw)) ||
-                (typeof window !== 'undefined' && window.location.href.toLowerCase().includes('dailymotion'))
+                (videoUrl && videoUrl.toLowerCase().includes(kw))
               );
               
               if (isDailymotion) {

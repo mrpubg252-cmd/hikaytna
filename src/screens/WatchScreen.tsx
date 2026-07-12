@@ -1202,15 +1202,14 @@ export default function WatchScreen() {
                    className="flex items-center justify-center gap-2 mb-4"
                 >
                    {(() => {
-                    const dmKeywords = ['dailymotion', 'syndication', 'dm.com', 'dmcdn.net', 'dai.ly', '3isk-player'];
+                    const dmKeywords = ['dailymotion', 'dm.com', 'dmcdn.net', 'dai.ly'];
                     const lowerActive = (activeServerUrl || '').toLowerCase();
                     const lowerVideo = (videoUrl || '').toLowerCase();
                     
-                    // Comprehensive detection including current server list
+                    // Strict Dailymotion detection
                     const isDM = dmKeywords.some(kw => 
                       lowerActive.includes(kw) || 
-                      lowerVideo.includes(kw) ||
-                      servers?.some(s => s.url.toLowerCase().includes(kw) && s.url === activeServerUrl)
+                      lowerVideo.includes(kw)
                     );
                     
                     if (isDM) {
