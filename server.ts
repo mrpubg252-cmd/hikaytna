@@ -8,6 +8,7 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
   // API Route for Gemini Chat Doctor (Grammar Correction)
   app.post("/api/correct", async (req, res) => {
@@ -92,14 +93,14 @@ async function startServer() {
     }
   });
   
-  // API Route to proxy embed player HTML with a forged Referer to bypass anti-embedding
+  // API Route to proxy embed player HTML with a forged Referer and rewrite all absolute URLs
   app.get("/api/proxy-embed", async (req, res) => {
     try {
       const embedUrl = req.query.url as string;
       if (!embedUrl) return res.status(400).send("URL is required");
 
-      const targetUrl = new URL(embedUrl);
-      const origin = targetUrl.origin;
+      const targetUrlObj = new URL(embedUrl);
+      const origin = targetUrlObj.origin;
 
       const response = await fetch(embedUrl, {
         headers: {
@@ -114,8 +115,17 @@ async function startServer() {
 
       let html = await response.text();
 
-      // Inject base href inside head so all relative assets (js, css, images, hls) load relative to the player host
-      const baseTag = `<base href="${origin}/">`;
+      // 1. Rewrite any absolute secure/insecure links to miravd, mwdy, grzcdn, etc. through our server proxy
+      const domainsToProxy = ["miravd.com", "cdn.miravd.com", "miravid.club", "mwdy.cc", "arthur.grzcdn.com", "alexa.grzcdn.com", "llvpn.com"];
+      for (const d of domainsToProxy) {
+        html = html.replaceAll(`https://${d}/`, `/api/proxy-resource/https/${d}/`);
+        html = html.replaceAll(`http://${d}/`, `/api/proxy-resource/http/${d}/`);
+        html = html.replaceAll(`//${d}/`, `/api/proxy-resource/https/${d}/`);
+      }
+
+      // 2. Set a base tag so relative assets in iframe load through our proxy
+      const hostClean = targetUrlObj.hostname;
+      const baseTag = `<base href="/api/proxy-resource/https/${hostClean}/">`;
       if (html.includes("<head>")) {
         html = html.replace("<head>", `<head>${baseTag}`);
       } else if (html.includes("<HEAD>")) {
@@ -128,6 +138,113 @@ async function startServer() {
       res.send(html);
     } catch (error) {
       console.error("Proxy Embed Error:", error);
+      res.status(500).send("Internal Server Error");
+    }
+  });
+
+  // API Route to proxy any subresource (JS, CSS, HLS stream keys, TS segments, video files) with Referer and Origin spoofing
+  app.all("/api/proxy-resource/:proto/:host/*", async (req, res) => {
+    try {
+      const { proto, host } = req.params;
+      const prefix = `/api/proxy-resource/${proto}/${host}`;
+      
+      let cleanPath = "";
+      if (req.url.includes(prefix)) {
+        cleanPath = req.url.substring(req.url.indexOf(prefix) + prefix.length);
+      } else {
+        cleanPath = req.params[0] ? `/${req.params[0]}` : "/";
+        if (req.url.includes("?")) {
+          cleanPath += req.url.substring(req.url.indexOf("?"));
+        }
+      }
+
+      if (!cleanPath.startsWith("/")) {
+        cleanPath = "/" + cleanPath;
+      }
+
+      const targetUrl = `${proto}://${host}${cleanPath}`;
+
+      const headers: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+        'Referer': 'https://3iskk.xyz/',
+        'Origin': 'https://3iskk.xyz'
+      };
+
+      // Forward request headers if present
+      if (req.headers["content-type"]) {
+        headers["content-type"] = req.headers["content-type"];
+      }
+      if (req.headers["cookie"]) {
+        headers["cookie"] = req.headers["cookie"] as string;
+      }
+
+      // Forward request body for POST/PUT/PATCH requests
+      let body: any = undefined;
+      if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH") {
+        if (req.body) {
+          if (typeof req.body === "string" || Buffer.isBuffer(req.body)) {
+            body = req.body;
+          } else if (Object.keys(req.body).length > 0) {
+            const contentType = req.headers["content-type"] || "";
+            if (contentType.includes("application/json")) {
+              body = JSON.stringify(req.body);
+            } else {
+              const params = new URLSearchParams();
+              for (const [key, val] of Object.entries(req.body)) {
+                params.append(key, String(val));
+              }
+              body = params.toString();
+            }
+          }
+        }
+      }
+
+      const response = await fetch(targetUrl, {
+        method: req.method,
+        headers,
+        body
+      });
+
+      // Forward response content-type
+      const resContentType = response.headers.get("content-type");
+      if (resContentType) {
+        res.setHeader("Content-Type", resContentType);
+      }
+
+      // Set broad CORS headers to completely avoid cross-origin blocks
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, PATCH, DELETE");
+      res.setHeader("Access-Control-Allow-Headers", "*");
+
+      // For binary files (images, audio, video TS segments, stream keys, etc.)
+      const isBinary = resContentType && (
+        resContentType.includes("image") || 
+        resContentType.includes("video") || 
+        resContentType.includes("octet-stream") ||
+        cleanPath.endsWith(".key") ||
+        cleanPath.endsWith(".ts")
+      );
+
+      if (isBinary) {
+        const arrayBuffer = await response.arrayBuffer();
+        res.status(response.status).send(Buffer.from(arrayBuffer));
+      } else {
+        let text = await response.text();
+
+        // Rewrite relative and absolute urls inside HTML/JS responses to redirect them back to our secure proxy
+        if (resContentType && (resContentType.includes("text/html") || resContentType.includes("javascript") || resContentType.includes("application/x-mpegURL") || cleanPath.endsWith(".m3u8"))) {
+          const domainsToProxy = ["miravd.com", "cdn.miravd.com", "miravid.club", "mwdy.cc", "arthur.grzcdn.com", "alexa.grzcdn.com", "llvpn.com"];
+          for (const d of domainsToProxy) {
+            text = text.replaceAll(`https://${d}/`, `/api/proxy-resource/https/${d}/`);
+            text = text.replaceAll(`http://${d}/`, `/api/proxy-resource/http/${d}/`);
+            text = text.replaceAll(`//${d}/`, `/api/proxy-resource/https/${d}/`);
+          }
+        }
+
+        res.status(response.status).send(text);
+      }
+    } catch (error) {
+      console.error("Proxy Resource Error:", error);
       res.status(500).send("Internal Server Error");
     }
   });
