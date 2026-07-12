@@ -2852,6 +2852,36 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
             (() => {
               const isDailymotion = (resolvedVideoUrl && (resolvedVideoUrl.toLowerCase().includes('dailymotion.com') || resolvedVideoUrl.toLowerCase().includes('syndication'))) ||
                                     (activeServerUrl && (activeServerUrl.toLowerCase().includes('dailymotion.com') || activeServerUrl.toLowerCase().includes('syndication')));
+              
+              if (isDailymotion) {
+                return (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950 p-8 text-center overflow-hidden">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-red-600/10 via-transparent to-transparent" />
+                    
+                    <div className="relative z-10 flex flex-col items-center">
+                      <div className="w-20 h-20 rounded-3xl bg-red-600 flex items-center justify-center mb-6 shadow-[0_0_50px_rgba(220,38,38,0.3)] animate-pulse border border-red-500/30">
+                        <Play className="w-10 h-10 text-white fill-white ml-1" />
+                      </div>
+                      
+                      <h3 className="text-xl sm:text-2xl font-black text-white mb-4 tracking-tight">سيرفر Dailymotion الخاص 🚀</h3>
+                      <p className="text-sm text-zinc-400 max-w-xs mx-auto mb-8 font-medium leading-relaxed">
+                        هذا السيرفر يتطلب المشاهدة عبر صفحته الرسمية لضمان أعلى جودة وحماية من التقطيع
+                      </p>
+                      
+                      <a
+                        href={activeServerUrl || resolvedVideoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group relative flex items-center gap-3 px-10 py-4 bg-red-600 hover:bg-red-700 text-white font-black text-base rounded-2xl transition-all hover:scale-105 active:scale-95 shadow-[0_15px_35px_rgba(220,38,38,0.4)]"
+                      >
+                        <ExternalLink className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+                        <span>مشاهدة الحلقة اضغط هنا</span>
+                      </a>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div className={cn(
                   "w-full h-full relative",
@@ -2867,11 +2897,9 @@ const CustomPlayer = forwardRef((props: CustomPlayerProps, ref) => {
                     allow="autoplay; encrypted-media; picture-in-picture"
                     referrerPolicy="no-referrer-when-downgrade"
                     sandbox={
-                      isDailymotion 
-                        ? undefined 
-                        : (blockPopups 
-                            ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
-                            : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox")
+                      blockPopups 
+                        ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
+                        : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
                     }
                     style={{
                       width: '100%',
