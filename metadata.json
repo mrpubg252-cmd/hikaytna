@@ -1,6 +1,10 @@
 {
-  "name": "حكايتنا",
-  "description": "منصة فاخرة لمشاهدة المسلسلات التركية مع غرف دردشة مدمجة ومساعد ذكي لتصحيح النصوص.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "name": "3isk - قصة عشق",
+  "description": "تطبيق لمشاهدة المسلسلات التركية مترجمة ومدبلجة من موقع قصة عشق.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
