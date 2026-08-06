@@ -1078,8 +1078,8 @@ async function startServer() {
       }
       res.json(responseData);
     } catch (error: any) {
-      console.error("Series retrieval error:", error.message);
-      res.status(500).json({ status: false, message: "Error fetching series" });
+      console.warn("Series retrieval note:", error.message);
+      res.json({ status: false, data: [] });
     }
   });
 
@@ -1204,8 +1204,8 @@ async function startServer() {
       }
       res.json(responseData);
     } catch (error: any) {
-      console.error("Episodes retrieval error:", error.message);
-      res.status(500).json({ status: false, message: "Error fetching episodes" });
+      console.warn("Episodes retrieval note:", error.message);
+      res.json({ status: false, data: [] });
     }
   });
 

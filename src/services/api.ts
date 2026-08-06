@@ -91,19 +91,23 @@ export function normalizeArabic(str: string): string {
 async function resilientFetch(url: string, options: RequestInit = {}, retries = 1) {
   for (let i = 0; i <= retries; i++) {
     const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 30000);
+    const id = setTimeout(() => controller.abort(), 20000);
     try {
-      const response = await fetch(url, { ...options, signal: controller.signal });
+      const response = await fetch(url, { ...options, signal: options.signal || controller.signal });
       clearTimeout(id);
-      if (!response.ok) throw new Error("Fetch failed");
+      if (!response.ok) {
+        return { ok: false, status: response.status, json: async () => ({ status: false, data: [] }) } as unknown as Response;
+      }
       return response;
     } catch (err) {
       clearTimeout(id);
-      if (i === retries) throw err;
-      await new Promise(r => setTimeout(r, 1000));
+      if (i === retries) {
+        return { ok: false, status: 500, json: async () => ({ status: false, data: [] }) } as unknown as Response;
+      }
+      await new Promise(r => setTimeout(r, 800));
     }
   }
-  throw new Error("Fetch failed");
+  return { ok: false, status: 500, json: async () => ({ status: false, data: [] }) } as unknown as Response;
 }
 
 export async function fetchCategories(): Promise<ApiCategory[]> {
