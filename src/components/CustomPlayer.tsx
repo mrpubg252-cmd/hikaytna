@@ -2851,12 +2851,21 @@ const SafariNotification = () => {
               }
 
               const decryptedTargetUrl = getDecryptedTargetUrl(resolvedVideoUrl || activeServerUrl || '');
+              const lowerDecrypted = decryptedTargetUrl.toLowerCase();
+              const lowerResolved = (resolvedVideoUrl || '').toLowerCase();
+              const lowerActive = (activeServerUrl || '').toLowerCase();
+
               const isExternalLinkCard = 
-                decryptedTargetUrl.toLowerCase().includes('cloud.mail.ru') || 
-                decryptedTargetUrl.toLowerCase().includes('mail.ru') || 
-                decryptedTargetUrl.toLowerCase().includes('express') ||
-                (resolvedVideoUrl && (resolvedVideoUrl.toLowerCase().includes('cloud.mail.ru') || resolvedVideoUrl.toLowerCase().includes('express'))) ||
-                (activeServerUrl && (activeServerUrl.toLowerCase().includes('cloud.mail.ru') || activeServerUrl.toLowerCase().includes('express')));
+                lowerDecrypted.includes('cloud.mail.ru') || 
+                lowerDecrypted.includes('mail.ru') || 
+                lowerDecrypted.includes('express') ||
+                lowerDecrypted.includes('dailymotion.com') ||
+                lowerResolved.includes('cloud.mail.ru') || 
+                lowerResolved.includes('express') ||
+                lowerResolved.includes('dailymotion.com') ||
+                lowerActive.includes('cloud.mail.ru') || 
+                lowerActive.includes('express') ||
+                lowerActive.includes('dailymotion.com');
 
               const externalTargetLink = decryptedTargetUrl.startsWith('http') 
                 ? decryptedTargetUrl 
@@ -2903,9 +2912,11 @@ const SafariNotification = () => {
                     allowFullScreen
                     allow="autoplay; encrypted-media; picture-in-picture"
                     referrerPolicy="no-referrer-when-downgrade"
-                    sandbox={blockPopups 
-                      ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
-                      : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
+                    sandbox={resolvedVideoUrl.includes('iplayerhls') || resolvedVideoUrl.includes('red')
+                      ? undefined
+                      : (blockPopups 
+                        ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
+                        : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox")
                     }
                     style={{
                       width: '100%',

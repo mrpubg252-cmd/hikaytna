@@ -1255,7 +1255,7 @@ async function startServer() {
         if (n.includes('now')) return `https://extreamnow.org/embed-${id}.html`;
         if (n.includes('ok')) return `https://ok.ru/videoembed/${id}`;
         if (n.includes('facebook')) return `https://app.videas.fr/embed/media/${id}`;
-        if (n.includes('dailymotion')) return `https://www.dailymotion.com/embed/video/${id}`;
+        if (n.includes('dailymotion')) return `https://www.dailymotion.com/video/${id}`;
         if (n.includes('express')) return id;
         
         return `https://arabhd.onl/embed-${id}.html`;
