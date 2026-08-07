@@ -2830,40 +2830,102 @@ const SafariNotification = () => {
           )}
 
           {isIframeFallback ? (
-            <div className={cn(
-              "w-full h-full relative",
-              resolvedVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
-            )}>
-              <iframe
-                src={resolvedVideoUrl}
-                className={cn(
-                  "w-full h-full border-0 animate-fade-in",
-                  resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
-                )}
-                allowFullScreen
-                allow="autoplay; encrypted-media; picture-in-picture"
-                referrerPolicy="no-referrer-when-downgrade"
-                sandbox={blockPopups 
-                  ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
-                  : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
+            (() => {
+              function getDecryptedTargetUrl(url: string): string {
+                if (!url) return '';
+                if (url.includes('url=')) {
+                  try {
+                    const param = url.split('url=')[1].split('&')[0];
+                    const raw = atob(decodeURIComponent(param));
+                    const salt = "SERIES_APP_2024";
+                    let result = "";
+                    for (let i = 0; i < raw.length; i++) {
+                      result += String.fromCharCode(raw.charCodeAt(i) ^ salt.charCodeAt(i % salt.length));
+                    }
+                    return result;
+                  } catch (e) {
+                    return url;
+                  }
                 }
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  backgroundColor: 'black',
-                  position: 'relative',
-                  zIndex: 10,
-                }}
-              />
-              {resolvedVideoUrl.includes('streamimdb') && (
-                <div className="absolute top-4 left-4 z-20 pointer-events-none">
-                  <div className="bg-amber-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
-                    <Sparkles className="w-3 h-3 fill-current" />
-                    PREMIUM STREAMING
+                return url;
+              }
+
+              const decryptedTargetUrl = getDecryptedTargetUrl(resolvedVideoUrl || activeServerUrl || '');
+              const isExternalLinkCard = 
+                decryptedTargetUrl.toLowerCase().includes('cloud.mail.ru') || 
+                decryptedTargetUrl.toLowerCase().includes('mail.ru') || 
+                decryptedTargetUrl.toLowerCase().includes('express') ||
+                (resolvedVideoUrl && (resolvedVideoUrl.toLowerCase().includes('cloud.mail.ru') || resolvedVideoUrl.toLowerCase().includes('express'))) ||
+                (activeServerUrl && (activeServerUrl.toLowerCase().includes('cloud.mail.ru') || activeServerUrl.toLowerCase().includes('express')));
+
+              const externalTargetLink = decryptedTargetUrl.startsWith('http') 
+                ? decryptedTargetUrl 
+                : (resolvedVideoUrl.startsWith('http') ? resolvedVideoUrl : 'https://cloud.mail.ru/');
+
+              if (isExternalLinkCard) {
+                return (
+                  <div className="w-full h-full aspect-video min-h-[300px] sm:min-h-[420px] bg-[#0c0c0e] flex flex-col items-center justify-center p-6 text-center select-none relative overflow-hidden group">
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-red-950/10 to-black/90 pointer-events-none" />
+
+                    <a
+                      href={externalTargetLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="relative z-10 flex flex-col items-center justify-center cursor-pointer active:scale-95 transition-all duration-300 group-hover:scale-105"
+                    >
+                      <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-full border-4 border-white/95 flex items-center justify-center shadow-[0_0_40px_rgba(255,255,255,0.2)] group-hover:border-primary group-hover:shadow-[0_0_50px_rgba(229,9,20,0.6)] transition-all duration-300 bg-black/40">
+                        <Play className="w-10 h-10 sm:w-14 sm:h-14 text-white fill-white ml-1.5" />
+                      </div>
+
+                      <h2 className="text-3xl sm:text-5xl font-black text-white tracking-wide mt-5 sm:mt-7">
+                        انقر هنا
+                      </h2>
+
+                      <p className="text-sm sm:text-2xl font-extrabold text-[#e50914] sm:text-red-500 mt-2 tracking-normal">
+                        للإنتقال لصفحة المشاهدة
+                      </p>
+                    </a>
                   </div>
+                );
+              }
+
+              return (
+                <div className={cn(
+                  "w-full h-full relative",
+                  resolvedVideoUrl.includes('streamimdb') && "p-1 rounded-2xl bg-gradient-to-tr from-amber-500/30 via-primary/20 to-amber-500/30"
+                )}>
+                  <iframe
+                    src={resolvedVideoUrl}
+                    className={cn(
+                      "w-full h-full border-0 animate-fade-in",
+                      resolvedVideoUrl.includes('streamimdb') && "rounded-xl shadow-2xl"
+                    )}
+                    allowFullScreen
+                    allow="autoplay; encrypted-media; picture-in-picture"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    sandbox={blockPopups 
+                      ? "allow-scripts allow-same-origin allow-forms allow-presentation" 
+                      : "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox"
+                    }
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      backgroundColor: 'black',
+                      position: 'relative',
+                      zIndex: 10,
+                    }}
+                  />
+                  {resolvedVideoUrl.includes('streamimdb') && (
+                    <div className="absolute top-4 left-4 z-20 pointer-events-none">
+                      <div className="bg-amber-500 text-black text-[8px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg">
+                        <Sparkles className="w-3 h-3 fill-current" />
+                        PREMIUM STREAMING
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              );
+            })()
           ) : (
             <ShadowVideo
               videoRef={videoRef}

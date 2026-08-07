@@ -1356,12 +1356,7 @@ async function startServer() {
                   iframeSrc = actualTarget;
 
                   postData.servers.forEach((srv: any, idx: number) => {
-                    let embedUrl = "";
-                    if (idx === 0 && iframeSrc) {
-                      embedUrl = iframeSrc;
-                    } else {
-                      embedUrl = getEmbedUrl(srv.name, srv.id);
-                    }
+                    let embedUrl = getEmbedUrl(srv.name, srv.id || srv.url || srv.server);
 
                     if (embedUrl) {
                       let proxyUrl = embedUrl;

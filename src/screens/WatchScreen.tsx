@@ -1207,7 +1207,7 @@ export default function WatchScreen() {
                               : "bg-zinc-800/30 border-white/5 text-zinc-400 hover:text-white hover:bg-zinc-800"
                           )}
                         >
-                          سيرفر {idx + 1}
+                          {srv.name || `سيرفر ${idx + 1}`}
                         </button>
                       ))}
                     </div>
