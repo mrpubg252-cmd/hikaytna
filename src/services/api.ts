@@ -242,41 +242,76 @@ export async function fetchPlayDetailsFromAPI(episodeUrl: string, signal?: Abort
 }
 
 export async function fetchAllFromAPI(isBackground = false) {
-  const allCats = await fetchCategories();
-  if (allCats.length === 0) return [];
   const allMap = new Map<string, any>();
-  const chunk = allCats.slice(0, 20);
 
-  // Flatten all page URLs we want to fetch across all categories
-  const pageUrls: { url: string; catName: string }[] = [];
-  chunk.forEach(c => {
-    // Limit to first 15 pages for "جميع المسلسلات", 6 pages for others to keep it fast yet highly comprehensive
-    const maxPages = c.name.includes("جميع المسلسلات") ? 15 : 6;
-    const pagesToFetch = (c.pages || [c.url]).slice(0, maxPages);
-    pagesToFetch.forEach(p => {
-      pageUrls.push({ url: p, catName: c.name });
-    });
-  });
+  // 1. First fetch master catalog from Qeseh scraper endpoint
+  try {
+    const res = await resilientFetch(getApiUrl(API_BASE + "/qeseh/all-series"));
+    const data = await res.json();
+    if (data.status && Array.isArray(data.data) && data.data.length > 0) {
+      data.data.forEach((s: any, idx: number) => {
+        if (s.title && !allMap.has(s.title)) {
+          allMap.set(s.title, {
+            id: s.id || (s.url || s.title).replace(/[^a-zA-Z0-9]/g, '_'),
+            title: s.title,
+            image: s.image || s.img || '',
+            url: s.url || '',
+            category: s.category || 'مسلسلات',
+            episodes_count: s.episodes_count || s.episode || '0',
+            rank: idx
+          });
+        }
+      });
+    }
+  } catch (e) {
+    console.warn("Failed fetching qeseh master catalog, falling back to categories", e);
+  }
 
-  // Fetch page series in batches of 5 to protect server resources
-  const batchSize = 5;
-  for (let i = 0; i < pageUrls.length; i += batchSize) {
-    const batch = pageUrls.slice(i, i + batchSize);
-    const results = await Promise.allSettled(batch.map(item => fetchSeriesByCategory(item.url)));
-    results.forEach((r, idx) => {
-      if (r.status === "fulfilled") {
-        r.value.forEach((s: any, iRank: number) => {
-          if (!allMap.has(s.title)) {
-            allMap.set(s.title, { ...s, category: batch[idx].catName, rank: iRank });
-          }
-        });
-      }
+  // 2. Fetch category pages to ensure fallback & full coverage
+  const allCats = await fetchCategories();
+  if (allCats.length > 0) {
+    const pageUrls: { url: string; catName: string }[] = [];
+    allCats.slice(0, 20).forEach(c => {
+      const maxPages = c.name.includes("جميع المسلسلات") ? 20 : 10;
+      const pagesToFetch = (c.pages || [c.url]).slice(0, maxPages);
+      pagesToFetch.forEach(p => {
+        pageUrls.push({ url: p, catName: c.name });
+      });
     });
+
+    const batchSize = 6;
+    for (let i = 0; i < pageUrls.length; i += batchSize) {
+      const batch = pageUrls.slice(i, i + batchSize);
+      const results = await Promise.allSettled(batch.map(item => fetchSeriesByCategory(item.url)));
+      results.forEach((r, idx) => {
+        if (r.status === "fulfilled") {
+          r.value.forEach((s: any, iRank: number) => {
+            if (!allMap.has(s.title)) {
+              allMap.set(s.title, { ...s, category: batch[idx].catName, rank: iRank });
+            }
+          });
+        }
+      });
+    }
   }
 
   const firebaseData = await fetchAllFromFirebase();
   const merged = [...Array.from(allMap.values()), ...firebaseData];
   return applyPrioritySort(merged);
+}
+
+export async function searchQesehLive(query: string) {
+  if (!query || !query.trim()) return [];
+  try {
+    const res = await resilientFetch(getApiUrl(`/api/v1/qeseh/search?q=${encodeURIComponent(query.trim())}`));
+    const data = await res.json();
+    if (data.status && Array.isArray(data.data)) {
+      return data.data;
+    }
+  } catch (e) {
+    console.warn("Live Qeseh search failed:", e);
+  }
+  return [];
 }
 
 const TMDB_API_KEY = '5afaeea7216a76d8c0600ecf217f6427';

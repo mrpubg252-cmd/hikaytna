@@ -1075,6 +1075,53 @@ export default function WatchScreen() {
   }
 
   if (!series) return null;
+
+  if (!loading && episodes.length === 0 && series.title.includes("رأساً على عقب")) {
+    return (
+      <div className="min-h-screen bg-[#050505] pb-20 relative overflow-hidden font-cairo">
+        {/* Immersive Background Backdrop */}
+        {tmdbData?.backdrop && (
+          <div className="absolute top-0 left-0 w-full h-[600px] pointer-events-none opacity-20 z-0">
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#050505]/60 to-[#050505]" />
+            <img 
+              src={tmdbData.backdrop} 
+              alt="" 
+              className="w-full h-full object-cover"
+            />
+          </div>
+        )}
+        
+        <div className="relative z-10 flex flex-col min-h-screen">
+          <Header />
+          
+          <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 mt-4 sm:mt-12">
+            <div className="w-full max-w-3xl bg-zinc-900/40 rounded-[2.5rem] border border-white/10 p-10 sm:p-16 flex flex-col items-center justify-center text-center shadow-2xl relative overflow-hidden group">
+              <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+              
+              <div className="relative z-10 flex flex-col items-center">
+                <Sparkles className="w-20 h-20 sm:w-24 sm:h-24 text-primary mb-6 sm:mb-8 animate-pulse drop-shadow-[0_0_15px_rgba(229,9,20,0.5)]" />
+                <h1 className="text-4xl sm:text-5xl md:text-6xl font-black text-white mb-6 tracking-tight font-black-italic leading-tight drop-shadow-md">
+                  قريباً انتظرونا
+                </h1>
+                <p className="text-zinc-400 text-sm sm:text-base md:text-lg lg:text-xl font-bold leading-relaxed max-w-xl mb-10">
+                  {series.title.includes("رأساً على عقب") ? "هذا العمل قيد الإضافة، " : ""}
+                  لا توجد حلقات أو سيرفرات متوفرة لهذا العمل حالياً. نعمل على توفيرها بأقرب وقت ممكن، شكراً لانتظاركم وتفهمكم.
+                </p>
+                
+                <button 
+                  onClick={() => navigate('/')}
+                  className="px-10 py-4 bg-primary hover:bg-primary/90 text-white rounded-2xl font-black text-lg transition-all duration-300 shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1 flex items-center gap-3"
+                >
+                  <ChevronRight className="w-5 h-5 rotate-180" />
+                  العودة للرئيسية
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="min-h-screen bg-[#050505] pb-20 relative overflow-hidden">

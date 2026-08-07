@@ -152,6 +152,18 @@ export default function EpisodeGrid({
     return filteredEpisodes.slice(start, end);
   }, [filteredEpisodes, searchQuery, jumpToRange, episodes.length]);
 
+  if (!episodes || episodes.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 bg-zinc-900/40 rounded-3xl border border-white/5 w-full my-8 animate-in fade-in zoom-in duration-500">
+        <Sparkles className="w-16 h-16 text-primary/60 mb-6 animate-pulse" />
+        <h3 className="text-2xl md:text-3xl font-black text-white mb-3 tracking-tight">قريباً انتظرونا</h3>
+        <p className="text-zinc-400 text-sm md:text-base font-medium max-w-md text-center leading-relaxed">
+          لا توجد حلقات أو سيرفرات متوفرة حالياً. نعمل على توفيرها بأقرب وقت، شكراً لانتظاركم وتفهمكم.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* 2. Range Selector Tabs (Only if many episodes) - Rendered at top below title */}

@@ -6,7 +6,7 @@ import CategoryBar from "../components/CategoryBar";
 import SeriesCard from "../components/SeriesCard";
 import BottomNav from "../components/BottomNav";
 import { fetchCategoryPage, getCachedSeriesByCategory, getAllCachedSeries, fetchAllSeries } from "../services/dataService";
-import { applyPrioritySort } from "../services/api";
+import { applyPrioritySort, searchQesehLive } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { Series } from "../services/firebase";
 import { motion, AnimatePresence } from "motion/react";
@@ -14,6 +14,7 @@ import { ChevronLeft, ChevronRight, ArrowLeft, AlertCircle, AlertTriangle, X } f
 import NoticeAndSupportBubble from "../components/NoticeAndSupportBubble";
 import { fuzzyMatchArabic } from "../lib/utils";
 import { navigateToWatchOrAds } from "../utils/watchNavigation";
+import { getTMDBPosterSync } from "../lib/tmdbHealing";
 import {
   initializeEpisodeTracking,
   hasNewEpisode,
@@ -141,6 +142,36 @@ export default function HomeScreen() {
     };
   }, [selectedCategory]);
 
+  // Live Qeseh search integration when user enters a query
+  useEffect(() => {
+    if (!query || query.trim().length < 2) return;
+    let isSubscribed = true;
+
+    searchQesehLive(query).then((liveResults) => {
+      if (!isSubscribed || !liveResults || liveResults.length === 0) return;
+
+      const newItems: Series[] = liveResults.map((s: any) => ({
+        id: s.id || (s.url || s.title).replace(/[^a-zA-Z0-9]/g, '_'),
+        title: s.title,
+        image: s.image || s.img || '',
+        category: s.category || 'مسلسلات',
+        url: s.url,
+        episodes_count: s.episodes_count || s.episode || '0'
+      }));
+
+      setAllSeriesRaw((prev) => {
+        const existingIds = new Set(prev.map((item) => item.id));
+        const added = newItems.filter((item) => !existingIds.has(item.id));
+        if (added.length === 0) return prev;
+        return [...added, ...prev];
+      });
+    });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [query]);
+
   // 3. Centralized Processing (Sorting + Filtering) - This is where the magic happens!
   // We apply the heavy logic here in useMemo to keep the UI buttery smooth.
   const processedSeries = useMemo(() => {
@@ -187,6 +218,40 @@ export default function HomeScreen() {
     const start = (currentPage - 1) * itemsPerPage;
     return processedSeries.slice(start, start + itemsPerPage);
   }, [processedSeries, currentPage]);
+
+  // Compute Top 10 vertical series for TOP 10 badge & featured row
+  const { top10VerticalSeries, top10RankMap } = useMemo(() => {
+    const list: { series: Series; rank: number }[] = [];
+    const map = new Map<string, number>();
+    let rank = 1;
+
+    for (const item of processedSeries) {
+      const cached = getTMDBPosterSync(item.title, item.category);
+      const src = cached || item.image || "";
+      const isVert = item.isVertical || src.includes("image.tmdb.org") || src.includes("/t/p/") || src.includes("poster");
+
+      if (isVert) {
+        list.push({ series: item, rank });
+        map.set(item.id, rank);
+        rank++;
+        if (rank > 10) break;
+      }
+    }
+
+    // Fallback if fewer than 10 vertical series detected initially
+    if (list.length < 10) {
+      for (const item of processedSeries) {
+        if (!map.has(item.id)) {
+          list.push({ series: item, rank });
+          map.set(item.id, rank);
+          rank++;
+          if (rank > 10) break;
+        }
+      }
+    }
+
+    return { top10VerticalSeries: list, top10RankMap: map };
+  }, [processedSeries]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -290,6 +355,37 @@ export default function HomeScreen() {
         <div className="relative z-10 pt-4">
 
           <div className="px-4 sm:px-8 py-8 sm:py-12 pb-32">
+            {/* TOP 10 Vertical Series Featured Row */}
+            {!query && currentPage === 1 && top10VerticalSeries.length > 0 && (
+              <div className="mb-10 sm:mb-12">
+                <div className="flex items-center justify-between mb-4 sm:mb-6">
+                  <h2 className="text-lg sm:text-2xl font-black text-white flex items-center gap-2.5 border-r-4 border-[#ff0055] pr-3 sm:pr-4">
+                    <span className="bg-gradient-to-r from-[#ff0055] to-[#e50914] text-white text-xs px-2.5 py-1 rounded-lg font-black uppercase tracking-wider shadow-lg">
+                      TOP 10
+                    </span>
+                    <span>الأعمال الأكثر مشاهدة</span>
+                  </h2>
+                </div>
+
+                <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto pb-4 pt-1 snap-x no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+                  {top10VerticalSeries.map(({ series, rank }) => (
+                    <div key={`top10-slider-${series.id}`} className="min-w-[135px] sm:min-w-[165px] max-w-[180px] flex-shrink-0 snap-start">
+                      <SeriesCard
+                        item={series}
+                        isTop10={true}
+                        topRank={rank}
+                        forceVertical={true}
+                        onPress={() => {
+                          markSeriesAsRead(series);
+                          navigateToWatchOrAds(navigate, series);
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between mb-8 sm:mb-10">
               <div className="flex flex-col gap-1">
                 <h2 className="text-xl sm:text-3xl font-black border-r-4 border-primary pr-4 sm:pr-6 text-white tracking-tight">
@@ -320,16 +416,21 @@ export default function HomeScreen() {
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
               {paginatedSeries.length > 0 ? (
-                paginatedSeries.map((item) => (
-                  <SeriesCard
-                    key={`series-${item.id}`}
-                    item={item}
-                    onPress={() => {
-                      markSeriesAsRead(item);
-                      navigateToWatchOrAds(navigate, item);
-                    }}
-                  />
-                ))
+                paginatedSeries.map((item) => {
+                  const topRank = top10RankMap.get(item.id);
+                  return (
+                    <SeriesCard
+                      key={`series-${item.id}`}
+                      item={item}
+                      isTop10={topRank !== undefined && topRank > 0 && topRank <= 10}
+                      topRank={topRank}
+                      onPress={() => {
+                        markSeriesAsRead(item);
+                        navigateToWatchOrAds(navigate, item);
+                      }}
+                    />
+                  );
+                })
               ) : (
                 <div className="col-span-full py-20 flex flex-col items-center justify-center text-center space-y-4">
                   <div className="w-24 h-24 rounded-full bg-zinc-900 border border-white/5 flex items-center justify-center text-zinc-700">

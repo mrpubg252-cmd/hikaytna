@@ -934,19 +934,19 @@ async function startServer() {
     try {
       const categories = [
         { 
-          name: 'آخر الحلقات', 
-          url: 'https://wwv.qeseh.com/', 
-          pages: [
-            'https://wwv.qeseh.com/',
-            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/page/${i + 2}/`)
-          ] 
-        },
-        { 
           name: 'جميع المسلسلات', 
           url: 'https://wwv.qeseh.com/discover/', 
           pages: [
             'https://wwv.qeseh.com/discover/',
-            ...Array.from({ length: 19 }, (_, i) => `https://wwv.qeseh.com/discover/page/${i + 2}/`)
+            ...Array.from({ length: 24 }, (_, i) => `https://wwv.qeseh.com/discover/page/${i + 2}/`)
+          ] 
+        },
+        { 
+          name: 'آخر الحلقات', 
+          url: 'https://wwv.qeseh.com/', 
+          pages: [
+            'https://wwv.qeseh.com/',
+            ...Array.from({ length: 19 }, (_, i) => `https://wwv.qeseh.com/page/${i + 2}/`)
           ] 
         },
         { 
@@ -954,7 +954,7 @@ async function startServer() {
           url: 'https://wwv.qeseh.com/category/alarshif/', 
           pages: [
             'https://wwv.qeseh.com/category/alarshif/',
-            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/category/alarshif/page/${i + 2}/`)
+            ...Array.from({ length: 14 }, (_, i) => `https://wwv.qeseh.com/category/alarshif/page/${i + 2}/`)
           ] 
         },
         { 
@@ -962,7 +962,7 @@ async function startServer() {
           url: 'https://wwv.qeseh.com/category/yeni-filmler/', 
           pages: [
             'https://wwv.qeseh.com/category/yeni-filmler/',
-            ...Array.from({ length: 9 }, (_, i) => `https://wwv.qeseh.com/category/yeni-filmler/page/${i + 2}/`)
+            ...Array.from({ length: 14 }, (_, i) => `https://wwv.qeseh.com/category/yeni-filmler/page/${i + 2}/`)
           ] 
         }
       ];
@@ -970,6 +970,255 @@ async function startServer() {
     } catch (error: any) {
       console.error("DEBUG CATEGORIES ERROR:", error.message);
       res.status(500).json({ status: false, message: "Server Error" });
+    }
+  });
+
+  // Master aggregator endpoint: Scrapes all Qeseh catalog pages & merges them cleanly
+  app.get("/api/v1/qeseh/all-series", async (req, res) => {
+    try {
+      const cacheKey = "qeseh_all_master_catalog";
+      const cached = getCachedData(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
+      // Build target URLs across discover, archives, movies, home, and son-bolumler
+      const urlsToScrape: { url: string; cat: string }[] = [];
+      
+      // Discover pages (1-10)
+      urlsToScrape.push({ url: 'https://wwv.qeseh.com/discover/', cat: 'مسلسلات' });
+      for (let i = 2; i <= 10; i++) {
+        urlsToScrape.push({ url: `https://wwv.qeseh.com/discover/page/${i}/`, cat: 'مسلسلات' });
+      }
+
+      // Completed Archive (1-15)
+      urlsToScrape.push({ url: 'https://wwv.qeseh.com/category/alarshif/', cat: 'مسلسلات كاملة' });
+      for (let i = 2; i <= 15; i++) {
+        urlsToScrape.push({ url: `https://wwv.qeseh.com/category/alarshif/page/${i}/`, cat: 'مسلسلات كاملة' });
+      }
+
+      // Movies (1-15)
+      urlsToScrape.push({ url: 'https://wwv.qeseh.com/category/yeni-filmler/', cat: 'أفلام' });
+      for (let i = 2; i <= 15; i++) {
+        urlsToScrape.push({ url: `https://wwv.qeseh.com/category/yeni-filmler/page/${i}/`, cat: 'أفلام' });
+      }
+
+      // Home Pages (1-35)
+      urlsToScrape.push({ url: 'https://wwv.qeseh.com/', cat: 'آخر الحلقات' });
+      for (let i = 2; i <= 35; i++) {
+        urlsToScrape.push({ url: `https://wwv.qeseh.com/page/${i}/`, cat: 'آخر الحلقات' });
+      }
+
+      // Son-bolumler (1-35)
+      urlsToScrape.push({ url: 'https://wwv.qeseh.com/son-bolumler/', cat: 'آخر الحلقات' });
+      for (let i = 2; i <= 35; i++) {
+        urlsToScrape.push({ url: `https://wwv.qeseh.com/son-bolumler/page/${i}/`, cat: 'آخر الحلقات' });
+      }
+
+      const allMap = new Map<string, any>();
+      const batchSize = 15;
+
+      for (let i = 0; i < urlsToScrape.length; i += batchSize) {
+        const batch = urlsToScrape.slice(i, i + batchSize);
+        await Promise.allSettled(
+          batch.map(async (item) => {
+            try {
+              const response = await axios.get(item.url, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/115.0',
+                  'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
+                },
+                timeout: 8000
+              });
+              if (!response.data) return;
+              const $ = cheerio.load(response.data);
+
+              $('article.post, .post, .block-post').each((_, el) => {
+                const aTag = $(el).find('a').first().length ? $(el).find('a').first() : $(el);
+                let itemUrl = aTag.attr('href');
+                if (!itemUrl) return;
+
+                if (itemUrl.includes('sayyarh.com')) {
+                  try {
+                    const urlObj = new URL(itemUrl);
+                    const urlParam = urlObj.searchParams.get('url');
+                    if (urlParam) {
+                      const decoded = Buffer.from(urlParam, 'base64').toString('utf-8');
+                      if (decoded.startsWith('http')) itemUrl = decoded;
+                    }
+                  } catch (e) {}
+                }
+
+                let title = aTag.attr('title') || $(el).find('.title').text().trim() || aTag.text().trim();
+                title = title.replace(/\s*-\s*قصة عشق$/i, '')
+                             .replace(/قصة عشق$/i, '')
+                             .replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '')
+                             .trim();
+
+                const styleAttr = $(el).find('.imgSer').attr('style') ||
+                                  $(el).find('.imgBg').attr('style') ||
+                                  $(el).find('.posterThumb .imgBg').attr('style') ||
+                                  $(el).find('.poster .imgSer').attr('style') ||
+                                  $(el).find('.posterThumb').attr('style') || '';
+                let img = '';
+                const match = styleAttr.match(/url\(['"]?([^'"]+)['"]?\)/);
+                if (match) img = match[1];
+                if (!img) img = $(el).find('img').attr('src') || $(el).find('img').attr('data-src') || '';
+
+                const episodeNum = $(el).find('.episodeNum').text().trim().replace(/\s+/g, ' ');
+
+                let isEpisode = false;
+                let seriesTitle = title;
+                const epMatch = title.match(/^(.*?)\s+الحلقة\s+\d+/i) || title.match(/^(.*?)\s+حلقة\s+\d+/i);
+                if (epMatch) {
+                  isEpisode = true;
+                  seriesTitle = epMatch[1].trim();
+                }
+
+                if (itemUrl && seriesTitle) {
+                  const normKey = seriesTitle.toLowerCase().trim().replace(/[\u064B-\u0652]/g, '').replace(/\s+/g, ' ');
+                  if (!allMap.has(normKey)) {
+                    allMap.set(normKey, {
+                      id: itemUrl.replace(/[^a-zA-Z0-9]/g, '_'),
+                      title: seriesTitle,
+                      url: isEpisode ? itemUrl : itemUrl,
+                      image: img || '',
+                      img: img || '',
+                      category: item.cat,
+                      episode: episodeNum || '',
+                      episodes_count: episodeNum || '0',
+                      fromEpisode: isEpisode
+                    });
+                  } else {
+                    const existing = allMap.get(normKey);
+                    if (existing.fromEpisode && !isEpisode) {
+                      allMap.set(normKey, {
+                        id: itemUrl.replace(/[^a-zA-Z0-9]/g, '_'),
+                        title: seriesTitle,
+                        url: itemUrl,
+                        image: img || existing.image,
+                        img: img || existing.img,
+                        category: item.cat,
+                        episode: episodeNum || existing.episode,
+                        episodes_count: episodeNum || existing.episodes_count,
+                        fromEpisode: false
+                      });
+                    } else if (!existing.image && img) {
+                      existing.image = img;
+                      existing.img = img;
+                    }
+                  }
+                }
+              });
+            } catch (e) {}
+          })
+        );
+      }
+
+      const results = Array.from(allMap.values());
+      const responseData = { status: true, data: results, total: results.length };
+      if (results.length > 0) {
+        setCachedData(cacheKey, responseData, 3 * 60 * 60 * 1000); // 3 hour cache
+      }
+      res.json(responseData);
+    } catch (error: any) {
+      console.error("Qeseh master catalog fetch error:", error.message);
+      res.json({ status: false, data: [] });
+    }
+  });
+
+  // Direct live search against Qeseh
+  app.get("/api/v1/qeseh/search", async (req, res) => {
+    try {
+      const q = (req.query.q as string || "").trim();
+      if (!q) return res.json({ status: true, data: [] });
+
+      const cacheKey = `qeseh_search_${q.toLowerCase()}`;
+      const cached = getCachedData(cacheKey);
+      if (cached) return res.json(cached);
+
+      const searchUrl = `https://wwv.qeseh.com/?s=${encodeURIComponent(q)}`;
+      const response = await axios.get(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/115.0',
+          'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
+        },
+        timeout: 10000
+      });
+
+      if (!response.data) return res.json({ status: true, data: [] });
+      const $ = cheerio.load(response.data);
+      const results: any[] = [];
+      const seen = new Set<string>();
+
+      $('article.post, .post, .block-post').each((_, el) => {
+        const aTag = $(el).find('a').first().length ? $(el).find('a').first() : $(el);
+        let itemUrl = aTag.attr('href');
+        if (!itemUrl) return;
+
+        if (itemUrl.includes('sayyarh.com')) {
+          try {
+            const urlObj = new URL(itemUrl);
+            const urlParam = urlObj.searchParams.get('url');
+            if (urlParam) {
+              const decoded = Buffer.from(urlParam, 'base64').toString('utf-8');
+              if (decoded.startsWith('http')) itemUrl = decoded;
+            }
+          } catch (e) {}
+        }
+
+        let title = aTag.attr('title') || $(el).find('.title').text().trim() || aTag.text().trim();
+        title = title.replace(/\s*-\s*قصة عشق$/i, '')
+                     .replace(/قصة عشق$/i, '')
+                     .replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '')
+                     .trim();
+
+        const styleAttr = $(el).find('.imgSer').attr('style') ||
+                          $(el).find('.imgBg').attr('style') ||
+                          $(el).find('.posterThumb .imgBg').attr('style') ||
+                          $(el).find('.poster .imgSer').attr('style') ||
+                          $(el).find('.posterThumb').attr('style') || '';
+        let img = '';
+        const match = styleAttr.match(/url\(['"]?([^'"]+)['"]?\)/);
+        if (match) img = match[1];
+        if (!img) img = $(el).find('img').attr('src') || $(el).find('img').attr('data-src') || '';
+
+        const episodeNum = $(el).find('.episodeNum').text().trim().replace(/\s+/g, ' ');
+
+        let isEpisode = false;
+        let seriesTitle = title;
+        const epMatch = title.match(/^(.*?)\s+الحلقة\s+\d+/i) || title.match(/^(.*?)\s+حلقة\s+\d+/i);
+        if (epMatch) {
+          isEpisode = true;
+          seriesTitle = epMatch[1].trim();
+        }
+
+        if (itemUrl && seriesTitle) {
+          const normKey = seriesTitle.toLowerCase().trim();
+          if (!seen.has(normKey)) {
+            seen.add(normKey);
+            results.push({
+              id: itemUrl.replace(/[^a-zA-Z0-9]/g, '_'),
+              title: seriesTitle,
+              url: itemUrl,
+              image: img || '',
+              img: img || '',
+              category: 'مسلسلات',
+              episode: episodeNum || '',
+              episodes_count: episodeNum || '0'
+            });
+          }
+        }
+      });
+
+      const responseData = { status: true, data: results };
+      if (results.length > 0) {
+        setCachedData(cacheKey, responseData, 60 * 60 * 1000); // 1 hour search cache
+      }
+      res.json(responseData);
+    } catch (e: any) {
+      console.error("Qeseh search error:", e.message);
+      res.json({ status: false, data: [] });
     }
   });
 
@@ -1049,14 +1298,18 @@ async function startServer() {
                      .replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '')
                      .trim();
 
-        const styleAttr = $(el).find('.imgBg').attr('style') || $(el).find('.imgSer').attr('style') || '';
+        const styleAttr = $(el).find('.imgSer').attr('style') || 
+                          $(el).find('.imgBg').attr('style') || 
+                          $(el).find('.posterThumb .imgBg').attr('style') ||
+                          $(el).find('.poster .imgSer').attr('style') ||
+                          $(el).find('.posterThumb').attr('style') || '';
         let img = '';
         const match = styleAttr.match(/url\(['"]?([^'"]+)['"]?\)/);
         if (match) {
           img = match[1];
         }
         if (!img) {
-          img = $(el).find('img').attr('src') || '';
+          img = $(el).find('img').attr('src') || $(el).find('img').attr('data-src') || '';
         }
 
         const episodeNum = $(el).find('.episodeNum').text().trim().replace(/\s+/g, ' ');
@@ -1129,7 +1382,28 @@ async function startServer() {
         throw lastErr || new Error("Failed to load Qeseh episode contents");
       }
 
-      const $ = cheerio.load(html);
+      let $ = cheerio.load(html);
+
+      // If page is an episode page containing link to parent series (/yeni-show/...), fetch parent series page to get ALL episodes
+      const parentSeriesUrl = $('a[href*="/yeni-show/"]').first().attr('href');
+      if (parentSeriesUrl && !realUrl.includes('/yeni-show/')) {
+        try {
+          const parentResponse = await axios.get(parentSeriesUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/115.0',
+              'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
+            },
+            timeout: 8000
+          });
+          if (parentResponse.data) {
+            html = parentResponse.data;
+            $ = cheerio.load(html);
+          }
+        } catch (e) {
+          // Fallback to current HTML
+        }
+      }
+
       const data: any[] = [];
 
       // Check if it's already an individual watch page
