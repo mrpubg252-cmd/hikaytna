@@ -276,14 +276,64 @@ export function updateCachedSeriesTrailer(seriesId: string, trailerUrl: string) 
 export function getCachedSeriesByCategory(categoryName: string): Series[] {
   if (!cachedSeriesList || cachedSeriesList.length === 0) return [];
   if (categoryName === "الكل") return cachedSeriesList;
-  
+
   const target = normalizeArabic(categoryName);
-  
+
   return cachedSeriesList.filter(s => {
     const sCat = s.category || "";
-    if (!sCat) return false;
+    const sTitle = s.title || "";
+    const normCat = normalizeArabic(sCat);
+    const normTitle = normalizeArabic(sTitle);
+    const titleLower = sTitle.toLowerCase();
+
+    const isMovie = 
+      normCat.includes("افلام") ||
+      normCat.includes("فيلم") ||
+      normCat.includes("فلم") ||
+      normTitle.includes("فيلم") ||
+      normTitle.includes("فلم") ||
+      titleLower.includes("movie") ||
+      titleLower.includes("film");
+
+    if (categoryName === "أفلام" || categoryName === "افلام" || categoryName === "فيلم") {
+      return isMovie;
+    }
+
+    if (categoryName === "مسلسلات" || categoryName === "مسلسل") {
+      return !isMovie;
+    }
+
+    if (categoryName === "تركي") {
+      return normCat.includes("تركي") || normTitle.includes("تركي");
+    }
+
+    if (categoryName === "خليجي") {
+      return normCat.includes("خليج") || normTitle.includes("خليج");
+    }
+
+    if (categoryName === "عربي") {
+      return normCat.includes("عرب") || normCat.includes("مصر") || normCat.includes("سور") || normCat.includes("شام") || normTitle.includes("عرب");
+    }
+
+    if (categoryName === "رمضان") {
+      return normCat.includes("رمضان") || normTitle.includes("رمضان");
+    }
+
+    if (categoryName === "آسيوي وكوري" || categoryName === "كوري" || categoryName === "اسيوي") {
+      return normCat.includes("كوري") || normCat.includes("اسيوي") || normCat.includes("صين") || normCat.includes("يابان") || normTitle.includes("كوري") || normTitle.includes("اسيوي");
+    }
+
+    if (categoryName === "أجنبي" || categoryName === "اجنبي") {
+      return normCat.includes("اجنب") || normCat.includes("امريك") || normTitle.includes("اجنب") || titleLower.includes("english");
+    }
+
+    if (categoryName === "فارسي") {
+      return normCat.includes("فارس") || normCat.includes("ايران") || normTitle.includes("فارس");
+    }
+
+    if (!sCat && !sTitle) return false;
     if (sCat === categoryName) return true;
-    return normalizeArabic(sCat).includes(target);
+    return normCat.includes(target) || normTitle.includes(target);
   });
 }
 

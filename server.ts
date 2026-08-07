@@ -1241,13 +1241,24 @@ async function startServer() {
       }
 
       function getEmbedUrl(name: string, id: string): string {
-        const n = name.toLowerCase();
+        if (!id) return "";
+        if (id.startsWith('http://') || id.startsWith('https://')) {
+          return id;
+        }
+        const n = (name || '').toLowerCase().trim();
+        if (n.includes('estream') || n.includes('turk')) return `https://arabveturk.com/embed-${id}.html`;
         if (n.includes('arab')) return `https://arabhd.onl/embed-${id}.html`;
-        if (n.includes('estream')) return `https://estream.to/embed-${id}.html`;
-        if (n.includes('dailymotion')) return `https://www.dailymotion.com/embed/video/${id}`;
+        if (n.includes('red')) return `https://iplayerhls.com/e/${id}`;
+        if (n.includes('pro hd')) return `https://w.larhu.website/play.php?id=${id}`;
+        if (n.includes('pro')) return `https://mdna.upns.online/#${id}`;
+        if (n.includes('box')) return `https://youdboox.com/embed-${id}.html`;
+        if (n.includes('now')) return `https://extreamnow.org/embed-${id}.html`;
         if (n.includes('ok')) return `https://ok.ru/videoembed/${id}`;
-        if (n.includes('red')) return `https://redplay.to/embed-${id}.html`;
-        return id.startsWith('http') ? id : `https://arabhd.onl/embed-${id}.html`;
+        if (n.includes('facebook')) return `https://app.videas.fr/embed/media/${id}`;
+        if (n.includes('dailymotion')) return `https://www.dailymotion.com/embed/video/${id}`;
+        if (n.includes('express')) return id;
+        
+        return `https://arabhd.onl/embed-${id}.html`;
       }
 
       let iframeSrc = "";
@@ -1342,14 +1353,19 @@ async function startServer() {
                 const decodedJson = Buffer.from(postParam, 'base64').toString('utf-8');
                 const postData = JSON.parse(decodedJson);
                 if (postData && postData.servers && postData.servers.length > 0) {
-                  const firstServer = postData.servers[0];
-                  iframeSrc = getEmbedUrl(firstServer.name, firstServer.id);
-                  
+                  iframeSrc = actualTarget;
+
                   postData.servers.forEach((srv: any, idx: number) => {
-                    const embedUrl = getEmbedUrl(srv.name, srv.id);
+                    let embedUrl = "";
+                    if (idx === 0 && iframeSrc) {
+                      embedUrl = iframeSrc;
+                    } else {
+                      embedUrl = getEmbedUrl(srv.name, srv.id);
+                    }
+
                     if (embedUrl) {
                       let proxyUrl = embedUrl;
-                      if (!embedUrl.includes('thenextstop.net')) {
+                      if (!embedUrl.includes('thenextstop.net') && !embedUrl.startsWith('/api/v1/')) {
                         const encryptedTarget = encryptValue(embedUrl);
                         proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
                       }
@@ -1608,6 +1624,13 @@ async function startServer() {
       const lowerDecrypted = decryptedUrl.toLowerCase();
       const shouldDirectRedirect = 
         lowerDecrypted.includes('arabhd') ||
+        lowerDecrypted.includes('arabveturk') ||
+        lowerDecrypted.includes('iplayerhls') ||
+        lowerDecrypted.includes('larhu') ||
+        lowerDecrypted.includes('upns') ||
+        lowerDecrypted.includes('youdboox') ||
+        lowerDecrypted.includes('extreamnow') ||
+        lowerDecrypted.includes('videas') ||
         lowerDecrypted.includes('estream') ||
         lowerDecrypted.includes('ok.ru') ||
         lowerDecrypted.includes('redplay') ||

@@ -73,7 +73,7 @@ export default function HomeScreen() {
       if (!isMounted) return;
       setError(null);
       
-      const cached = getCachedSeriesByCategory(selectedCategory);
+      const cached = selectedCategory === "الكل" ? getAllCachedSeries() : getCachedSeriesByCategory(selectedCategory);
       if (cached.length > 0) {
         setAllSeriesRaw(cached);
         setLoading(false);
@@ -82,11 +82,12 @@ export default function HomeScreen() {
       }
 
       try {
-        if (selectedCategory === "الكل") {
+        if (selectedCategory === "الكل" || selectedCategory === "مسلسلات" || selectedCategory === "أفلام") {
           const allFetched = await fetchAllSeries(false);
           if (isMounted && allFetched && allFetched.length > 0) {
             initializeEpisodeTracking(allFetched);
-            setAllSeriesRaw(allFetched);
+            const filtered = selectedCategory === "الكل" ? allFetched : getCachedSeriesByCategory(selectedCategory);
+            setAllSeriesRaw(filtered);
             setLoading(false);
           }
         } else {
@@ -125,10 +126,8 @@ export default function HomeScreen() {
       const allCached = getAllCachedSeries();
       setGlobalCache([...allCached]);
       
-      const categoryData = getCachedSeriesByCategory(selectedCategory);
-      if (categoryData.length > 0) {
-        setAllSeriesRaw([...categoryData]);
-      }
+      const categoryData = selectedCategory === "الكل" ? allCached : getCachedSeriesByCategory(selectedCategory);
+      setAllSeriesRaw([...categoryData]);
     };
 
     window.addEventListener("series-data-updated", handleSync);
@@ -237,6 +236,7 @@ export default function HomeScreen() {
   return (
     <div className="min-h-screen bg-[#050505]">
       <Header />
+      <CategoryBar selected={selectedCategory} onSelect={handleCategoryChange} />
 
       <AnimatePresence>
         {showCheatedAlert && (
@@ -295,7 +295,13 @@ export default function HomeScreen() {
                 <h2 className="text-xl sm:text-3xl font-black border-r-4 border-primary pr-4 sm:pr-6 text-white tracking-tight">
                   {query
                     ? "نتائج البحث"
-                    : "جميع المسلسلات"}
+                    : selectedCategory === "أفلام"
+                    ? "الأفلام"
+                    : selectedCategory === "مسلسلات"
+                    ? "المسلسلات"
+                    : selectedCategory !== "الكل"
+                    ? selectedCategory
+                    : "جميع الأعمال"}
                 </h2>
                 {query && (
                   <button

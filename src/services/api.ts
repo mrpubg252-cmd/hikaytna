@@ -144,7 +144,8 @@ export async function fetchCategoryPageFromAPI(categoryName: string, pageIndex: 
     if (normQ === "عربي" && normC.includes("عربي")) return true;
     if (normQ === "خليجي" && normC.includes("خليجي")) return true;
     if (normQ === "اجنبي" && normC.includes("اجنبي")) return true;
-    if (normQ === "افلام" && (normC.includes("افلام") || normC.includes("فيلم"))) return true;
+    if ((normQ === "افلام" || normQ === "فيلم") && (normC.includes("افلام") || normC.includes("فيلم"))) return true;
+    if ((normQ === "مسلسلات" || normQ === "مسلسل") && (normC.includes("مسلسل") || normC.includes("مسلسلات") || normC.includes("جميع المسلسلات") || normC.includes("اخر الحلقات"))) return true;
     if ((normQ === "اسيوي" || normQ.includes("اسيوي وكوري")) && (normC.includes("كوري") || normC.includes("اسيوي") || normC.includes("korean"))) return true;
     return normC.includes(normQ) || normQ.includes(normC);
   });
