@@ -1,17 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ShieldAlert, Send, Trash2, CheckCircle2, AlertTriangle, 
-  Info, X, Clock, Plus, Film, Tv, Image as ImageIcon, 
+  Info, X, Clock, Plus, Film, Tv, Image as ImageIcon,
   Star, Type, Hash, ExternalLink, Sparkles, Pencil, RefreshCw,
-  Settings, Smartphone, Link
+  Settings, Smartphone, Link, ChevronUp, ChevronDown
 } from 'lucide-react';
-import { db, firestore } from '../services/firebase';
+import { db, firestore, TopSeriesItem, saveTopSeriesOrder, subscribeTopSeriesOrder } from '../services/firebase';
 import { ref, onValue, push, remove, set } from 'firebase/database';
 import { getFirestore, collection, getDocs, deleteDoc, doc, setDoc, getDoc, query, orderBy } from 'firebase/firestore';
-import { cn } from '../lib/utils';
+import { cn, normalizeArabic, fuzzyMatchArabic } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
-import { clearCache } from '../services/dataService';
+import { clearCache, fetchAllSeries, getAllCachedSeries, isEpisodeItem, extractMainSeriesTitle } from '../services/dataService';
+import { fetchQesehDiscover } from '../services/api';
 
 interface Notice {
   id: string;
@@ -36,7 +37,7 @@ export default function AdminScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [notices, setNotices] = useState<Notice[]>([]);
-  const [activeTab, setActiveTab] = useState<'notices' | 'series' | 'settings'>('series');
+  const [activeTab, setActiveTab] = useState<'notices' | 'series' | 'settings' | 'top10'>('series');
   
   // Notice states
   const [text, setText] = useState('');
@@ -57,6 +58,23 @@ export default function AdminScreen() {
   });
   const [isSavingSeries, setIsSavingSeries] = useState(false);
   const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null);
+
+  // Top 10 Series states
+  const [topSeriesItems, setTopSeriesItems] = useState<TopSeriesItem[]>([]);
+  const [allAvailableSeries, setAllAvailableSeries] = useState<any[]>([]);
+  const [topSearchQuery, setTopSearchQuery] = useState('');
+  const [isSavingTopSeries, setIsSavingTopSeries] = useState(false);
+
+  const filteredAvailableSeries = useMemo(() => {
+    const q = topSearchQuery.trim();
+    if (!q) return allAvailableSeries;
+    const normQ = normalizeArabic(q);
+    return allAvailableSeries.filter(s => {
+      if (!s || !s.title) return false;
+      const normTitle = normalizeArabic(s.title);
+      return normTitle.includes(normQ) || fuzzyMatchArabic(s.title, q);
+    });
+  }, [allAvailableSeries, topSearchQuery]);
 
   // App settings state
   const [appDownloadUrl, setAppDownloadUrl] = useState('');
@@ -129,6 +147,60 @@ export default function AdminScreen() {
 
     fetchSeries();
   }, [isAuthenticated, activeTab]);
+
+  // Load Top 10 series data
+  useEffect(() => {
+    if (!isAuthenticated || activeTab !== 'top10') return;
+
+    const fetchAllData = async () => {
+      try {
+        const discoverList = await fetchQesehDiscover();
+        const fullList = await fetchAllSeries(true);
+        // Combine with custom series list if any
+        const combinedMap = new Map<string, any>();
+        
+        discoverList.forEach(s => {
+          if (s.id && s.title) {
+            combinedMap.set(s.id, {
+              ...s,
+              category: 'مسلسلات'
+            });
+          }
+        });
+
+        fullList.forEach(s => {
+          if (!isEpisodeItem(s) && s.id && s.title) {
+            if (!combinedMap.has(s.id)) {
+              combinedMap.set(s.id, s);
+            }
+          }
+        });
+
+        customSeriesList.forEach(cs => {
+          if (cs.id && cs.title) {
+            combinedMap.set(cs.id, {
+              id: cs.id,
+              title: cs.title,
+              image: cs.image,
+              category: cs.category || 'مسلسلات',
+              url: cs.trailer || ''
+            });
+          }
+        });
+
+        setAllAvailableSeries(Array.from(combinedMap.values()));
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchAllData();
+
+    const unsub = subscribeTopSeriesOrder((items) => {
+      setTopSeriesItems(items);
+    });
+
+    return () => unsub();
+  }, [isAuthenticated, activeTab, customSeriesList]);
 
   // Load app settings
   useEffect(() => {
@@ -504,11 +576,11 @@ export default function AdminScreen() {
         </header>
 
         {/* Tabs */}
-        <div className="flex bg-zinc-900/50 p-1 rounded-2xl border border-white/5 gap-1">
+        <div className="flex flex-wrap bg-zinc-900/50 p-1 rounded-2xl border border-white/5 gap-1">
           <button
             onClick={() => setActiveTab('series')}
             className={cn(
-              "flex-1 py-3 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5",
+              "flex-1 min-w-[80px] py-3 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5",
               activeTab === 'series' ? "bg-primary text-white shadow-lg" : "text-zinc-500 hover:text-white"
             )}
           >
@@ -516,9 +588,19 @@ export default function AdminScreen() {
             <span>الأعمال</span>
           </button>
           <button
+            onClick={() => setActiveTab('top10')}
+            className={cn(
+              "flex-1 min-w-[80px] py-3 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5",
+              activeTab === 'top10' ? "bg-primary text-white shadow-lg" : "text-zinc-500 hover:text-white"
+            )}
+          >
+            <Star className="w-4 h-4 shrink-0" />
+            <span>الترتيب</span>
+          </button>
+          <button
             onClick={() => setActiveTab('notices')}
             className={cn(
-              "flex-1 py-3 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5",
+              "flex-1 min-w-[80px] py-3 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5",
               activeTab === 'notices' ? "bg-primary text-white shadow-lg" : "text-zinc-500 hover:text-white"
             )}
           >
@@ -528,7 +610,7 @@ export default function AdminScreen() {
           <button
             onClick={() => setActiveTab('settings')}
             className={cn(
-              "flex-1 py-3 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5",
+              "flex-1 min-w-[80px] py-3 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5",
               activeTab === 'settings' ? "bg-primary text-white shadow-lg" : "text-zinc-500 hover:text-white"
             )}
           >
@@ -888,6 +970,188 @@ export default function AdminScreen() {
               </div>
             </section>
           </>
+        )}
+
+        {activeTab === 'top10' && (
+          <section className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center">
+                <Star className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-white">ترتيب أفضل الأعمال</h2>
+                <p className="text-zinc-500 text-xs mt-0.5">اسحب وأفلت لترتيب الأعمال في واجهة التطبيق الرئيسية</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-6">
+              {/* Search and add */}
+              <div className="w-full md:w-1/2 space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-zinc-400">البحث عن مسلسل لإضافته للقائمة</label>
+                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full">
+                      {filteredAvailableSeries.length} مسلسل متاح
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={topSearchQuery}
+                      onChange={(e) => setTopSearchQuery(e.target.value)}
+                      placeholder="اكتب اسم المسلسل (مثال: الأزهار الحزينة، الحفرة...)..."
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition-colors text-sm pl-10"
+                    />
+                    {topSearchQuery && (
+                      <button
+                        onClick={() => setTopSearchQuery('')}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-2xl max-h-96 overflow-y-auto no-scrollbar">
+                  {filteredAvailableSeries.length === 0 ? (
+                    <div className="p-8 text-center text-zinc-500 text-xs">
+                      لم يتم العثور على مسلسلات تطابق بحثك
+                    </div>
+                  ) : (
+                    filteredAvailableSeries.slice(0, 100).map(s => {
+                      const cleanTitle = extractMainSeriesTitle(s.title);
+                      const isAdded = topSeriesItems.some(i => i.id === s.id || i.title === cleanTitle);
+                      return (
+                        <div key={`search-${s.id}`} className="flex items-center justify-between p-3 border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+                          <div className="flex items-center gap-3 min-w-0">
+                            {s.image ? (
+                              <img src={s.image} alt={cleanTitle} className="w-10 h-10 object-cover rounded-lg shrink-0" />
+                            ) : (
+                              <div className="w-10 h-10 bg-zinc-800 rounded-lg shrink-0" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <h4 className="text-white text-xs font-bold truncate">{cleanTitle}</h4>
+                              <span className="text-[10px] text-zinc-500">{s.category || 'مسلسلات'}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (isAdded) return;
+                              setTopSeriesItems([...topSeriesItems, {
+                                id: s.id,
+                                title: cleanTitle,
+                                image: s.image,
+                                category: s.category || 'مسلسلات',
+                                url: s.url,
+                                rank: topSeriesItems.length + 1
+                              }]);
+                            }}
+                            disabled={isAdded}
+                            className={cn(
+                              "shrink-0 p-2 rounded-lg transition-colors text-xs font-bold flex items-center gap-1",
+                              isAdded
+                                ? "bg-white/5 text-zinc-500 cursor-not-allowed"
+                                : "bg-primary/20 text-primary hover:bg-primary hover:text-white"
+                            )}
+                          >
+                            {isAdded ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <Plus className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Current List */}
+              <div className="w-full md:w-1/2 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-black text-white flex items-center gap-2">
+                    القائمة الحالية <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">{topSeriesItems.length}</span>
+                  </h3>
+                  <button
+                    onClick={async () => {
+                      setIsSavingTopSeries(true);
+                      await saveTopSeriesOrder(topSeriesItems);
+                      setIsSavingTopSeries(false);
+                      setText('تم حفظ الترتيب بنجاح');
+                      setType('success');
+                      setTimeout(() => setText(''), 3000);
+                    }}
+                    disabled={isSavingTopSeries}
+                    className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-xl text-xs font-black transition-colors disabled:opacity-50"
+                  >
+                    {isSavingTopSeries ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                    حفظ الترتيب
+                  </button>
+                </div>
+
+                <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-2xl min-h-[384px] max-h-96 overflow-y-auto no-scrollbar">
+                  {topSeriesItems.length === 0 ? (
+                     <div className="h-full flex flex-col items-center justify-center p-8 text-zinc-500">
+                       <Star className="w-8 h-8 mb-2 opacity-50" />
+                       <p className="text-xs text-center">القائمة فارغة، أضف أعمال من البحث</p>
+                     </div>
+                  ) : (
+                    <div className="flex flex-col p-2 space-y-2">
+                      {topSeriesItems.map((item, idx) => (
+                        <div key={`top-${item.id}`} className="flex items-center gap-3 bg-zinc-800 p-2 rounded-xl border border-white/5">
+                          <span className="w-6 h-6 shrink-0 flex items-center justify-center bg-black/50 text-white font-black text-xs rounded-full">
+                            {idx + 1}
+                          </span>
+                          {item.image ? (
+                            <img src={item.image} alt={item.title} className="w-8 h-8 object-cover rounded-lg shrink-0" />
+                          ) : (
+                            <div className="w-8 h-8 bg-zinc-900 rounded-lg shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-white text-xs font-bold truncate">{item.title}</h4>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => {
+                                if (idx > 0) {
+                                  const newList = [...topSeriesItems];
+                                  [newList[idx - 1], newList[idx]] = [newList[idx], newList[idx - 1]];
+                                  setTopSeriesItems(newList);
+                                }
+                              }}
+                              disabled={idx === 0}
+                              className="p-1.5 text-zinc-400 hover:text-white disabled:opacity-30"
+                            >
+                              <ChevronUp className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (idx < topSeriesItems.length - 1) {
+                                  const newList = [...topSeriesItems];
+                                  [newList[idx + 1], newList[idx]] = [newList[idx], newList[idx + 1]];
+                                  setTopSeriesItems(newList);
+                                }
+                              }}
+                              disabled={idx === topSeriesItems.length - 1}
+                              className="p-1.5 text-zinc-400 hover:text-white disabled:opacity-30"
+                            >
+                              <ChevronDown className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setTopSeriesItems(topSeriesItems.filter((_, i) => i !== idx));
+                              }}
+                              className="p-1.5 text-red-400 hover:bg-red-500/20 rounded transition-colors ml-1"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
         )}
 
         {activeTab === 'settings' && (

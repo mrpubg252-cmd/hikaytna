@@ -457,7 +457,7 @@ function EpisodeGridItem({
       <div className="mt-3 text-right flex flex-col space-y-1 w-full px-1">
         <span
           className={cn(
-            "text-[13px] sm:text-sm font-black truncate leading-snug transition-colors duration-200",
+            "text-[13px] sm:text-sm font-black leading-snug transition-colors duration-200 line-clamp-2",
             isActive
               ? (ep.url?.includes('streamimdb') ? "text-amber-500" : "text-primary")
               : "text-zinc-100 group-hover:text-primary",

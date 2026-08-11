@@ -21,15 +21,106 @@ if (typeof window !== "undefined") {
   }
 }
 
-// Manual translation overrides dictionary to handle edge cases like Turkish/foreign shows
+// Direct poster overrides for specific series requested by user
+const DIRECT_SERIES_POSTERS: Record<string, string> = {
+  "في سابعة عشر": "https://3iskk.xyz/wp-content/uploads/2026/05/daha-17-dizi.jpg",
+  "في السابعة عشر": "https://3iskk.xyz/wp-content/uploads/2026/05/daha-17-dizi.jpg",
+  "في سابعة عشرة": "https://3iskk.xyz/wp-content/uploads/2026/05/daha-17-dizi.jpg",
+  "في السابعة عشرة": "https://3iskk.xyz/wp-content/uploads/2026/05/daha-17-dizi.jpg",
+  "هذا بحر سوف يفيض": "https://3iskk.xyz/wp-content/uploads/2025/10/uHIOTJXN9nNTc51WyunL43Fvge3.jpg",
+  "هذا البحر سوف يفيض": "https://3iskk.xyz/wp-content/uploads/2025/10/uHIOTJXN9nNTc51WyunL43Fvge3.jpg",
+};
+
+function getDirectSeriesPoster(title: string): string | null {
+  if (!title) return null;
+  const clean = title.replace(/[«»"'"]/g, '').trim().toLowerCase();
+  for (const key in DIRECT_SERIES_POSTERS) {
+    const keyClean = key.replace(/[«»"'"]/g, '').trim().toLowerCase();
+    if (clean === keyClean || (clean.length > 3 && (clean.includes(keyClean) || keyClean.includes(clean)))) {
+      return DIRECT_SERIES_POSTERS[key];
+    }
+  }
+  return null;
+}
+
+// Manual translation overrides dictionary to handle edge cases like Turkish/foreign/Arabic shows
 const MANUAL_OVERRIDES: Record<string, string> = {
-  "من التالي": "Kimler Geldi Kimler Geçti",
-  "من التالي؟": "Kimler Geldi Kimler Geçti",
+  // Overrides for specific top series requested by user
+  "في سابعة عشر": "Daha 17",
+  "في السابعة عشر": "Daha 17",
+  "حلم اشرف": "Eşref Rüya",
+  "حلم أشرف": "Eşref Rüya",
+  // Turkish popular series
   "طائر الرفراف": "Yalı Çapkını",
   "طائر الرفراف مدبلج": "Yalı Çapkını",
   "طاير الرفراف": "Yalı Çapkını",
   "فريد": "Yalı Çapkını",
-  "فخرية": "سستر فخرية"
+  "من التالي": "Kimler Geldi Kimler Geçti",
+  "من التالي؟": "Kimler Geldi Kimler Geçti",
+  "المؤسس عثمان": "Kuruluş Osman",
+  "قيامة عثمان": "Kuruluş Osman",
+  "المؤسس": "Kuruluş Osman",
+  "قيامة ارطغرل": "Diriliş Ertuğrul",
+  "قيامة أرتغرل": "Diriliş Ertuğrul",
+  "ارطغرل": "Diriliş Ertuğrul",
+  "أنت اطرق بابي": "Sen Çal Kapımı",
+  "انت اطرق بابي": "Sen Çal Kapımı",
+  "زهرة الثالوث": "Hercai",
+  "زهرة الثلاثاء": "Hercai",
+  "شراب التوت": "Kızılcık Şerbeti",
+  "البراعم الحمراء": "Kızıl Goncalar",
+  "القضاء": "Yargı",
+  "إخوتي": "Kardeşlerim",
+  "اخوتي": "Kardeşlerim",
+  "الأخوة": "Kardeşlerim",
+  "الأمانة": "Emanet",
+  "الامانة": "Emanet",
+  "حب للايجار": "Kiralık Aşk",
+  "حب للأيجار": "Kiralık Aşk",
+  "الطبيب المعجزة": "Mucize Doktor",
+  "الحفرة": "Çukur",
+  "مرعشلي": "Maraşlı",
+  "رامو": "Ramo",
+  "تشكيلات": "Teşkilat",
+  "المنظمة": "Teşkilat",
+  "المُنظّمة": "Teşkilat",
+  "حكايتنا": "Bizim Hikaye",
+  "حكايتنا مدبلج": "Bizim Hikaye",
+  "صلاح الدين": "Kudüs Fatihi Selahaddin Eyyubi",
+  "صلاح الدين الأيوبي": "Kudüs Fatihi Selahaddin Eyyubi",
+  "اسمعني": "Duy Beni",
+  "ابنة السفير": "Sefirin Kızı",
+
+  // Arabic popular series
+  "عمر افندي": "عمر أفندي",
+  "عمر أفندي": "عمر أفندي",
+  "البيت بيتي": "البيت بيتي",
+  "العميل": "العميل",
+  "كريستال": "كريستال",
+  "الثمن": "الثمن",
+  "ستليتو": "ستليتو",
+  "لعبة حب": "لعبة حب",
+  "شباب البومب": "شباب البومب",
+  "الزند": "الزند: ذئب العاصي",
+  "ذئب العاصي": "الزند: ذئب العاصي",
+  "المداح": "المداح",
+  "المداح أسطورة العودة": "المداح",
+  "جعفر العمدة": "جعفر العمدة",
+  "نعمة الأفوكاتو": "نعمة الأفوكاتو",
+  "نعمة الافوكاتو": "نعمة الأفوكاتو",
+  "أشغال شاقة": "أشغال شاقة",
+  "اشغال شاقة": "أشغال شاقة",
+  "العربجي": "العربجي",
+  "مربى العز": "مربى العز",
+  "فخرية": "سستر فخرية",
+
+  // Korean popular series
+  "لعبة الحبار": "Squid Game",
+  "كلنا اموات": "All of Us Are Dead",
+  "كلنا أموات": "All of Us Are Dead",
+  "هبوط اضطراري للحب": "Crash Landing on You",
+  "هبوط اضطراري": "Crash Landing on You",
+  "الفتيان قبل الزهور": "Boys Over Flowers"
 };
 
 /**
@@ -282,8 +373,32 @@ export function isExcludedFromTMDB(title: string, category?: string): boolean {
 }
 
 /**
+ * Calculates a title similarity score between a TMDB result and the target search query
+ */
+function getTitleMatchScore(item: any, targetQuery: string): number {
+  if (!targetQuery) return 0;
+  const queryNorm = cleanTitleForTMDB(targetQuery).toLowerCase();
+  if (!queryNorm) return 0;
+  
+  const name = (item.name || item.title || "").toLowerCase();
+  const origName = (item.original_name || item.original_title || "").toLowerCase();
+  const nameClean = cleanTitleForTMDB(name).toLowerCase();
+  const origNameClean = cleanTitleForTMDB(origName).toLowerCase();
+
+  // Exact match
+  if (nameClean === queryNorm || origNameClean === queryNorm) return 5000;
+  // Contains match
+  if ((nameClean && (nameClean.includes(queryNorm) || queryNorm.includes(nameClean))) ||
+      (origNameClean && (origNameClean.includes(queryNorm) || queryNorm.includes(origNameClean)))) {
+    return 2500;
+  }
+  
+  return 0;
+}
+
+/**
  * Centralized, resilient, and instant TMDB lookup.
- * Tries candidates sequentially for maximum success.
+ * Tries candidate queries sequentially with search/tv prioritization for series.
  * Returns healed image poster path, or null if no match could be found on TMDB.
  */
 export async function getTMDBPoster(title: string, category?: string): Promise<string | null> {
@@ -291,6 +406,12 @@ export async function getTMDBPoster(title: string, category?: string): Promise<s
   
   if (isExcludedFromTMDB(title, category)) {
     return null;
+  }
+
+  // Check direct series posters override first
+  const directPoster = getDirectSeriesPoster(title);
+  if (directPoster) {
+    return directPoster;
   }
   
   const cleanTitle = title.trim().toLowerCase();
@@ -305,55 +426,67 @@ export async function getTMDBPoster(title: string, category?: string): Promise<s
   const candidates = getTMDBQueryCandidates(title);
   if (candidates.length === 0) return null;
 
+  const isMovieCategory = category && (
+    category.includes("فيلم") || 
+    category.includes("افلام") || 
+    category.includes("أفلام") || 
+    category.toLowerCase().includes("movie")
+  );
+
   // Try each candidate sequentially
   for (const query of candidates) {
     try {
-      const searchUrl = `${TMDB_BASE}search/multi?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}&query=${encodeURIComponent(query)}&include_adult=false`;
-      const proxyUrl = getApiUrl(`/api/v1/tmdb/proxy?url=${encodeURIComponent(searchUrl)}`);
+      // For TV Series (not movies), query search/tv FIRST to guarantee matching TV series posters
+      const endpoints = isMovieCategory 
+        ? [`${TMDB_BASE}search/movie?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}&query=${encodeURIComponent(query)}&include_adult=false`, `${TMDB_BASE}search/multi?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}&query=${encodeURIComponent(query)}&include_adult=false`]
+        : [`${TMDB_BASE}search/tv?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}&query=${encodeURIComponent(query)}&include_adult=false`, `${TMDB_BASE}search/multi?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}&query=${encodeURIComponent(query)}&include_adult=false`];
 
-      const res = await fetch(proxyUrl);
-      if (!res.ok) continue; // Try next candidate if proxy errors out
+      for (const searchUrl of endpoints) {
+        const proxyUrl = getApiUrl(`/api/v1/tmdb/proxy?url=${encodeURIComponent(searchUrl)}`);
 
-      const data = await res.json();
-      if (data.results && data.results.length > 0) {
-        // Find results, sort and prioritize matches starting with category matching, then popularity
-        const sortedResults = [...data.results].sort((a, b) => {
-          const scoreA = getCategoryMatchScore(a, category);
-          const scoreB = getCategoryMatchScore(b, category);
-          
-          if (scoreA !== scoreB) {
-            return scoreB - scoreA; // prioritize matching original category country
-          }
-          
-          const aPop = a.popularity || 0;
-          const bPop = b.popularity || 0;
-          return bPop - aPop;
-        });
+        const res = await fetch(proxyUrl);
+        if (!res.ok) continue;
 
-        for (const item of sortedResults) {
-          if (item.poster_path) {
-            const imageUrl = `${TMDB_IMAGE_BASE}${item.poster_path}`;
-            // Safe cache updates
-            memoryPosterCache[cacheKey] = imageUrl;
-            if (typeof window !== "undefined") {
-              try {
-                localStorage.setItem(CACHE_KEY, JSON.stringify(memoryPosterCache));
-              } catch (e) {
-                console.warn("Could not save updated heal cache to localStorage:", e);
+        const data = await res.json();
+        if (data.results && data.results.length > 0) {
+          // Sort results prioritizing title match, category match score, then popularity
+          const sortedResults = [...data.results].sort((a, b) => {
+            const titleScoreA = getTitleMatchScore(a, query);
+            const titleScoreB = getTitleMatchScore(b, query);
+            if (titleScoreA !== titleScoreB) return titleScoreB - titleScoreA;
+
+            const catScoreA = getCategoryMatchScore(a, category);
+            const catScoreB = getCategoryMatchScore(b, category);
+            if (catScoreA !== catScoreB) return catScoreB - catScoreA;
+
+            return (b.popularity || 0) - (a.popularity || 0);
+          });
+
+          for (const item of sortedResults) {
+            if (item.poster_path) {
+              const imageUrl = `${TMDB_IMAGE_BASE}${item.poster_path}`;
+              // Safe cache updates
+              memoryPosterCache[cacheKey] = imageUrl;
+              if (typeof window !== "undefined") {
+                try {
+                  localStorage.setItem(CACHE_KEY, JSON.stringify(memoryPosterCache));
+                } catch (e) {
+                  console.warn("Could not save updated heal cache to localStorage:", e);
+                }
               }
-            }
-            return imageUrl;
-          } else if (item.backdrop_path) {
-            const imageUrl = `${TMDB_IMAGE_BASE}${item.backdrop_path}`;
-            memoryPosterCache[cacheKey] = imageUrl;
-            if (typeof window !== "undefined") {
-              try {
-                localStorage.setItem(CACHE_KEY, JSON.stringify(memoryPosterCache));
-              } catch (e) {
-                console.warn("Could not save updated heal cache to os:", e);
+              return imageUrl;
+            } else if (item.backdrop_path) {
+              const imageUrl = `${TMDB_IMAGE_BASE}${item.backdrop_path}`;
+              memoryPosterCache[cacheKey] = imageUrl;
+              if (typeof window !== "undefined") {
+                try {
+                  localStorage.setItem(CACHE_KEY, JSON.stringify(memoryPosterCache));
+                } catch (e) {
+                  console.warn("Could not save updated heal cache to localStorage:", e);
+                }
               }
+              return imageUrl;
             }
-            return imageUrl;
           }
         }
       }
@@ -373,6 +506,11 @@ export function getTMDBPosterSync(title: string, category?: string): string | nu
   
   if (isExcludedFromTMDB(title, category)) {
     return null;
+  }
+
+  const directPoster = getDirectSeriesPoster(title);
+  if (directPoster) {
+    return directPoster;
   }
   
   const cleanTitle = title.trim().toLowerCase();

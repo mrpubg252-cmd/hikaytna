@@ -5,16 +5,16 @@ import Footer from "../components/Footer";
 import CategoryBar from "../components/CategoryBar";
 import SeriesCard from "../components/SeriesCard";
 import BottomNav from "../components/BottomNav";
-import { fetchCategoryPage, getCachedSeriesByCategory, getAllCachedSeries, fetchAllSeries } from "../services/dataService";
+import { fetchCategoryPage, getCachedSeriesByCategory, getAllCachedSeries, fetchAllSeries, extractMainSeriesTitle, isEpisodeItem, isSimilarTitle } from "../services/dataService";
 import { applyPrioritySort, searchQesehLive } from "../services/api";
 import { useAuth } from "../context/AuthContext";
-import { Series } from "../services/firebase";
+import { Series, TopSeriesItem, subscribeTopSeriesOrder } from "../services/firebase";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronLeft, ChevronRight, ArrowLeft, AlertCircle, AlertTriangle, X } from "lucide-react";
 import NoticeAndSupportBubble from "../components/NoticeAndSupportBubble";
 import { fuzzyMatchArabic } from "../lib/utils";
 import { navigateToWatchOrAds } from "../utils/watchNavigation";
-import { getTMDBPosterSync } from "../lib/tmdbHealing";
+import { getTMDBPosterSync, getTMDBPoster } from "../lib/tmdbHealing";
 import {
   initializeEpisodeTracking,
   hasNewEpisode,
@@ -38,6 +38,14 @@ export default function HomeScreen() {
   const query = new URLSearchParams(location.search).get("q");
 
   const [showCheatedAlert, setShowCheatedAlert] = useState(false);
+  const [topSeriesOrder, setTopSeriesOrder] = useState<TopSeriesItem[]>([]);
+
+  useEffect(() => {
+    const unsub = subscribeTopSeriesOrder((items) => {
+      setTopSeriesOrder(items);
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const checkAlert = () => {
@@ -223,8 +231,73 @@ export default function HomeScreen() {
   const { top10VerticalSeries, top10RankMap } = useMemo(() => {
     const list: { series: Series; rank: number }[] = [];
     const map = new Map<string, number>();
-    let rank = 1;
+    
+    // 1. If admin provided a specific order, use it!
+    if (topSeriesOrder && topSeriesOrder.length > 0) {
+      let rank = 1;
+      const isSingleEp = (u?: string) => u ? (u.includes('.html') || u.includes('-episode-') || u.includes('/watch/') || u.includes('/episode/')) : false;
 
+      for (const orderedItem of topSeriesOrder) {
+        let cleanTitle = extractMainSeriesTitle(orderedItem.title) || orderedItem.title;
+        cleanTitle = cleanTitle.replace(/[«»"'"]/g, '').trim();
+        if (cleanTitle === "في" || cleanTitle === "فى" || cleanTitle === "« في »" || cleanTitle === "« فى »") {
+          cleanTitle = "في سابعة عشر";
+        }
+        // Find full series from allSeriesRaw, globalCache or processedSeries matching ID or title
+        let found = allSeriesRaw.find(s => !isEpisodeItem(s) && (
+                      (orderedItem.id && s.id === orderedItem.id) ||
+                      (orderedItem.url && s.url && s.url === orderedItem.url) ||
+                      isSimilarTitle(s.title, orderedItem.title) ||
+                      isSimilarTitle(s.title, cleanTitle)
+                    )) || 
+                    globalCache.find(s => !isEpisodeItem(s) && (
+                      (orderedItem.id && s.id === orderedItem.id) ||
+                      (orderedItem.url && s.url && s.url === orderedItem.url) ||
+                      isSimilarTitle(s.title, orderedItem.title) ||
+                      isSimilarTitle(s.title, cleanTitle)
+                    )) ||
+                    processedSeries.find(s => !isEpisodeItem(s) && (
+                      (orderedItem.id && s.id === orderedItem.id) ||
+                      (orderedItem.url && s.url && s.url === orderedItem.url) ||
+                      isSimilarTitle(s.title, orderedItem.title) ||
+                      isSimilarTitle(s.title, cleanTitle)
+                    ));
+        
+        if (!found) {
+           found = {
+             id: orderedItem.id || `top_${rank}_${cleanTitle.replace(/[^a-zA-Z0-9]/g, '_')}`,
+             title: cleanTitle,
+             image: getTMDBPosterSync(cleanTitle, orderedItem.category) || "https://3iskk.xyz/wp-content/uploads/2026/05/daha-17-dizi.jpg",
+             category: orderedItem.category || "مسلسلات",
+             rating: 0,
+             episodes: [],
+             trailer: "",
+             url: isSingleEp(orderedItem.url) ? "" : (orderedItem.url || "")
+           };
+        } else {
+           let foundTitle = extractMainSeriesTitle(found.title) || found.title;
+           foundTitle = foundTitle.replace(/[«»"'"]/g, '').trim();
+           if (foundTitle === "في" || foundTitle === "فى" || foundTitle === "« في »" || foundTitle === "« فى »") {
+             foundTitle = "في سابعة عشر";
+           }
+           found = {
+             ...found,
+             title: foundTitle,
+             image: getTMDBPosterSync(foundTitle, found.category) || "https://3iskk.xyz/wp-content/uploads/2026/05/daha-17-dizi.jpg",
+             url: (!isSingleEp(found.url) && found.url) ? found.url : ((orderedItem.url && !isSingleEp(orderedItem.url)) ? orderedItem.url : "")
+           };
+        }
+        if (found) {
+          list.push({ series: found, rank });
+          map.set(found.id, rank);
+          rank++;
+        }
+      }
+      return { top10VerticalSeries: list, top10RankMap: map };
+    }
+
+    // 2. Default logic (fallback)
+    let rank = 1;
     for (const item of processedSeries) {
       const cached = getTMDBPosterSync(item.title, item.category);
       const src = cached || item.image || "";
@@ -251,7 +324,39 @@ export default function HomeScreen() {
     }
 
     return { top10VerticalSeries: list, top10RankMap: map };
-  }, [processedSeries]);
+  }, [processedSeries, topSeriesOrder, globalCache]);
+
+  const [topTMDBPosters, setTopTMDBPosters] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!top10VerticalSeries || top10VerticalSeries.length === 0) return;
+    let active = true;
+
+    async function healTopPosters() {
+      const results: Record<string, string> = {};
+      const tasks = top10VerticalSeries.map(async (item) => {
+        const title = item.series.title;
+        const cached = getTMDBPosterSync(title, item.series.category);
+        if (cached) {
+          results[item.series.id] = cached;
+        } else {
+          try {
+            const tmdbImg = await getTMDBPoster(title, item.series.category);
+            if (tmdbImg) {
+              results[item.series.id] = tmdbImg;
+            }
+          } catch (e) {}
+        }
+      });
+      await Promise.allSettled(tasks);
+      if (active && Object.keys(results).length > 0) {
+        setTopTMDBPosters(prev => ({ ...prev, ...results }));
+      }
+    }
+
+    healTopPosters();
+    return () => { active = false; };
+  }, [top10VerticalSeries]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -368,20 +473,32 @@ export default function HomeScreen() {
                 </div>
 
                 <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto pb-4 pt-1 snap-x no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
-                  {top10VerticalSeries.map(({ series, rank }) => (
-                    <div key={`top10-slider-${series.id}`} className="min-w-[135px] sm:min-w-[165px] max-w-[180px] flex-shrink-0 snap-start">
-                      <SeriesCard
-                        item={series}
-                        isTop10={true}
-                        topRank={rank}
-                        forceVertical={true}
-                        onPress={() => {
-                          markSeriesAsRead(series);
-                          navigateToWatchOrAds(navigate, series);
-                        }}
-                      />
-                    </div>
-                  ))}
+                  {top10VerticalSeries.map(({ series, rank }) => {
+                    let finalTitle = series.title;
+                    if (finalTitle === "في" || finalTitle === "فى") {
+                      finalTitle = "في سابعة عشر";
+                    }
+                    const syncPoster = getTMDBPosterSync(finalTitle, series.category);
+                    const displaySeries = {
+                      ...series,
+                      title: finalTitle,
+                      image: syncPoster || topTMDBPosters[series.id] || series.image
+                    };
+                    return (
+                      <div key={`top10-slider-${series.id}`} className="min-w-[135px] sm:min-w-[165px] max-w-[180px] flex-shrink-0 snap-start">
+                        <SeriesCard
+                          item={displaySeries}
+                          isTop10={true}
+                          topRank={rank}
+                          forceVertical={true}
+                          onPress={() => {
+                            markSeriesAsRead(series);
+                            navigateToWatchOrAds(navigate, series);
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

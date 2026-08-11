@@ -985,9 +985,9 @@ async function startServer() {
       // Build target URLs across discover, archives, movies, home, and son-bolumler
       const urlsToScrape: { url: string; cat: string }[] = [];
       
-      // Discover pages (1-10)
+      // Discover pages (1-25)
       urlsToScrape.push({ url: 'https://wwv.qeseh.com/discover/', cat: 'مسلسلات' });
-      for (let i = 2; i <= 10; i++) {
+      for (let i = 2; i <= 25; i++) {
         urlsToScrape.push({ url: `https://wwv.qeseh.com/discover/page/${i}/`, cat: 'مسلسلات' });
       }
 
@@ -1123,6 +1123,99 @@ async function startServer() {
       res.json(responseData);
     } catch (error: any) {
       console.error("Qeseh master catalog fetch error:", error.message);
+      res.json({ status: false, data: [] });
+    }
+  });
+
+  // Dedicated Top Series Discover Endpoint (https://wwv.qeseh.com/discover/)
+  app.get("/api/v1/qeseh/discover", async (req, res) => {
+    try {
+      const cacheKey = "qeseh_discover_catalog_v2";
+      const cached = getCachedData(cacheKey);
+      if (cached) return res.json(cached);
+
+      const urlsToScrape: string[] = ["https://wwv.qeseh.com/discover/"];
+      for (let i = 2; i <= 20; i++) {
+        urlsToScrape.push(`https://wwv.qeseh.com/discover/page/${i}/`);
+      }
+
+      const allMap = new Map<string, any>();
+      const batchSize = 10;
+
+      for (let i = 0; i < urlsToScrape.length; i += batchSize) {
+        const batch = urlsToScrape.slice(i, i + batchSize);
+        await Promise.allSettled(
+          batch.map(async (url) => {
+            try {
+              const response = await axios.get(url, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/115.0',
+                  'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
+                },
+                timeout: 8000
+              });
+              if (!response.data) return;
+              const $ = cheerio.load(response.data);
+
+              $('article.post, .post, .block-post').each((_, el) => {
+                const aTag = $(el).find('a').first().length ? $(el).find('a').first() : $(el);
+                let itemUrl = aTag.attr('href');
+                if (!itemUrl) return;
+
+                if (itemUrl.includes('sayyarh.com')) {
+                  try {
+                    const urlObj = new URL(itemUrl);
+                    const urlParam = urlObj.searchParams.get('url');
+                    if (urlParam) {
+                      const decoded = Buffer.from(urlParam, 'base64').toString('utf-8');
+                      if (decoded.startsWith('http')) itemUrl = decoded;
+                    }
+                  } catch (e) {}
+                }
+
+                let title = aTag.attr('title') || $(el).find('.title').text().trim() || aTag.text().trim();
+                title = title.replace(/\s*-\s*قصة عشق$/i, '')
+                             .replace(/قصة عشق$/i, '')
+                             .trim();
+
+                const styleAttr = $(el).find('.imgSer').attr('style') ||
+                                  $(el).find('.imgBg').attr('style') ||
+                                  $(el).find('.posterThumb .imgBg').attr('style') ||
+                                  $(el).find('.poster .imgSer').attr('style') ||
+                                  $(el).find('.posterThumb').attr('style') || '';
+                let img = '';
+                const match = styleAttr.match(/url\(['"]?([^'"]+)['"]?\)/);
+                if (match) img = match[1];
+                if (!img) img = $(el).find('img').attr('src') || $(el).find('img').attr('data-src') || '';
+
+                if (itemUrl && title) {
+                  const normKey = title.toLowerCase().trim().replace(/[\u064B-\u0652]/g, '').replace(/\s+/g, ' ');
+                  if (!allMap.has(normKey)) {
+                    allMap.set(normKey, {
+                      id: itemUrl.replace(/[^a-zA-Z0-9]/g, '_'),
+                      title: title,
+                      url: itemUrl,
+                      image: img || '',
+                      img: img || '',
+                      category: 'مسلسلات',
+                      episodes_count: '0'
+                    });
+                  }
+                }
+              });
+            } catch (e) {}
+          })
+        );
+      }
+
+      const results = Array.from(allMap.values());
+      const responseData = { status: true, data: results, total: results.length };
+      if (results.length > 0) {
+        setCachedData(cacheKey, responseData, 3 * 60 * 60 * 1000); // 3 hour server cache
+      }
+      res.json(responseData);
+    } catch (error: any) {
+      console.error("Qeseh discover catalog error:", error.message);
       res.json({ status: false, data: [] });
     }
   });
@@ -1443,8 +1536,26 @@ async function startServer() {
                            .trim();
 
           const epNum = $(el).find('.episodeNum').text().trim().replace(/\s+/g, ' ');
-          if (epNum && !epTitle.includes(epNum)) {
-            epTitle = `${epTitle} (${epNum})`;
+          const ribbon = $(el).find('.ribbon').text().trim();
+          
+          let parsedNum = "";
+          const numMatch = epNum.match(/(\d+)/) || epTitle.match(/(?:الحلقة|حلقة)\s*(\d+)/i);
+          if (numMatch) {
+            parsedNum = numMatch[1];
+          }
+
+          if (parsedNum) {
+            epTitle = `الحلقة ${parsedNum}`;
+            if (ribbon) {
+              epTitle = `${epTitle} - ${ribbon}`;
+            }
+          } else {
+            if (epNum && !epTitle.includes(epNum)) {
+              epTitle = `${epTitle} (${epNum})`;
+            }
+            if (ribbon) {
+              epTitle = `${epTitle} - ${ribbon}`;
+            }
           }
 
           if (epUrl) {
@@ -2124,7 +2235,9 @@ async function startServer() {
       const { url } = req.query;
       if (!url) return res.status(400).send("Missing URL parameter");
       
-      rawUrl = decodeURIComponent(url as string);
+      const decoded = decodeURIComponent(url as string);
+      rawUrl = decryptValue(decoded) || decoded;
+
       if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
         return res.status(400).send("Invalid target URL");
       }
@@ -3373,6 +3486,8 @@ async function startServer() {
   });
 
   // Secure TMDB Query Proxy Endpoint to avoid CORS/Fetch Blocks
+  const TMDB_READ_ACCESS_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI1YWZhZWVhNzIxNmE3NmQ4YzA2MDBlY2YyMTdmNjQyNyIsIm5iZiI6MTc2NTg5OTk5OC43NDg5OTk4LCJzdWIiOiI2OTQxN2VkZTc4OThlZTVlY2YzYzU0OTgiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.28BkynkM5qL_s8muk8Evl4aCLY2zXKATfiiikgs_Nww";
+
   app.get("/api/v1/tmdb/proxy", async (req, res) => {
     const { url } = req.query;
     if (!url || typeof url !== "string") {
@@ -3388,7 +3503,9 @@ async function startServer() {
       const response = await axios.get(url, {
         timeout: 10000,
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36"
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36",
+          "Authorization": `Bearer ${TMDB_READ_ACCESS_TOKEN}`,
+          "Accept": "application/json"
         }
       });
       res.json(response.data);

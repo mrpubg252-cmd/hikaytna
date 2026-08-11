@@ -241,10 +241,43 @@ export async function fetchPlayDetailsFromAPI(episodeUrl: string, signal?: Abort
   return null;
 }
 
+export async function fetchQesehDiscover(): Promise<any[]> {
+  try {
+    const res = await resilientFetch(getApiUrl(API_BASE + "/qeseh/discover"));
+    const data = await res.json();
+    if (data.status && Array.isArray(data.data)) {
+      return data.data.map((s: any) => ({
+        id: s.id || (s.url || s.title).replace(/[^a-zA-Z0-9]/g, '_'),
+        title: s.title,
+        image: s.image || s.img || '',
+        url: s.url || '',
+        category: 'مسلسلات',
+        episodes_count: s.episodes_count || '0'
+      }));
+    }
+  } catch (e) {
+    console.warn("Failed to fetch qeseh discover catalog", e);
+  }
+  return [];
+}
+
 export async function fetchAllFromAPI(isBackground = false) {
   const allMap = new Map<string, any>();
 
-  // 1. First fetch master catalog from Qeseh scraper endpoint
+  // 1. First fetch master discover catalog (https://wwv.qeseh.com/discover/)
+  try {
+    const discoverList = await fetchQesehDiscover();
+    discoverList.forEach((s: any, idx: number) => {
+      if (s.title && !allMap.has(s.title)) {
+        allMap.set(s.title, {
+          ...s,
+          rank: idx
+        });
+      }
+    });
+  } catch (e) {}
+
+  // 2. Next fetch master catalog from Qeseh scraper endpoint
   try {
     const res = await resilientFetch(getApiUrl(API_BASE + "/qeseh/all-series"));
     const data = await res.json();
@@ -258,7 +291,7 @@ export async function fetchAllFromAPI(isBackground = false) {
             url: s.url || '',
             category: s.category || 'مسلسلات',
             episodes_count: s.episodes_count || s.episode || '0',
-            rank: idx
+            rank: idx + 100
           });
         }
       });

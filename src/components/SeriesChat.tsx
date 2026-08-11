@@ -5,12 +5,12 @@ import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, push, set, onValue, remove, get, Database, query, limitToLast } from 'firebase/database';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
-import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play, Pause, Trash2, Video, Pencil, Copy, Plus, UserPlus, Check } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { Send, Users, Sparkles, Smile, Clock, User2, RefreshCw, Mic, Square, Volume2, Wand2, X, MessageSquare, Share2, Camera, Reply, ArrowLeft, LogIn, ShieldAlert, Play, Pause, Trash2, Video, Pencil, Copy, Plus, UserPlus, Check, Search } from 'lucide-react';
+import { cn, fuzzyMatchArabic } from '../lib/utils';
 import { decryptValue } from '../lib/security';
 import { useAuth } from '../context/AuthContext';
 import AuthContainer from './AuthContainer';
-import { fetchAllSeries } from '../services/dataService';
+import { fetchAllSeries, getAllCachedSeries } from '../services/dataService';
 import { getApiUrl } from '../lib/apiConfig';
 import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
 import { firestore } from '../services/firebase';
@@ -89,6 +89,13 @@ interface ChatMessage {
   sceneImage?: string;
   edited?: boolean;
   isSticker?: boolean;
+  sharedSeries?: {
+    id: string;
+    title: string;
+    image: string;
+    category?: string;
+    url?: string;
+  };
 }
 
 function CustomAudioPlayer({ src }: { src: string }) {
@@ -404,11 +411,18 @@ export default function SeriesChat({
   const chatEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState<boolean>(true);
   const [displayLimit, setDisplayLimit] = useState(50);
   const [inputText, setInputText] = useState('');
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [dbError, setDbError] = useState<string>('');
   const [isDbReady, setIsDbReady] = useState(false);
+
+  // Series sharing modal states
+  const [showSeriesShareModal, setShowSeriesShareModal] = useState(false);
+  const [shareSearchQuery, setShareSearchQuery] = useState('');
+  const [shareSeriesList, setShareSeriesList] = useState<any[]>([]);
+  const [loadingShareSeries, setLoadingShareSeries] = useState(false);
 
   // Direct image uploading and lightbox preview states
   const [attachedImageUrl, setAttachedImageUrl] = useState<string | null>(null);
@@ -925,6 +939,12 @@ export default function SeriesChat({
     purgeExpiredDocs(safeSeriesId);
   }, [seriesId]);
 
+  // Reset displayLimit and loading state when changing series
+  useEffect(() => {
+    setIsLoadingMessages(true);
+    setDisplayLimit(50);
+  }, [seriesId]);
+
   // Firebase Live Sync & Cleanup
   useEffect(() => {
     if (!isDbReady || !db) return;
@@ -935,6 +955,7 @@ export default function SeriesChat({
     const chatQuery = query(messagesRef, limitToLast(displayLimit));
 
     const unsubscribe = onValue(chatQuery, (snapshot) => {
+      setIsLoadingMessages(false);
       const data = snapshot.val();
       if (!data) {
         setMessages([]);
@@ -964,7 +985,8 @@ export default function SeriesChat({
             createdAt: timestamp,
             replyTo: val.replyTo,
             sceneTime: val.sceneTime,
-            sceneImage: val.sceneImage
+            sceneImage: val.sceneImage,
+            sharedSeries: val.sharedSeries
           });
         }
       });
@@ -974,6 +996,7 @@ export default function SeriesChat({
       setMessages(loadedMessages);
       setDbError(''); // Clear error if reading is successful
     }, (error) => {
+      setIsLoadingMessages(false);
       console.error("Firebase Read Error:", error);
       setDbError("عذراً، جاري انتسابك مع قواعد فايربيس. يرجى التأكد من تفعيل صلاحيات الكتابة والقراءة (Rules: .read=true, .write=true) في لوحة Firebase Realtime Database.");
     });
@@ -988,11 +1011,6 @@ export default function SeriesChat({
   const lastMsgIdRef = useRef<string | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const lastMessageId = messages[messages.length - 1]?.id;
-
-  // Reset displayLimit to 50 when changing series
-  useEffect(() => {
-    setDisplayLimit(50);
-  }, [seriesId]);
 
   useEffect(() => {
     if (prevSeriesIdRef.current !== seriesId) {
@@ -1306,6 +1324,61 @@ export default function SeriesChat({
     } catch (error) {
       console.error("Failed to send message to RTDB:", error);
       setDbError("فشل إرسال التعليق!");
+    }
+  };
+
+  const openSeriesSharePicker = async () => {
+    setShowSeriesShareModal(true);
+    if (shareSeriesList.length === 0) {
+      setLoadingShareSeries(true);
+      try {
+        const cached = getAllCachedSeries();
+        if (cached && cached.length > 0) {
+          setShareSeriesList(cached);
+        } else {
+          const list = await fetchAllSeries();
+          setShareSeriesList(list || []);
+        }
+      } catch (err) {
+        console.error("Failed to load series for chat share:", err);
+      } finally {
+        setLoadingShareSeries(false);
+      }
+    }
+  };
+
+  const handleShareSeriesToChat = async (s: any) => {
+    setShowSeriesShareModal(false);
+    setShareSearchQuery('');
+    if (!isDbReady || !db) return;
+
+    const safeSeriesId = (seriesId || 'default').replace(/[\.\$\#\[\]\/\s]/g, '_');
+    const messagesRef = ref(db, `chats/${safeSeriesId}`);
+    const newMsgRef = push(messagesRef);
+
+    const msgData: any = {
+      userId: localStorage.getItem('guest_chat_pid') || 'guest_temp',
+      userName: userName,
+      userAvatar: userAvatar,
+      userAvatarPosV: localStorage.getItem('user_avatar_pos_v') || '50',
+      userAvatarPosH: localStorage.getItem('user_avatar_pos_h') || '50',
+      userAvatarZoom: localStorage.getItem('user_avatar_zoom') || '100',
+      userTemplate: localStorage.getItem('user_profile_template') || '',
+      text: `أنصحكم بمشاهدة مسلسل ${s.title} 🍿`,
+      createdAt: Date.now(),
+      sharedSeries: {
+        id: s.id,
+        title: s.title,
+        image: s.image || '',
+        category: s.category || 'مسلسلات',
+        url: s.url || ''
+      }
+    };
+
+    try {
+      await set(newMsgRef, msgData);
+    } catch (err) {
+      console.error("Failed to share series in chat:", err);
     }
   };
 
@@ -1781,7 +1854,7 @@ export default function SeriesChat({
   };
 
   return (
-    <div className="w-full bg-[#0d0d10] sm:rounded-3xl rounded-none border-0 sm:border border-white/5 overflow-hidden flex flex-col h-full shadow-2xl relative font-sans">
+    <div className="w-full bg-[#0d0d10] sm:rounded-3xl rounded-none border-0 sm:border border-white/5 overflow-hidden flex flex-col h-full shadow-2xl relative font-sans min-h-0">
       {/* Toast Notification for successful copy */}
       <AnimatePresence>
         {copiedFeedback && (
@@ -1800,7 +1873,7 @@ export default function SeriesChat({
       </AnimatePresence>
 
       {/* Header */}
-      <div className="bg-[#121215] border-b border-white/5 p-3 flex items-center justify-between z-10">
+      <div className="bg-[#121215] border-b border-white/5 px-3 py-2 sm:py-3 flex items-center justify-between z-10 shrink-0">
         <div className="flex items-center gap-2">
           {onClose && (
             <button 
@@ -1811,7 +1884,7 @@ export default function SeriesChat({
             </button>
           )}
           <div className="text-right pr-1">
-            <h3 className="text-[11px] font-black text-white flex items-center gap-1.5 justify-end">
+            <h3 className="text-[11px] sm:text-xs font-black text-white flex items-center gap-1.5 justify-end">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               {seriesTitle}
             </h3>
@@ -1837,7 +1910,7 @@ export default function SeriesChat({
       </div>
 
       {/* Main Container */}
-      <div className="flex-1 relative overflow-hidden flex flex-col bg-zinc-950">
+      <div className="flex-1 relative overflow-hidden flex flex-col bg-zinc-950 min-h-0 h-full">
         
         {/* Profile Dialog for seamless fallback signup/signin */}
         <AnimatePresence>
@@ -1911,7 +1984,7 @@ export default function SeriesChat({
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="px-4 pt-4 pb-0 z-40"
+              className="px-4 pt-4 pb-0 z-40 shrink-0"
             >
               <div className="bg-amber-500/10 border border-amber-500/20 text-amber-500 p-2.5 rounded-xl text-[10px] text-center font-bold">
                 حكيم عليه ضغط الان يرجى الانتضار حتى يرد عليك حكيم
@@ -1924,14 +1997,26 @@ export default function SeriesChat({
         <div 
           ref={messagesContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar relative"
+          className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 no-scrollbar relative min-h-0"
         >
-          {messages.length === 0 && (
-            <div className="h-full flex flex-col items-center justify-center text-zinc-500 gap-2 opacity-50">
-              <MessageSquare className="w-8 h-8" />
-              <p className="text-xs font-bold">كن أول من يكتب في الشات!</p>
+          {isLoadingMessages ? (
+            <div className="h-full min-h-[120px] flex flex-col items-center justify-center text-zinc-400 gap-2 py-6 select-none">
+              <div className="relative flex items-center justify-center">
+                <div className="w-8 h-8 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+                <Sparkles className="w-3.5 h-3.5 text-primary absolute animate-pulse" />
+              </div>
+              <div className="text-center">
+                <p className="text-xs font-black text-zinc-200">جاري تحميل التعليقات...</p>
+                <p className="text-[10px] text-zinc-500 mt-0.5">يرجى الانتظار لحظات بسيطة 🍿</p>
+              </div>
             </div>
-          )}
+          ) : messages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-zinc-500 gap-2 opacity-60 my-10">
+              <MessageSquare className="w-8 h-8 text-primary/60 animate-bounce" />
+              <p className="text-xs font-bold text-zinc-300">كن أول من يكتب في الشات!</p>
+              <p className="text-[10px] text-zinc-500">شارِك انطباعك أو سؤالك حول المسلسل مع الجميع</p>
+            </div>
+          ) : null}
 
           {/* Premium Loader for previous messages if there are remaining messages */}
           {messages.length > 0 && messages.length === displayLimit && (
@@ -2189,6 +2274,52 @@ export default function SeriesChat({
                       </button>
                     )}
 
+                    {msg.sharedSeries && (
+                      <div 
+                        className="mt-2.5 overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-b from-zinc-900 via-zinc-950 to-black p-3 shadow-2xl transition-all hover:border-amber-400 group/seriesCard"
+                        dir="rtl"
+                      >
+                        <div className="flex gap-3 items-center">
+                          <div className="relative w-16 h-20 rounded-xl overflow-hidden shrink-0 border border-white/10 shadow-lg bg-zinc-900">
+                            <img 
+                              src={getProxiedUrl(msg.sharedSeries.image) || '/placeholder-series.jpg'} 
+                              alt={msg.sharedSeries.title} 
+                              className="w-full h-full object-cover group-hover/seriesCard:scale-105 transition-transform duration-500" 
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                            <span className="absolute bottom-1 right-1 bg-amber-500 text-black font-black text-[8px] px-1.5 py-0.5 rounded-md">
+                              {msg.sharedSeries.category || 'مسلسلات'}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0 text-right flex flex-col justify-between py-0.5">
+                            <div>
+                              <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full mb-1">
+                                <Sparkles className="w-2.5 h-2.5" />
+                                مسلسل مقترح
+                              </span>
+                              <h4 className="text-xs font-black text-white truncate leading-snug">
+                                {msg.sharedSeries.title}
+                              </h4>
+                            </div>
+                            
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onClose) onClose();
+                                window.location.href = `/watch/${msg.sharedSeries.id}`;
+                              }}
+                              className="mt-2 flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-black font-black text-[10px] py-1.5 px-3 rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
+                            >
+                              <Play className="w-3 h-3 fill-current text-black" />
+                              <span>مشاهدة المسلسل الآن 🍿</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                   </div>
                 </div>
               </motion.div>
@@ -2291,6 +2422,15 @@ export default function SeriesChat({
                   <div className="absolute inset-0 bg-gradient-to-r from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
               )}
+
+              <button 
+                type="button"
+                onClick={openSeriesSharePicker} 
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-black transition-all shrink-0 border bg-gradient-to-r from-amber-500/15 via-rose-500/15 to-primary/15 text-amber-300 border-amber-500/30 hover:border-amber-400 hover:scale-[1.02] active:scale-95 whitespace-nowrap shadow-sm"
+              >
+                <Share2 className="w-3.5 h-3.5 text-amber-400" />
+                <span>مشاركة مسلسل 🍿</span>
+              </button>
 
               <button 
                 type="button"
@@ -3137,6 +3277,125 @@ export default function SeriesChat({
                 )}
               </div>
 
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Series Share Picker Modal */}
+      {showSeriesShareModal && createPortal(
+        <AnimatePresence>
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 font-sans"
+            onClick={() => setShowSeriesShareModal(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#121218] border border-white/10 rounded-3xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
+              dir="rtl"
+            >
+              {/* Header */}
+              <div className="p-4 border-b border-white/5 flex items-center justify-between bg-zinc-950/60">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                    <Share2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white">مشاركة مسلسل في الشات 🍿</h3>
+                    <p className="text-[10px] text-zinc-400">اختر مسلسلاً لإرفاقه وتوصية المتابعين به</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowSeriesShareModal(false)}
+                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-all"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Search Bar */}
+              <div className="p-3 bg-zinc-950/40 border-b border-white/5">
+                <div className="relative flex items-center">
+                  <Search className="w-4 h-4 text-zinc-400 absolute right-3 pointer-events-none" />
+                  <input 
+                    type="text"
+                    value={shareSearchQuery}
+                    onChange={(e) => setShareSearchQuery(e.target.value)}
+                    placeholder="ابحث عن اسم المسلسل الذي تريد مشاركته..."
+                    className="w-full bg-zinc-900 border border-white/10 rounded-2xl py-2.5 pr-9 pl-4 text-xs font-bold text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-500/50 transition-all"
+                    autoFocus
+                  />
+                  {shareSearchQuery && (
+                    <button 
+                      onClick={() => setShareSearchQuery('')}
+                      className="absolute left-3 text-zinc-500 hover:text-white p-1"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Series List */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-2 no-scrollbar min-h-[250px]">
+                {loadingShareSeries ? (
+                  <div className="h-48 flex flex-col items-center justify-center gap-2 text-zinc-400">
+                    <div className="w-8 h-8 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
+                    <p className="text-xs font-bold">جاري تحميل قائمة المسلسلات...</p>
+                  </div>
+                ) : (() => {
+                  const query = shareSearchQuery.trim().toLowerCase();
+                  const filtered = shareSeriesList.filter(s => {
+                    if (!query) return true;
+                    return (s.title && s.title.toLowerCase().includes(query)) ||
+                           fuzzyMatchArabic(s.title || '', query);
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="h-48 flex flex-col items-center justify-center gap-2 text-zinc-500">
+                        <MessageSquare className="w-8 h-8 opacity-40" />
+                        <p className="text-xs font-bold">لم نجد أية مسلسلات تطابق البحث</p>
+                      </div>
+                    );
+                  }
+
+                  return filtered.slice(0, 40).map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => handleShareSeriesToChat(s)}
+                      className="w-full bg-zinc-900/60 hover:bg-amber-500/10 border border-white/5 hover:border-amber-500/30 p-2.5 rounded-2xl flex items-center gap-3 transition-all group/item text-right"
+                    >
+                      <div className="w-12 h-16 rounded-xl overflow-hidden bg-black shrink-0 border border-white/10 relative">
+                        <img 
+                          src={getProxiedUrl(s.image) || '/placeholder-series.jpg'} 
+                          alt={s.title} 
+                          className="w-full h-full object-cover group-hover/item:scale-110 transition-transform duration-300"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-xs font-black text-white truncate group-hover/item:text-amber-400 transition-colors">
+                          {s.title}
+                        </h4>
+                        <span className="inline-block text-[9px] font-bold text-zinc-400 bg-white/5 px-2 py-0.5 rounded-md mt-1">
+                          {s.category || 'مسلسلات'}
+                        </span>
+                      </div>
+                      <span className="px-3 py-1.5 bg-amber-500 text-black text-[10px] font-black rounded-xl opacity-90 group-hover/item:opacity-100 group-hover/item:scale-105 transition-all shrink-0">
+                        مشاركة 🍿
+                      </span>
+                    </button>
+                  ));
+                })()}
+              </div>
             </motion.div>
           </motion.div>
         </AnimatePresence>,

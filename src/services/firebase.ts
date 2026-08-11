@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getDatabase, ref, get, set, onValue } from 'firebase/database';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, getDocs } from 'firebase/firestore';
 import appletConfig from '../../firebase-applet-config.json';
 
 const config = appletConfig as any;
@@ -57,26 +57,52 @@ export interface TopSeriesItem {
 }
 
 export async function fetchAllFromFirebase() {
+  const resultList: Series[] = [];
   try {
     const snapshot = await get(ref(db, 'series'));
     const data = snapshot.val();
-    if (!data) return [];
-    
-    return Object.entries(data)
-      .filter(([key, value]: [string, any]) => value && (value.title || value.trailer || value.episodes)) 
-      .map(([key, value]: [string, any]) => ({
-        id: key,
-        title: value.title || '',
-        image: value.image || '',
-        category: value.category || '',
-        rating: value.rating || 0,
-        episodes: Array.isArray(value.episodes) ? value.episodes : Object.values(value.episodes || {}),
-        trailer: value.trailer || ''
-      })) as Series[];
+    if (data) {
+      Object.entries(data)
+        .filter(([key, value]: [string, any]) => value && (value.title || value.trailer || value.episodes)) 
+        .forEach(([key, value]: [string, any]) => {
+          resultList.push({
+            id: key,
+            title: value.title || '',
+            image: value.image || '',
+            category: value.category || '',
+            rating: value.rating || 0,
+            episodes: Array.isArray(value.episodes) ? value.episodes : Object.values(value.episodes || {}),
+            trailer: value.trailer || '',
+            url: value.url || ''
+          } as Series);
+        });
+    }
   } catch (e) {
-    console.warn("Failed fetching series from Firebase:", e);
-    return [];
+    console.warn("Failed fetching series from RTDB:", e);
   }
+
+  try {
+    const snap = await getDocs(collection(firestore, "custom_series"));
+    snap.forEach((d) => {
+      const value = d.data();
+      if (value && value.title) {
+        resultList.push({
+          id: d.id,
+          title: value.title,
+          image: value.image || '',
+          category: value.category || 'مسلسلات',
+          rating: value.rating || 9.0,
+          episodes: Array.isArray(value.episodes) ? value.episodes : [],
+          trailer: value.trailer || '',
+          url: value.url || ''
+        } as Series);
+      }
+    });
+  } catch (e) {
+    console.warn("Failed fetching custom_series from Firestore:", e);
+  }
+
+  return resultList;
 }
 
 // Top Series Order Online Sync (Realtime Database + Firestore dual channel)

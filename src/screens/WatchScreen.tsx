@@ -4,8 +4,8 @@ import { ChevronRight, Share2, Heart, History, MessageSquare, X, ChevronDown, Ch
 import EpisodeGrid, { formatEpisodeTitle } from '../components/EpisodeGrid';
 import CustomPlayer from '../components/CustomPlayer';
 import Header from '../components/Header';
-import { fetchEpisodesFromAPI, fetchPlayUrlFromAPI, fetchPlayDetailsFromAPI, fetchSeriesDetailsFromTMDB, fetchPersonCreditsFromTMDB, getProxiedImageUrl } from '../services/api';
-import { fetchAllSeries } from '../services/dataService';
+import { fetchEpisodesFromAPI, fetchPlayUrlFromAPI, fetchPlayDetailsFromAPI, fetchSeriesDetailsFromTMDB, fetchPersonCreditsFromTMDB, getProxiedImageUrl, searchQesehLive } from '../services/api';
+import { fetchAllSeries, getAllCachedSeries, isEpisodeItem, extractMainSeriesTitle, isSimilarTitle } from '../services/dataService';
 import { Episode, Series } from '../services/firebase';
 import { db } from '../services/firebase';
 import { ref, set, onValue } from 'firebase/database';
@@ -136,7 +136,12 @@ export default function WatchScreen() {
               );
             });
             if (found) {
-              setSeries(found);
+              setSeries(prev => {
+                if (prev && prev.url && !prev.url.includes('.html') && !prev.url.includes('-episode-')) {
+                  return prev;
+                }
+                return found;
+              });
               sessionStorage.setItem('backup_watching_series', JSON.stringify(found));
             } else {
               navigate('/', { replace: true });
@@ -772,11 +777,22 @@ export default function WatchScreen() {
     };
   }, [isMaximized]);
 
+  const loadedSeriesKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!series) {
       navigate('/');
       return;
     }
+
+    const cleanTitle = extractMainSeriesTitle(series.title) || series.title;
+
+    // Prevent re-triggering episode wipe if we already loaded episodes for the exact same series title
+    if (loadedSeriesKeyRef.current === cleanTitle && episodes.length > 0) {
+      return;
+    }
+    loadedSeriesKeyRef.current = cleanTitle;
+
     const controller = new AbortController();
     
     // Deeply reset states to guarantee instant transition for new series from the AI drawer
@@ -792,7 +808,7 @@ export default function WatchScreen() {
     return () => {
       controller.abort("Series changed or watch unmounted");
     };
-  }, [series?.id]);
+  }, [series?.id, series?.title]);
 
   // High-performance background prefetching disabled for TV browsers
   useEffect(() => {
@@ -800,18 +816,77 @@ export default function WatchScreen() {
   }, [currentEpisode, episodes]);
   
   async function loadEpisodes(signal?: AbortSignal) {
+    let activeUrl = series.url;
+    const cleanTitle = extractMainSeriesTitle(series.title) || series.title;
+
+    const isSingleEpisodeUrl = (url?: string) => {
+      if (!url) return true;
+      return url.includes('-episode-') || url.includes('.html') || url.includes('/watch/') || url.includes('/episode/');
+    };
+
+    // If activeUrl is missing or points to a single episode page, attempt parent resolution from cache first
+    if (!activeUrl || isSingleEpisodeUrl(activeUrl) || isEpisodeItem(series)) {
+      let cached = getAllCachedSeries();
+      if (!cached || cached.length === 0) {
+        cached = await fetchAllSeries(false);
+      }
+      const parent = cached.find(s => !isEpisodeItem(s) && s.url && !isSingleEpisodeUrl(s.url) && (s.title === cleanTitle || isSimilarTitle(s.title, cleanTitle)));
+      if (parent && parent.url) {
+        activeUrl = parent.url;
+      }
+    }
+
     let eps: Episode[] = [];
     
-    if (series.url) {
-      eps = await fetchEpisodesFromAPI(series.url, signal);
+    if (activeUrl) {
+      eps = await fetchEpisodesFromAPI(activeUrl, signal);
+    }
+
+    if (signal?.aborted) return;
+
+    // Fallback Step 1: If eps returned 0 or 1 episode, search local cache & discover for parent series URL
+    if (eps.length <= 1) {
+      let cached = getAllCachedSeries();
+      if (!cached || cached.length === 0) {
+        cached = await fetchAllSeries(false);
+      }
+      const parent = cached.find(s => !isEpisodeItem(s) && s.url && !isSingleEpisodeUrl(s.url) && (s.title === cleanTitle || isSimilarTitle(s.title, cleanTitle) || isSimilarTitle(s.title, series.title)));
+      if (parent && parent.url) {
+        const parentEps = await fetchEpisodesFromAPI(parent.url, signal);
+        if (parentEps && parentEps.length > 1) {
+          eps = parentEps;
+          activeUrl = parent.url;
+        }
+      }
+    }
+
+    if (signal?.aborted) return;
+
+    // Fallback Step 2: Perform Live Qeseh Search for cleanTitle if eps is still <= 1
+    if (eps.length <= 1 && cleanTitle) {
+      try {
+        const searchResults = await searchQesehLive(cleanTitle);
+        if (searchResults && searchResults.length > 0) {
+          const matchedSeries = searchResults.find((s: any) => !isEpisodeItem(s) && s.url && !isSingleEpisodeUrl(s.url)) || searchResults[0];
+          if (matchedSeries && matchedSeries.url) {
+            const liveEps = await fetchEpisodesFromAPI(matchedSeries.url, signal);
+            if (liveEps && liveEps.length > 0) {
+              eps = liveEps;
+              activeUrl = matchedSeries.url;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Live search episode fallback error:", err);
+      }
     }
     
-    if (eps.length === 0 && series.episodes) {
-      eps = Array.isArray(series.episodes) 
-        ? series.episodes 
-        : Object.values(series.episodes);
+    if ((eps.length === 0 || eps.length === 1) && series.episodes && Array.isArray(series.episodes) && series.episodes.length > 1) {
+      eps = series.episodes;
     }
     
+    if (signal?.aborted) return;
+
     // Filter duplicates if not "حلم اشرف" or "ليلى_مدبلج"
     let finalEps = eps;
     if (series.title !== "حلم اشرف" && series.title !== "ليلى_مدبلج") {
@@ -848,7 +923,13 @@ export default function WatchScreen() {
       return a.title.localeCompare(b.title);
     });
     
-    setEpisodes(finalEps);
+    // Only set episodes if we found episodes OR if we had none
+    if (finalEps.length > 0) {
+      setEpisodes(finalEps);
+    } else {
+      setEpisodes(prev => prev.length > 0 ? prev : finalEps);
+    }
+
     if (finalEps.length > 0) {
       // Respect dynamic route episodeIndex first
       let indexToPlay = 0;
@@ -867,11 +948,13 @@ export default function WatchScreen() {
         }
       }
       const episodeToPlay = finalEps[indexToPlay] || finalEps[0];
-      if (episodeToPlay) {
+      if (episodeToPlay && !signal?.aborted) {
         playEpisode(episodeToPlay, indexToPlay, false);
       }
     }
-    setLoading(false);
+    if (!signal?.aborted) {
+      setLoading(false);
+    }
   }
   
   async function getSecuredUrl(rawUrl: string, signal?: AbortSignal) {

@@ -32,17 +32,24 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
   }, [_hasNew, clicked, item, onPress]);
 
   const [currentSrc, setCurrentSrc] = React.useState<string>(() => {
-    const cached = getTMDBPosterSync(item.title, item.category);
-    if (cached) return cached;
+    if (isTop10) {
+      const cached = getTMDBPosterSync(item.title, item.category);
+      if (cached) return getProxiedImageUrl(cached);
+    }
     return getProxiedImageUrl(item.image) || "";
   });
   const [imageLoaded, setImageLoaded] = React.useState(false);
 
   const [isVertical, setIsVertical] = React.useState<boolean>(() => {
     if (forceVertical || item.isVertical) return true;
-    const cached = getTMDBPosterSync(item.title, item.category);
-    const src = cached || item.image || '';
-    if (src.includes('image.tmdb.org') || src.includes('/t/p/') || src.includes('poster')) return true;
+    if (isTop10) {
+      const cached = getTMDBPosterSync(item.title, item.category);
+      const src = cached || item.image || '';
+      if (src.includes('image.tmdb.org') || src.includes('/t/p/') || src.includes('poster')) return true;
+    } else {
+      const src = item.image || '';
+      if (src.includes('image.tmdb.org') || src.includes('/t/p/') || src.includes('poster')) return true;
+    }
     return false;
   });
 
@@ -57,10 +64,12 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
   }, [currentSrc, forceVertical, item.isVertical]);
 
   React.useEffect(() => {
-    const cached = getTMDBPosterSync(item.title, item.category);
-    if (cached) {
-      setCurrentSrc(cached);
-      return;
+    if (isTop10) {
+      const cached = getTMDBPosterSync(item.title, item.category);
+      if (cached) {
+        setCurrentSrc(getProxiedImageUrl(cached));
+        return;
+      }
     }
 
     const isPlaceholder = !item.image || 
@@ -68,20 +77,19 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
       item.image.includes('default_image') || 
       item.image.includes('thumbnail.jpg') || 
       item.image.includes('logo.png') ||
-      item.image.includes('3iskk') ||
       item.image.includes('video_thumb');
 
-    if (isPlaceholder) {
+    if (isPlaceholder && isTop10) {
       getTMDBPoster(item.title, item.category).then((healedUrl) => {
         if (healedUrl) {
-          setCurrentSrc(healedUrl);
+          setCurrentSrc(getProxiedImageUrl(healedUrl));
           setIsVertical(true);
         }
       });
     } else {
-      setCurrentSrc(item.image);
+      setCurrentSrc(getProxiedImageUrl(item.image) || (isPlaceholder ? "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop" : ""));
     }
-  }, [item.title, item.image, item.category]);
+  }, [item.title, item.image, item.category, isTop10]);
 
   const displayRating = React.useMemo(() => {
     if (item.rating && item.rating > 0) {
@@ -148,14 +156,18 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
             }}
             onError={() => {
               if (currentSrc && currentSrc.includes('image.tmdb.org')) return;
-              getTMDBPoster(item.title, item.category).then((healedUrl) => {
-                if (healedUrl) {
-                  setCurrentSrc(healedUrl);
-                  setIsVertical(true);
-                } else {
-                  setCurrentSrc("https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
-                }
-              });
+              if (isTop10) {
+                getTMDBPoster(item.title, item.category).then((healedUrl) => {
+                  if (healedUrl) {
+                    setCurrentSrc(getProxiedImageUrl(healedUrl));
+                    setIsVertical(true);
+                  } else {
+                    setCurrentSrc("https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
+                  }
+                });
+              } else {
+                setCurrentSrc("https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
+              }
             }}
           />
 
@@ -256,14 +268,18 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
           }}
           onError={() => {
             if (currentSrc && currentSrc.includes('image.tmdb.org')) return;
-            getTMDBPoster(item.title, item.category).then((healedUrl) => {
-              if (healedUrl) {
-                setCurrentSrc(healedUrl);
-                setIsVertical(true);
-              } else {
-                setCurrentSrc("https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
-              }
-            });
+            if (isTop10) {
+              getTMDBPoster(item.title, item.category).then((healedUrl) => {
+                if (healedUrl) {
+                  setCurrentSrc(getProxiedImageUrl(healedUrl));
+                  setIsVertical(true);
+                } else {
+                  setCurrentSrc("https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
+                }
+              });
+            } else {
+              setCurrentSrc("https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
+            }
           }}
         />
 

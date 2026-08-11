@@ -5,15 +5,62 @@ import { fetchCategoryPageFromAPI } from "./api";
 import { getApiUrl } from "../lib/apiConfig";
 import { ref, onValue } from "firebase/database";
 
-function isSimilarTitle(a: string, b: string) {
-  if (!a || !b) return false;
-  const cleanA = a.toLowerCase().trim().replace(/^ال/g, "");
-  const cleanB = b.toLowerCase().trim().replace(/^ال/g, "");
+export function normalizeArabicTitle(title: string): string {
+  if (!title) return "";
+  let clean = title
+    .toLowerCase()
+    .trim()
+    .replace(/[«»"'"]/g, '')
+    .replace(/\s*(الحلقة|حلقة)\s*\d+.*$/gi, '')
+    .replace(/\s*-\s*الحلقة.*$/gi, '')
+    .replace(/^(المسلسل التركي|المسلسل الكوري|المسلسل المكسيكي|المسلسل الاسيوي|المسلسل|الفيلم|البرنامج|مسلسل|برنامج|فيلم)\s+/gi, '')
+    .trim();
 
-  if (cleanA === cleanB) return true;
-  if (cleanA.includes(cleanB) || cleanB.includes(cleanA)) return true;
+  return clean
+    .replace(/[أإآا]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/^ال/g, "")
+    .replace(/[^a-z0-9\u0600-\u06FF]/gi, "");
+}
+
+export function isSimilarTitle(a: string, b: string) {
+  if (!a || !b) return false;
+  const normA = normalizeArabicTitle(a);
+  const normB = normalizeArabicTitle(b);
+  if (!normA || !normB) return false;
+
+  if (normA === normB) return true;
+
+  // Prevent short titles (<= 4 chars like "في" or "حب" or "عمر") from falsely matching longer titles via substring
+  if (normA.length <= 4 || normB.length <= 4) {
+    return false;
+  }
+
+  if (normA.includes(normB) || normB.includes(normA)) return true;
 
   return false;
+}
+
+export function isEpisodeItem(item: { title?: string; category?: string; url?: string; fromEpisode?: boolean }): boolean {
+  if (!item) return false;
+  if (item.fromEpisode) return true;
+  if (item.category === 'آخر الحلقات' || item.category === 'أحدث الحلقات' || item.category === 'الحلقات') return true;
+  if (item.title && /(?:الحلقة|حلقة)\s*\d+/i.test(item.title)) return true;
+  if (item.url && (item.url.includes('-episode-') || item.url.includes('.html') || item.url.includes('/watch/') || item.url.includes('/episode/'))) return true;
+  return false;
+}
+
+export function extractMainSeriesTitle(title: string): string {
+  if (!title) return "";
+  let clean = title
+    .replace(/[«»"'"]/g, '')
+    .replace(/\s*(الحلقة|حلقة)\s*\d+.*$/i, '')
+    .replace(/\s*-\s*الحلقة.*$/i, '')
+    .replace(/^(المسلسل التركي|المسلسل الكوري|المسلسل المكسيكي|المسلسل الاسيوي|المسلسل|الفيلم|البرنامج|مسلسل|برنامج|فيلم)\s+/gi, '')
+    .trim();
+
+  return clean;
 }
 
 function fixImageUrl(url: string, title: string = "") {
@@ -24,6 +71,8 @@ function fixImageUrl(url: string, title: string = "") {
     const normTitle = title.toLowerCase();
     if (normTitle.includes("في سابعة عشر") || normTitle.includes("في السابعة عشر")) {
       finalUrl = "https://3iskk.xyz/wp-content/uploads/2026/05/daha-17-dizi.jpg";
+    } else if (normTitle.includes("حلم اشرف") || normTitle.includes("حلم أشرف") || normTitle.includes("حلم الشرف")) {
+      finalUrl = "https://3iskk.xyz/wp-content/uploads/2025/03/Esref-Ruya.jpg";
     } else if (normTitle.includes("هذا بحر سوف يفيض") || normTitle.includes("هذا البحر سوف يفيض")) {
       finalUrl = "https://3iskk.xyz/wp-content/uploads/2025/10/uHIOTJXN9nNTc51WyunL43Fvge3.jpg";
     } else if (
@@ -116,23 +165,27 @@ async function doFetchAndMerge(isBackground = false): Promise<Series[]> {
 
   // Merge API and Firebase
   apiData.forEach((s) => {
+    if (isEpisodeItem(s)) return;
     const key = getNormalizedTitle(s.title);
     if (key) mergedMap.set(key, s);
   });
 
+  const isSingleEp = (u?: string) => u ? (u.includes('.html') || u.includes('-episode-') || u.includes('/watch/') || u.includes('/episode/')) : false;
+
   firebaseData.forEach((s) => {
-    if (!s) return;
+    if (!s || isEpisodeItem(s)) return;
     const key = getNormalizedTitle(s.title);
     const existing = key ? mergedMap.get(key) : null;
     if (existing) {
       mergedMap.set(key, {
         ...existing,
         ...s,
-        id: s.id || existing.id,
+        id: (s.id && !isSingleEp(s.id)) ? s.id : existing.id,
         title: s.title || existing.title,
         image: s.image || existing.image,
         category: s.category || existing.category,
-        episodes: s.episodes || existing.episodes
+        url: (s.url && !isSingleEp(s.url)) ? s.url : (existing.url || s.url),
+        episodes: (existing.episodes && existing.episodes.length > 0) ? existing.episodes : (s.episodes || [])
       });
     } else if (key) {
       mergedMap.set(key, s);
