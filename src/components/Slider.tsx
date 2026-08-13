@@ -4,8 +4,7 @@ import { Volume2, VolumeX, Play, Settings, Search, Check, X, Film, Trash } from 
 import { useNavigate } from 'react-router-dom';
 import { Series, db } from '../services/firebase';
 import { ref, set } from 'firebase/database';
-import { sliderSelections, syncSliderSelections } from '../services/api';
-import { getTMDBPoster, getTMDBPosterSync } from '../lib/tmdbHealing';
+import { sliderSelections, syncSliderSelections, getProxiedImageUrl } from '../services/api';
 import { updateCachedSeriesTrailer } from '../services/dataService';
 import { navigateToWatchOrAds } from '../utils/watchNavigation';
 
@@ -15,41 +14,7 @@ interface SliderBackgroundImageProps {
 }
 
 const SliderBackgroundImage: React.FC<SliderBackgroundImageProps> = ({ series, isVideoActive }) => {
-  const [src, setSrc] = useState<string>(() => {
-    if (series.title && series.title.includes("تايتانك")) {
-      return "https://c.top4top.io/p_38225vps71.jpg";
-    }
-    const cached = getTMDBPosterSync(series.title, series.category);
-    if (cached) return cached;
-    return series.image || "";
-  });
-
-  useEffect(() => {
-    if (series.title && series.title.includes("تايتانك")) {
-      setSrc("https://c.top4top.io/p_38225vps71.jpg");
-      return;
-    }
-    const cached = getTMDBPosterSync(series.title, series.category);
-    if (cached) {
-      setSrc(cached);
-      return;
-    }
-
-    const isPlaceholder = !series.image || 
-      series.image.includes('images.unsplash.com') || 
-      series.image.includes('default_image') || 
-      series.image.includes('thumbnail.jpg') || 
-      series.image.includes('logo.png') ||
-      series.image.includes('video_thumb');
-
-    if (isPlaceholder) {
-      getTMDBPoster(series.title, series.category).then((healed) => {
-        if (healed) setSrc(healed);
-      });
-    } else {
-      setSrc(series.image);
-    }
-  }, [series]);
+  const src = getProxiedImageUrl(series.image);
 
   return (
     <motion.img 
@@ -61,12 +26,8 @@ const SliderBackgroundImage: React.FC<SliderBackgroundImageProps> = ({ series, i
       transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
       referrerPolicy="no-referrer"
       className="w-full h-full object-fill will-change-opacity"
-      onError={() => {
-        if (src && src.includes('image.tmdb.org')) return;
-        getTMDBPoster(series.title, series.category).then((healed) => {
-          if (healed) setSrc(healed);
-          else setSrc('https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png');
-        });
+      onError={(e) => {
+        (e.currentTarget as HTMLImageElement).src = "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop";
       }}
     />
   );
@@ -77,34 +38,7 @@ interface SliderMiniImageProps {
 }
 
 const SliderMiniImage: React.FC<SliderMiniImageProps> = ({ series }) => {
-  const [src, setSrc] = useState<string>(() => {
-    const cached = getTMDBPosterSync(series.title, series.category);
-    if (cached) return cached;
-    return series.image || "";
-  });
-
-  useEffect(() => {
-    const cached = getTMDBPosterSync(series.title, series.category);
-    if (cached) {
-      setSrc(cached);
-      return;
-    }
-
-    const isPlaceholder = !series.image || 
-      series.image.includes('images.unsplash.com') || 
-      series.image.includes('default_image') || 
-      series.image.includes('thumbnail.jpg') || 
-      series.image.includes('logo.png') ||
-      series.image.includes('video_thumb');
-
-    if (isPlaceholder) {
-      getTMDBPoster(series.title, series.category).then((healed) => {
-        if (healed) setSrc(healed);
-      });
-    } else {
-      setSrc(series.image);
-    }
-  }, [series]);
+  const src = getProxiedImageUrl(series.image);
 
   return (
     <img
@@ -112,11 +46,8 @@ const SliderMiniImage: React.FC<SliderMiniImageProps> = ({ series }) => {
       alt=""
       className="w-10 h-10 object-cover rounded-lg border border-zinc-800"
       referrerPolicy="no-referrer"
-      onError={() => {
-        if (src && src.includes('image.tmdb.org')) return;
-        getTMDBPoster(series.title, series.category).then((healed) => {
-          if (healed) setSrc(healed);
-        });
+      onError={(e) => {
+        (e.currentTarget as HTMLImageElement).src = "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop";
       }}
     />
   );

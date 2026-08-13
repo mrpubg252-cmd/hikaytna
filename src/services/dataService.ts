@@ -115,7 +115,7 @@ function fixImageUrl(url: string, title: string = "") {
 let cachedSeriesList: Series[] | null = null;
 let lastFetchTime = 0;
 const CACHE_DURATION_MS = 4 * 60 * 60 * 1000; // Fresh for 4 hours
-const LOCAL_STORAGE_KEY = "serene_series_cache";
+const LOCAL_STORAGE_KEY = "serene_series_cache_v3";
 
 // Initial load from localStorage
 if (typeof window !== "undefined") {
@@ -352,6 +352,14 @@ export function getCachedSeriesByCategory(categoryName: string): Series[] {
       return isMovie;
     }
 
+    if (categoryName === "مسلسلات مدبلجة" || categoryName === "مدبلج" || categoryName === "مدبلجة") {
+      return normCat.includes("مدبلج") || normTitle.includes("مدبلج") || titleLower.includes("dubbed") || titleLower.includes("modablaj");
+    }
+
+    if (categoryName === "مسلسلات مترجمة" || categoryName === "مترجم" || categoryName === "مترجمة") {
+      return normCat.includes("مترجم") || normTitle.includes("مترجم") || titleLower.includes("subbed") || titleLower.includes("motarjam") || titleLower.includes("motarjama");
+    }
+
     if (categoryName === "مسلسلات" || categoryName === "مسلسل") {
       return !isMovie;
     }
@@ -412,6 +420,11 @@ export async function fetchCategoryPage(
     const all = await fetchAllSeries(false);
     const start = pageIndex * 50;
     return all.slice(start, start + 50);
+  }
+
+  if (categoryName === "مسلسلات مدبلجة" || categoryName === "مدبلج" || categoryName === "مدبلجة") {
+    await fetchAllSeries(false);
+    return getCachedSeriesByCategory("مسلسلات مدبلجة");
   }
 
   try {

@@ -402,99 +402,6 @@ function getTitleMatchScore(item: any, targetQuery: string): number {
  * Returns healed image poster path, or null if no match could be found on TMDB.
  */
 export async function getTMDBPoster(title: string, category?: string): Promise<string | null> {
-  if (!title) return null;
-  
-  if (isExcludedFromTMDB(title, category)) {
-    return null;
-  }
-
-  // Check direct series posters override first
-  const directPoster = getDirectSeriesPoster(title);
-  if (directPoster) {
-    return directPoster;
-  }
-  
-  const cleanTitle = title.trim().toLowerCase();
-  const cacheKey = category ? `${cleanTitle}::${category.trim().toLowerCase()}` : cleanTitle;
-  
-  // Return instantly from memory cache if already healed
-  if (memoryPosterCache[cacheKey]) {
-    return memoryPosterCache[cacheKey];
-  }
-
-  // Generate sequence of candidates to try on TMDB search
-  const candidates = getTMDBQueryCandidates(title);
-  if (candidates.length === 0) return null;
-
-  const isMovieCategory = category && (
-    category.includes("فيلم") || 
-    category.includes("افلام") || 
-    category.includes("أفلام") || 
-    category.toLowerCase().includes("movie")
-  );
-
-  // Try each candidate sequentially
-  for (const query of candidates) {
-    try {
-      // For TV Series (not movies), query search/tv FIRST to guarantee matching TV series posters
-      const endpoints = isMovieCategory 
-        ? [`${TMDB_BASE}search/movie?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}&query=${encodeURIComponent(query)}&include_adult=false`, `${TMDB_BASE}search/multi?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}&query=${encodeURIComponent(query)}&include_adult=false`]
-        : [`${TMDB_BASE}search/tv?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}&query=${encodeURIComponent(query)}&include_adult=false`, `${TMDB_BASE}search/multi?api_key=${TMDB_API_KEY}&language=${TMDB_LANG}&query=${encodeURIComponent(query)}&include_adult=false`];
-
-      for (const searchUrl of endpoints) {
-        const proxyUrl = getApiUrl(`/api/v1/tmdb/proxy?url=${encodeURIComponent(searchUrl)}`);
-
-        const res = await fetch(proxyUrl);
-        if (!res.ok) continue;
-
-        const data = await res.json();
-        if (data.results && data.results.length > 0) {
-          // Sort results prioritizing title match, category match score, then popularity
-          const sortedResults = [...data.results].sort((a, b) => {
-            const titleScoreA = getTitleMatchScore(a, query);
-            const titleScoreB = getTitleMatchScore(b, query);
-            if (titleScoreA !== titleScoreB) return titleScoreB - titleScoreA;
-
-            const catScoreA = getCategoryMatchScore(a, category);
-            const catScoreB = getCategoryMatchScore(b, category);
-            if (catScoreA !== catScoreB) return catScoreB - catScoreA;
-
-            return (b.popularity || 0) - (a.popularity || 0);
-          });
-
-          for (const item of sortedResults) {
-            if (item.poster_path) {
-              const imageUrl = `${TMDB_IMAGE_BASE}${item.poster_path}`;
-              // Safe cache updates
-              memoryPosterCache[cacheKey] = imageUrl;
-              if (typeof window !== "undefined") {
-                try {
-                  localStorage.setItem(CACHE_KEY, JSON.stringify(memoryPosterCache));
-                } catch (e) {
-                  console.warn("Could not save updated heal cache to localStorage:", e);
-                }
-              }
-              return imageUrl;
-            } else if (item.backdrop_path) {
-              const imageUrl = `${TMDB_IMAGE_BASE}${item.backdrop_path}`;
-              memoryPosterCache[cacheKey] = imageUrl;
-              if (typeof window !== "undefined") {
-                try {
-                  localStorage.setItem(CACHE_KEY, JSON.stringify(memoryPosterCache));
-                } catch (e) {
-                  console.warn("Could not save updated heal cache to localStorage:", e);
-                }
-              }
-              return imageUrl;
-            }
-          }
-        }
-      }
-    } catch (err: any) {
-      console.warn(`TMDB candidate query failed for: "${query}" (Original: "${title}"):`, err.message);
-    }
-  }
-
   return null;
 }
 
@@ -502,25 +409,5 @@ export async function getTMDBPoster(title: string, category?: string): Promise<s
  * Helper to check memory cache synchronously (instant check during rendering to prevent jumpiness)
  */
 export function getTMDBPosterSync(title: string, category?: string): string | null {
-  if (!title) return null;
-  
-  if (isExcludedFromTMDB(title, category)) {
-    return null;
-  }
-
-  const directPoster = getDirectSeriesPoster(title);
-  if (directPoster) {
-    return directPoster;
-  }
-  
-  const cleanTitle = title.trim().toLowerCase();
-  
-  if (category) {
-    const keyWithCat = `${cleanTitle}::${category.trim().toLowerCase()}`;
-    if (memoryPosterCache[keyWithCat]) {
-      return memoryPosterCache[keyWithCat];
-    }
-  }
-  
-  return memoryPosterCache[cleanTitle] || null;
+  return null;
 }

@@ -6,7 +6,7 @@ interface CategoryBarProps {
   onSelect: (category: string) => void;
 }
 
-const CATEGORIES = ['الكل', 'مسلسلات', 'أفلام'];
+const CATEGORIES = ['الكل', 'مترجم', 'مدبلج'];
 
 export default React.memo(function CategoryBar({ selected, onSelect }: CategoryBarProps) {
   const displayCategories = CATEGORIES.includes(selected) 

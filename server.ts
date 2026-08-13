@@ -33,6 +33,22 @@ function encryptValue(text: string): string {
 
 function decryptValue(encoded: string): string {
   if (!encoded) return "";
+  if (encoded.startsWith("http://") || encoded.startsWith("https://")) return encoded;
+
+  // 1. Try unescape/decodeURIComponent + XOR (matching frontend security.ts)
+  try {
+    const text = decodeURIComponent(escape(Buffer.from(encoded, "base64").toString("binary")));
+    const key = SECRET_SALT;
+    let result = "";
+    for (let i = 0; i < text.length; i++) {
+      result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    if (result.startsWith("http://") || result.startsWith("https://")) {
+      return result;
+    }
+  } catch (e) {}
+
+  // 2. Try raw XOR
   try {
     const buf = Buffer.from(encoded, "base64");
     const key = SECRET_SALT;
@@ -40,14 +56,20 @@ function decryptValue(encoded: string): string {
     for (let i = 0; i < buf.length; i++) {
       result += String.fromCharCode(buf[i] ^ key.charCodeAt(i % key.length));
     }
-    // Only return the decrypted value if it looks like a valid absolute URL
-    if (result.startsWith("http")) {
-       return result;
+    if (result.startsWith("http://") || result.startsWith("https://")) {
+      return result;
     }
-    return encoded;
-  } catch (e) {
-    return encoded;
-  }
+  } catch (e) {}
+
+  // 3. Try UTF-8 base64
+  try {
+    const raw = Buffer.from(encoded, "base64").toString("utf-8");
+    if (raw.startsWith("http://") || raw.startsWith("https://")) {
+      return raw;
+    }
+  } catch (e) {}
+
+  return encoded;
 }
 
 // ============ DeepSeek Speed Configuration ============
@@ -935,34 +957,26 @@ async function startServer() {
       const categories = [
         { 
           name: 'جميع المسلسلات', 
-          url: 'https://wwv.qeseh.com/discover/', 
+          url: 'https://e.3cktv.com/video/series/', 
           pages: [
-            'https://wwv.qeseh.com/discover/',
-            ...Array.from({ length: 24 }, (_, i) => `https://wwv.qeseh.com/discover/page/${i + 2}/`)
+            'https://e.3cktv.com/video/series/',
+            ...Array.from({ length: 49 }, (_, i) => `https://e.3cktv.com/video/series/page/${i + 2}/`)
           ] 
         },
         { 
-          name: 'آخر الحلقات', 
-          url: 'https://wwv.qeseh.com/', 
+          name: 'مسلسلات مدبلجة', 
+          url: 'https://e.3cktv.com/video/series/', 
           pages: [
-            'https://wwv.qeseh.com/',
-            ...Array.from({ length: 19 }, (_, i) => `https://wwv.qeseh.com/page/${i + 2}/`)
+            'https://e.3cktv.com/video/series/',
+            ...Array.from({ length: 49 }, (_, i) => `https://e.3cktv.com/video/series/page/${i + 2}/`)
           ] 
         },
         { 
-          name: 'مسلسلات كاملة', 
-          url: 'https://wwv.qeseh.com/category/alarshif/', 
+          name: 'مسلسلات مترجمة', 
+          url: 'https://e.3cktv.com/video/series/', 
           pages: [
-            'https://wwv.qeseh.com/category/alarshif/',
-            ...Array.from({ length: 14 }, (_, i) => `https://wwv.qeseh.com/category/alarshif/page/${i + 2}/`)
-          ] 
-        },
-        { 
-          name: 'أفلام تركية', 
-          url: 'https://wwv.qeseh.com/category/yeni-filmler/', 
-          pages: [
-            'https://wwv.qeseh.com/category/yeni-filmler/',
-            ...Array.from({ length: 14 }, (_, i) => `https://wwv.qeseh.com/category/yeni-filmler/page/${i + 2}/`)
+            'https://e.3cktv.com/video/series/',
+            ...Array.from({ length: 49 }, (_, i) => `https://e.3cktv.com/video/series/page/${i + 2}/`)
           ] 
         }
       ];
@@ -973,267 +987,163 @@ async function startServer() {
     }
   });
 
-  // Master aggregator endpoint: Scrapes all Qeseh catalog pages & merges them cleanly
+  // Master 3cktv Scraper function across 50 pages for all series (translated & dubbed)
+  async function scrape3cktvMasterSeries() {
+    const allMap = new Map<string, any>();
+    const pagesToScrape: string[] = ['https://e.3cktv.com/', 'https://e.3cktv.com/video/series/'];
+    for (let i = 2; i <= 50; i++) {
+      pagesToScrape.push(`https://e.3cktv.com/video/series/page/${i}/`);
+    }
+
+    const pageResults: any[][] = new Array(pagesToScrape.length).fill([]);
+    const batchSize = 10;
+    for (let i = 0; i < pagesToScrape.length; i += batchSize) {
+      const batch = pagesToScrape.slice(i, i + batchSize);
+      await Promise.allSettled(
+        batch.map(async (url, idx) => {
+          const globalIdx = i + idx;
+          try {
+            const response = await axios.get(url, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0',
+                'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
+              },
+              timeout: 10000
+            });
+            if (!response.data) return;
+            const $ = cheerio.load(response.data);
+            const pageItems: any[] = [];
+            
+            $('.block-post, article.postEp, .postEp').each((_, el) => {
+              const aTag = $(el).find('a').first().length ? $(el).find('a').first() : $(el);
+              let itemUrl = aTag.attr('href');
+              if (!itemUrl) return;
+
+              let title = aTag.attr('title') || $(el).find('.title').text().trim() || aTag.text().trim();
+              if (!title) return;
+
+              const seasonNameText = $(el).find('.seasonName').text().trim();
+              const isDubbed = title.includes('مدبلج') || title.includes('مدبلجة') || itemUrl.includes('modablaj') || seasonNameText.includes('مدبلج');
+              
+              title = title.replace(/\s*-\s*قصة عشق$/i, '')
+                           .replace(/قصة عشق$/i, '')
+                           .replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '')
+                           .replace(/\s*الحلقة\s*\d+.*$/i, '')
+                           .replace(/\s*الموسم\s*\d+.*$/i, '')
+                           .trim();
+
+              itemUrl = itemUrl.replace(/-ep-[^\/]+/, '')
+                               .replace(/-s(\d+)e[^\/]+/, '-s$1')
+                               .replace(/\/video\//, '/video/series/')
+                               .replace(/\/?$/, '/');
+
+              // Extract image using style background-image, data-img, data-src, or img src
+              let img = '';
+              const styleElem = $(el).find('[style*="url"]').first().length ? $(el).find('[style*="url"]').first() : $(el).find('.imgSer, .imgBg').first();
+              const styleAttr = styleElem.attr('style') || $(el).attr('style') || '';
+              const match = styleAttr.match(/url\(([^)]+)\)/i);
+              if (match) {
+                img = match[1].replace(/['";]/g, '').trim();
+              }
+              if (!img) {
+                img = $(el).find('img').attr('data-img') || $(el).find('img').attr('data-src') || $(el).find('img').attr('data-original') || '';
+              }
+              if (!img) {
+                const src = $(el).find('img').attr('src') || '';
+                if (src && !src.includes('grey.gif') && !src.includes('loading')) {
+                  img = src;
+                }
+              }
+
+              const episodeNum = $(el).find('.episodeNum').text().trim().replace(/\s+/g, ' ');
+              const cleanUrl = itemUrl.replace('e.3cktv.com', 'e.3cktv.cam');
+              const category = isDubbed ? 'مسلسلات مدبلجة' : 'مسلسلات مترجمة';
+
+              if (title && cleanUrl) {
+                const normKey = cleanUrl.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
+                pageItems.push({
+                  id: normKey,
+                  title: title,
+                  url: cleanUrl,
+                  image: img || '',
+                  img: img || '',
+                  category: category,
+                  episode: episodeNum || '',
+                  episodes_count: episodeNum || '0',
+                  isVertical: true
+                });
+              }
+            });
+            pageResults[globalIdx] = pageItems;
+          } catch (e) {}
+        })
+      );
+    }
+    
+    // Flatten and maintain order
+    pageResults.flat().forEach(item => {
+      if (item && item.id && !allMap.has(item.id)) {
+        allMap.set(item.id, item);
+      }
+    });
+
+    return Array.from(allMap.values());
+  }
+
+  // Master aggregator endpoint: Scrapes 3cktv catalog
   app.get("/api/v1/qeseh/all-series", async (req, res) => {
     try {
-      const cacheKey = "qeseh_all_master_catalog";
+      const cacheKey = "3cktv_all_master_catalog_v1";
       const cached = getCachedData(cacheKey);
       if (cached) {
         return res.json(cached);
       }
 
-      // Build target URLs across discover, archives, movies, home, and son-bolumler
-      const urlsToScrape: { url: string; cat: string }[] = [];
-      
-      // Discover pages (1-25)
-      urlsToScrape.push({ url: 'https://wwv.qeseh.com/discover/', cat: 'مسلسلات' });
-      for (let i = 2; i <= 25; i++) {
-        urlsToScrape.push({ url: `https://wwv.qeseh.com/discover/page/${i}/`, cat: 'مسلسلات' });
-      }
-
-      // Completed Archive (1-15)
-      urlsToScrape.push({ url: 'https://wwv.qeseh.com/category/alarshif/', cat: 'مسلسلات كاملة' });
-      for (let i = 2; i <= 15; i++) {
-        urlsToScrape.push({ url: `https://wwv.qeseh.com/category/alarshif/page/${i}/`, cat: 'مسلسلات كاملة' });
-      }
-
-      // Movies (1-15)
-      urlsToScrape.push({ url: 'https://wwv.qeseh.com/category/yeni-filmler/', cat: 'أفلام' });
-      for (let i = 2; i <= 15; i++) {
-        urlsToScrape.push({ url: `https://wwv.qeseh.com/category/yeni-filmler/page/${i}/`, cat: 'أفلام' });
-      }
-
-      // Home Pages (1-35)
-      urlsToScrape.push({ url: 'https://wwv.qeseh.com/', cat: 'آخر الحلقات' });
-      for (let i = 2; i <= 35; i++) {
-        urlsToScrape.push({ url: `https://wwv.qeseh.com/page/${i}/`, cat: 'آخر الحلقات' });
-      }
-
-      // Son-bolumler (1-35)
-      urlsToScrape.push({ url: 'https://wwv.qeseh.com/son-bolumler/', cat: 'آخر الحلقات' });
-      for (let i = 2; i <= 35; i++) {
-        urlsToScrape.push({ url: `https://wwv.qeseh.com/son-bolumler/page/${i}/`, cat: 'آخر الحلقات' });
-      }
-
-      const allMap = new Map<string, any>();
-      const batchSize = 15;
-
-      for (let i = 0; i < urlsToScrape.length; i += batchSize) {
-        const batch = urlsToScrape.slice(i, i + batchSize);
-        await Promise.allSettled(
-          batch.map(async (item) => {
-            try {
-              const response = await axios.get(item.url, {
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/115.0',
-                  'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
-                },
-                timeout: 8000
-              });
-              if (!response.data) return;
-              const $ = cheerio.load(response.data);
-
-              $('article.post, .post, .block-post').each((_, el) => {
-                const aTag = $(el).find('a').first().length ? $(el).find('a').first() : $(el);
-                let itemUrl = aTag.attr('href');
-                if (!itemUrl) return;
-
-                if (itemUrl.includes('sayyarh.com')) {
-                  try {
-                    const urlObj = new URL(itemUrl);
-                    const urlParam = urlObj.searchParams.get('url');
-                    if (urlParam) {
-                      const decoded = Buffer.from(urlParam, 'base64').toString('utf-8');
-                      if (decoded.startsWith('http')) itemUrl = decoded;
-                    }
-                  } catch (e) {}
-                }
-
-                let title = aTag.attr('title') || $(el).find('.title').text().trim() || aTag.text().trim();
-                title = title.replace(/\s*-\s*قصة عشق$/i, '')
-                             .replace(/قصة عشق$/i, '')
-                             .replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '')
-                             .trim();
-
-                const styleAttr = $(el).find('.imgSer').attr('style') ||
-                                  $(el).find('.imgBg').attr('style') ||
-                                  $(el).find('.posterThumb .imgBg').attr('style') ||
-                                  $(el).find('.poster .imgSer').attr('style') ||
-                                  $(el).find('.posterThumb').attr('style') || '';
-                let img = '';
-                const match = styleAttr.match(/url\(['"]?([^'"]+)['"]?\)/);
-                if (match) img = match[1];
-                if (!img) img = $(el).find('img').attr('src') || $(el).find('img').attr('data-src') || '';
-
-                const episodeNum = $(el).find('.episodeNum').text().trim().replace(/\s+/g, ' ');
-
-                let isEpisode = false;
-                let seriesTitle = title;
-                const epMatch = title.match(/^(.*?)\s+الحلقة\s+\d+/i) || title.match(/^(.*?)\s+حلقة\s+\d+/i);
-                if (epMatch) {
-                  isEpisode = true;
-                  seriesTitle = epMatch[1].trim();
-                }
-
-                if (itemUrl && seriesTitle) {
-                  const normKey = seriesTitle.toLowerCase().trim().replace(/[\u064B-\u0652]/g, '').replace(/\s+/g, ' ');
-                  if (!allMap.has(normKey)) {
-                    allMap.set(normKey, {
-                      id: itemUrl.replace(/[^a-zA-Z0-9]/g, '_'),
-                      title: seriesTitle,
-                      url: isEpisode ? itemUrl : itemUrl,
-                      image: img || '',
-                      img: img || '',
-                      category: item.cat,
-                      episode: episodeNum || '',
-                      episodes_count: episodeNum || '0',
-                      fromEpisode: isEpisode
-                    });
-                  } else {
-                    const existing = allMap.get(normKey);
-                    if (existing.fromEpisode && !isEpisode) {
-                      allMap.set(normKey, {
-                        id: itemUrl.replace(/[^a-zA-Z0-9]/g, '_'),
-                        title: seriesTitle,
-                        url: itemUrl,
-                        image: img || existing.image,
-                        img: img || existing.img,
-                        category: item.cat,
-                        episode: episodeNum || existing.episode,
-                        episodes_count: episodeNum || existing.episodes_count,
-                        fromEpisode: false
-                      });
-                    } else if (!existing.image && img) {
-                      existing.image = img;
-                      existing.img = img;
-                    }
-                  }
-                }
-              });
-            } catch (e) {}
-          })
-        );
-      }
-
-      const results = Array.from(allMap.values());
+      const results = await scrape3cktvMasterSeries();
       const responseData = { status: true, data: results, total: results.length };
       if (results.length > 0) {
         setCachedData(cacheKey, responseData, 3 * 60 * 60 * 1000); // 3 hour cache
       }
       res.json(responseData);
     } catch (error: any) {
-      console.error("Qeseh master catalog fetch error:", error.message);
+      console.error("3cktv master catalog fetch error:", error.message);
       res.json({ status: false, data: [] });
     }
   });
 
-  // Dedicated Top Series Discover Endpoint (https://wwv.qeseh.com/discover/)
+  // Dedicated Top Series Discover Endpoint
   app.get("/api/v1/qeseh/discover", async (req, res) => {
     try {
-      const cacheKey = "qeseh_discover_catalog_v2";
+      const cacheKey = "3cktv_discover_catalog_v1";
       const cached = getCachedData(cacheKey);
       if (cached) return res.json(cached);
 
-      const urlsToScrape: string[] = ["https://wwv.qeseh.com/discover/"];
-      for (let i = 2; i <= 20; i++) {
-        urlsToScrape.push(`https://wwv.qeseh.com/discover/page/${i}/`);
-      }
-
-      const allMap = new Map<string, any>();
-      const batchSize = 10;
-
-      for (let i = 0; i < urlsToScrape.length; i += batchSize) {
-        const batch = urlsToScrape.slice(i, i + batchSize);
-        await Promise.allSettled(
-          batch.map(async (url) => {
-            try {
-              const response = await axios.get(url, {
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/115.0',
-                  'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
-                },
-                timeout: 8000
-              });
-              if (!response.data) return;
-              const $ = cheerio.load(response.data);
-
-              $('article.post, .post, .block-post').each((_, el) => {
-                const aTag = $(el).find('a').first().length ? $(el).find('a').first() : $(el);
-                let itemUrl = aTag.attr('href');
-                if (!itemUrl) return;
-
-                if (itemUrl.includes('sayyarh.com')) {
-                  try {
-                    const urlObj = new URL(itemUrl);
-                    const urlParam = urlObj.searchParams.get('url');
-                    if (urlParam) {
-                      const decoded = Buffer.from(urlParam, 'base64').toString('utf-8');
-                      if (decoded.startsWith('http')) itemUrl = decoded;
-                    }
-                  } catch (e) {}
-                }
-
-                let title = aTag.attr('title') || $(el).find('.title').text().trim() || aTag.text().trim();
-                title = title.replace(/\s*-\s*قصة عشق$/i, '')
-                             .replace(/قصة عشق$/i, '')
-                             .trim();
-
-                const styleAttr = $(el).find('.imgSer').attr('style') ||
-                                  $(el).find('.imgBg').attr('style') ||
-                                  $(el).find('.posterThumb .imgBg').attr('style') ||
-                                  $(el).find('.poster .imgSer').attr('style') ||
-                                  $(el).find('.posterThumb').attr('style') || '';
-                let img = '';
-                const match = styleAttr.match(/url\(['"]?([^'"]+)['"]?\)/);
-                if (match) img = match[1];
-                if (!img) img = $(el).find('img').attr('src') || $(el).find('img').attr('data-src') || '';
-
-                if (itemUrl && title) {
-                  const normKey = title.toLowerCase().trim().replace(/[\u064B-\u0652]/g, '').replace(/\s+/g, ' ');
-                  if (!allMap.has(normKey)) {
-                    allMap.set(normKey, {
-                      id: itemUrl.replace(/[^a-zA-Z0-9]/g, '_'),
-                      title: title,
-                      url: itemUrl,
-                      image: img || '',
-                      img: img || '',
-                      category: 'مسلسلات',
-                      episodes_count: '0'
-                    });
-                  }
-                }
-              });
-            } catch (e) {}
-          })
-        );
-      }
-
-      const results = Array.from(allMap.values());
+      const results = await scrape3cktvMasterSeries();
       const responseData = { status: true, data: results, total: results.length };
       if (results.length > 0) {
-        setCachedData(cacheKey, responseData, 3 * 60 * 60 * 1000); // 3 hour server cache
+        setCachedData(cacheKey, responseData, 3 * 60 * 60 * 1000);
       }
       res.json(responseData);
     } catch (error: any) {
-      console.error("Qeseh discover catalog error:", error.message);
+      console.error("3cktv discover catalog error:", error.message);
       res.json({ status: false, data: [] });
     }
   });
 
-  // Direct live search against Qeseh
+  // Direct live search against 3cktv
   app.get("/api/v1/qeseh/search", async (req, res) => {
     try {
       const q = (req.query.q as string || "").trim();
       if (!q) return res.json({ status: true, data: [] });
 
-      const cacheKey = `qeseh_search_${q.toLowerCase()}`;
+      const cacheKey = `3cktv_search_${q.toLowerCase()}`;
       const cached = getCachedData(cacheKey);
       if (cached) return res.json(cached);
 
-      const searchUrl = `https://wwv.qeseh.com/?s=${encodeURIComponent(q)}`;
+      const searchUrl = `https://e.3cktv.com/?s=${encodeURIComponent(q)}`;
       const response = await axios.get(searchUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/115.0',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0',
           'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
         },
         timeout: 10000
@@ -1244,63 +1154,45 @@ async function startServer() {
       const results: any[] = [];
       const seen = new Set<string>();
 
-      $('article.post, .post, .block-post').each((_, el) => {
+      $('.block-post, article.postEp, .postEp').each((_, el) => {
         const aTag = $(el).find('a').first().length ? $(el).find('a').first() : $(el);
         let itemUrl = aTag.attr('href');
         if (!itemUrl) return;
 
-        if (itemUrl.includes('sayyarh.com')) {
-          try {
-            const urlObj = new URL(itemUrl);
-            const urlParam = urlObj.searchParams.get('url');
-            if (urlParam) {
-              const decoded = Buffer.from(urlParam, 'base64').toString('utf-8');
-              if (decoded.startsWith('http')) itemUrl = decoded;
-            }
-          } catch (e) {}
-        }
-
         let title = aTag.attr('title') || $(el).find('.title').text().trim() || aTag.text().trim();
+        const seasonNameText = $(el).find('.seasonName').text().trim();
+        const isDubbed = title.includes('مدبلج') || title.includes('مدبلجة') || itemUrl.includes('modablaj') || seasonNameText.includes('مدبلج');
+
         title = title.replace(/\s*-\s*قصة عشق$/i, '')
                      .replace(/قصة عشق$/i, '')
                      .replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '')
                      .trim();
 
-        const styleAttr = $(el).find('.imgSer').attr('style') ||
-                          $(el).find('.imgBg').attr('style') ||
-                          $(el).find('.posterThumb .imgBg').attr('style') ||
-                          $(el).find('.poster .imgSer').attr('style') ||
-                          $(el).find('.posterThumb').attr('style') || '';
-        let img = '';
-        const match = styleAttr.match(/url\(['"]?([^'"]+)['"]?\)/);
-        if (match) img = match[1];
-        if (!img) img = $(el).find('img').attr('src') || $(el).find('img').attr('data-src') || '';
-
-        const episodeNum = $(el).find('.episodeNum').text().trim().replace(/\s+/g, ' ');
-
-        let isEpisode = false;
-        let seriesTitle = title;
-        const epMatch = title.match(/^(.*?)\s+الحلقة\s+\d+/i) || title.match(/^(.*?)\s+حلقة\s+\d+/i);
-        if (epMatch) {
-          isEpisode = true;
-          seriesTitle = epMatch[1].trim();
+        let img = $(el).find('img').attr('data-img') || $(el).find('img').attr('data-src') || $(el).find('img').attr('data-original') || '';
+        if (!img) {
+          const styleAttr = $(el).find('.imgSer, .imgBg, .poster, .itemImg').attr('style') || $(el).attr('style') || '';
+          const match = styleAttr.match(/url\(['"]?([^'"]+)['"]?\)/i) || styleAttr.match(/url\(([^)]+)\)/i);
+          if (match) img = match[1].replace(/;$/, '').trim();
+        }
+        if (!img) {
+          const src = $(el).find('img').attr('src') || '';
+          if (src && !src.includes('grey.gif') && !src.includes('loading')) {
+            img = src;
+          }
         }
 
-        if (itemUrl && seriesTitle) {
-          const normKey = seriesTitle.toLowerCase().trim();
-          if (!seen.has(normKey)) {
-            seen.add(normKey);
-            results.push({
-              id: itemUrl.replace(/[^a-zA-Z0-9]/g, '_'),
-              title: seriesTitle,
-              url: itemUrl,
-              image: img || '',
-              img: img || '',
-              category: 'مسلسلات',
-              episode: episodeNum || '',
-              episodes_count: episodeNum || '0'
-            });
-          }
+        const cleanUrl = itemUrl.replace('e.3cktv.com', 'e.3cktv.cam');
+        if (cleanUrl && title && !seen.has(cleanUrl)) {
+          seen.add(cleanUrl);
+          results.push({
+            id: cleanUrl.replace(/[^a-zA-Z0-9]/g, '_'),
+            title: title,
+            url: cleanUrl,
+            image: img || '',
+            img: img || '',
+            category: isDubbed ? 'مسلسلات مدبلجة' : 'مسلسلات مترجمة',
+            isVertical: true
+          });
         }
       });
 
@@ -1310,7 +1202,7 @@ async function startServer() {
       }
       res.json(responseData);
     } catch (e: any) {
-      console.error("Qeseh search error:", e.message);
+      console.error("3cktv search error:", e.message);
       res.json({ status: false, data: [] });
     }
   });
@@ -1509,6 +1401,24 @@ async function startServer() {
           name: pageTitle || "تشغيل الحلقة",
           url: encryptValue(realUrl)
         });
+      } else if ($('ul.eplist, .eplist').length > 0 || $('.epNum').length > 0) {
+        // e.3cktv.com style episodes list
+        $('ul.eplist a, .eplist a, a.epNum').each((i, el) => {
+          let epUrl = $(el).attr('href');
+          if (!epUrl) return;
+
+          let epTitle = $(el).attr('title') || $(el).text().trim() || `الحلقة ${$(el).find('span').text().trim()}`;
+          epTitle = epTitle.replace(/\s*-\s*قصة عشق$/i, '')
+                           .replace(/قصة عشق$/i, '')
+                           .trim();
+          
+          if (epUrl) {
+            data.push({
+              name: epTitle,
+              url: encryptValue(epUrl)
+            });
+          }
+        });
       } else {
         // Series index page, parse the episode lists
         $('article.postEp, article.post, .block-post').each((i, el) => {
@@ -1648,18 +1558,102 @@ async function startServer() {
 
       let iframeSrc = "";
       const parsedServers: { name: string; url: string }[] = [];
+      const pageHtmls: string[] = [];
 
       try {
+        if (realUrl.includes('3cktv') && !realUrl.includes('do=watch') && !realUrl.includes('emb/?vid=')) {
+          realUrl = realUrl.endsWith('/') ? `${realUrl}?do=watch` : `${realUrl}/?do=watch`;
+        }
+        
         const response = await axios.get(realUrl, {
           headers: { 
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-            'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
+            'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8',
+            'Referer': 'https://e.3cktv.com/'
           },
           timeout: 10000
         });
-        const $ = cheerio.load(response.data);
+        if (response.data) pageHtmls.push(response.data);
 
-        // Parse list of servers if available on the watch page using a robust list of selectors
+        // Check if page contains watch.php redirection links
+        const $initial = cheerio.load(response.data || '');
+        const watchPhpLinks: string[] = [];
+        $initial("a[href*='watch.php']").each((_, el) => {
+          const href = $initial(el).attr('href');
+          if (href && !watchPhpLinks.includes(href)) {
+            watchPhpLinks.push(href);
+          }
+        });
+
+        if (watchPhpLinks.length > 0) {
+          console.log(`[Play Endpoint] Found ${watchPhpLinks.length} watch.php server pages, fetching in parallel...`);
+          const watchRequests = watchPhpLinks.map(link => 
+            axios.get(link, { 
+              headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://e.3cktv.com/' }, 
+              timeout: 8000 
+            }).then(r => r.data).catch(() => null)
+          );
+          const watchResults = await Promise.all(watchRequests);
+          watchResults.forEach(htmlData => {
+            if (htmlData) pageHtmls.push(htmlData);
+          });
+        }
+      } catch (err: any) {
+        console.warn(`[Play Resolver] Axios failed for ${realUrl}: ${err.message}`);
+      }
+
+      const seenUrls = new Set<string>();
+
+      function addServer(rawEmbedUrl: string, customName?: string) {
+        if (!rawEmbedUrl) return;
+        let embedUrl = rawEmbedUrl.trim();
+        if (embedUrl.startsWith('//')) {
+          embedUrl = 'https:' + embedUrl;
+        }
+
+        // Filter out ads / scripts
+        if (embedUrl.includes('googletag') || embedUrl.includes('doubleclick') || embedUrl.includes('facebook') || embedUrl.includes('cloudflare') || embedUrl.includes('analytics')) {
+          return;
+        }
+
+        let proxyUrl = embedUrl;
+        if (!embedUrl.includes('thenextstop.net') && !embedUrl.startsWith('/api/v1/')) {
+          const encryptedTarget = encryptValue(embedUrl);
+          proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
+        }
+
+        if (!seenUrls.has(proxyUrl) && !seenUrls.has(embedUrl)) {
+          seenUrls.add(proxyUrl);
+          seenUrls.add(embedUrl);
+          const sIndex = parsedServers.length + 1;
+          parsedServers.push({
+            name: customName || `سيرفر ${sIndex}`,
+            url: proxyUrl
+          });
+        }
+      }
+
+      // Parse all collected page HTMLs
+      for (const htmlContent of pageHtmls) {
+        const $ = cheerio.load(htmlContent);
+
+        // 1. Support e.3cktv.com / z.3cktv.com style server list (.servList li)
+        $('.servList li, ul.servList li').each((i, el) => {
+          const dataServer = $(el).attr('data-server') || '';
+          let embedUrl = '';
+          if (dataServer) {
+            const matchSrc = dataServer.match(/src=['"]([^'"]+)['"]/i) || dataServer.match(/src=([^ >]+)/i);
+            if (matchSrc) embedUrl = matchSrc[1].replace(/['"]/g, '');
+          }
+          if (!embedUrl) {
+            embedUrl = $(el).find('a').attr('href') || $(el).attr('data-url') || '';
+          }
+          if (embedUrl) {
+            addServer(embedUrl);
+          }
+        });
+
+        // 2. Standard server selectors
         const selectors = [
           '.serversList li',
           '.servers-list li',
@@ -1674,115 +1668,100 @@ async function startServer() {
 
         selectors.forEach(sel => {
           $(sel).each((i, el) => {
-            const rawName = $(el).find('span').text().trim() || 
-                            $(el).find('a').text().trim() || 
-                            $(el).attr('data-name') || 
-                            $(el).attr('title') || 
-                            $(el).text().trim() || 
-                            `سيرفر ${i + 1}`;
-            const emText = $(el).find('em').text().trim();
-            const fullName = emText ? `${rawName} (${emText})` : rawName;
-            
             const serverId = $(el).attr('data-server') || $(el).attr('data-id') || $(el).attr('data-link') || '';
             let embedUrl = $(el).attr('data-url') || $(el).attr('data-src') || $(el).attr('data-href') || $(el).attr('data-embed') || '';
             
-            // Check if there is a code tag or direct anchor with a link inside
             const embeddedA = $(el).find('code a').attr('href') || $(el).find('a').attr('href');
             if (embeddedA) {
               embedUrl = embeddedA;
             } else if (serverId && !embedUrl) {
-              embedUrl = getEmbedUrl($(el).attr('data-name') || rawName, serverId);
+              embedUrl = getEmbedUrl($(el).attr('data-name') || '', serverId);
             }
             
             if (embedUrl) {
-              if (embedUrl.startsWith('//')) {
-                embedUrl = 'https:' + embedUrl;
-              }
-              
-              // Wrap the server URL in our player proxy to defeat iframe security limitations
-              let proxyUrl = embedUrl;
-              if (!embedUrl.includes('thenextstop.net')) {
-                const encryptedTarget = encryptValue(embedUrl);
-                proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
-              }
-              
-              const exists = parsedServers.some(p => p.url === proxyUrl);
-              if (!exists) {
-                parsedServers.push({ name: fullName, url: proxyUrl });
-              }
+              addServer(embedUrl);
             }
           });
         });
 
-        // Try Qeseh style embedded player with post parameter for main fallback & additional servers
+        // 3. PostEmbed / embedded iframe check
+        $('.postEmbed iframe, .singleInfo iframe, #iframe_player, .frame-container iframe, iframe').each((_, el) => {
+          const src = $(el).attr('src') || $(el).attr('data-src');
+          if (src && (src.includes('embed') || src.includes('e/') || src.includes('player') || src.includes('.html') || src.includes('v/'))) {
+            addServer(src);
+          }
+        });
+
+        // 4. Qeseh style JSON post parameter
         let playerLink = $('.modern-player-container a.fullscreen-clickable').attr('href') || $('a[href*="post="]').attr('href') || '';
-        
         if (playerLink) {
           try {
             let actualTarget = playerLink;
             if (playerLink.includes('sayyarh.com')) {
               const urlObj = new URL(playerLink);
               const nestedUrl = urlObj.searchParams.get('url');
-              if (nestedUrl) {
-                actualTarget = nestedUrl;
-              }
+              if (nestedUrl) actualTarget = nestedUrl;
             }
 
-            if (actualTarget.includes('thenextstop.net')) {
-              iframeSrc = actualTarget;
-              console.log(`[Qeseh Play Resolver] Found thenextstop URL: ${iframeSrc}`);
-            } else {
-              const targetUrlObj = new URL(actualTarget);
-              const postParam = targetUrlObj.searchParams.get('post');
-              if (postParam) {
-                const decodedJson = Buffer.from(postParam, 'base64').toString('utf-8');
-                const postData = JSON.parse(decodedJson);
-                if (postData && postData.servers && postData.servers.length > 0) {
-                  iframeSrc = actualTarget;
+            const targetUrlObj = new URL(actualTarget);
+            const postParam = targetUrlObj.searchParams.get('post');
+            if (postParam) {
+              const decodedJson = Buffer.from(postParam, 'base64').toString('utf-8');
+              const postData = JSON.parse(decodedJson);
+              if (postData && postData.servers && postData.servers.length > 0) {
+                postData.servers.forEach((srv: any) => {
+                  let embedUrl = getEmbedUrl(srv.name, srv.id || srv.url || srv.server);
+                  if (embedUrl) addServer(embedUrl);
+                });
+              }
+            }
+          } catch (e) {}
+        }
+      }
 
-                  postData.servers.forEach((srv: any, idx: number) => {
-                    let embedUrl = getEmbedUrl(srv.name, srv.id || srv.url || srv.server);
-
-                    if (embedUrl) {
-                      let proxyUrl = embedUrl;
-                      if (!embedUrl.includes('thenextstop.net') && !embedUrl.startsWith('/api/v1/')) {
-                        const encryptedTarget = encryptValue(embedUrl);
-                        proxyUrl = `/api/v1/3isk-player?url=${encodeURIComponent(encryptedTarget)}`;
-                      }
-                      
-                      const exists = parsedServers.some(p => p.url === proxyUrl);
-                      if (!exists) {
-                        parsedServers.push({
-                          name: srv.name || `سيرفر ${idx + 1}`,
-                          url: proxyUrl
-                        });
-                      }
-                    }
-                  });
-                  console.log(`[Qeseh Play Resolver] Decoded ${postData.servers.length} servers from post parameter JSON`);
+      // Add 3cktv iframe2.php fetching logic
+      if (pageHtmls.length > 0) {
+        for (const htmlData of pageHtmls) {
+          const $h = cheerio.load(htmlData);
+          let vo_postID = htmlData.match(/vo_postID\s*=\s*(['"]?)(.+?)\1/);
+          let themeDir = htmlData.match(/themeDir\s*=\s*(['"]?)(.+?)\1/);
+          if (vo_postID && themeDir) {
+            const vpid = vo_postID[2];
+            const tdir = themeDir[2];
+            const promises: Promise<any>[] = [];
+            $h('.servList li').each((i, el) => {
+              const name = $h(el).text().replace(/\s+/g, ' ').trim() || `سيرفر ${i + 1}`;
+              const onClick = $h(el).attr('onclick') || $h(el).attr('onClick') || '';
+              const m = onClick.match(/getServer2\([^,]+,(\d+),(\d+)\)/);
+              if (m) {
+                const video = m[1];
+                const serverId = m[2];
+                const ajaxUrl = `${tdir}/temp/ajax/iframe2.php?id=${vpid}&video=${video}&serverId=${serverId}`;
+                promises.push(
+                  axios.get(ajaxUrl, {
+                    headers: {
+                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+                      'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    timeout: 8000
+                  }).then(r => {
+                    const iframeMatch = (r.data || '').match(/<iframe[^>]*src=["']([^"']+)["']/i);
+                    if (iframeMatch) return { name, url: iframeMatch[1] };
+                    return null;
+                  }).catch(() => null)
+                );
+              }
+            });
+            if (promises.length > 0) {
+              const results = await Promise.all(promises);
+              results.forEach(r => {
+                if (r && r.url && !parsedServers.find(s => s.url === r.url)) {
+                  parsedServers.push(r);
                 }
-              }
+              });
             }
-          } catch (err: any) {
-            console.error("Failed to parse player JSON post parameter:", err.message);
           }
         }
-
-        if (!iframeSrc) {
-          iframeSrc = $('#iframe_player').attr('src') || $('.frame-container iframe').attr('src') || "";
-        }
-
-        if (!iframeSrc) {
-           $('iframe').each((i, el) => {
-              const src = $(el).attr('src');
-              if (src && (src.includes('embed') || src.includes('player') || src.includes('arabhd') || src.includes('ok.ru') || src.includes('estream'))) {
-                  iframeSrc = src;
-                  return false;
-              }
-           });
-        }
-      } catch (err: any) {
-        console.warn(`[Play Resolver] Axios failed for ${realUrl}, falling back to direct URL: ${err.message}`);
       }
 
       // If we parsed servers, return them and set the primary player_url
@@ -2253,27 +2232,47 @@ async function startServer() {
         while (redirectCount < 10) {
           const parsedCurrent = new URL(currentUrl);
           const hostVal = parsedCurrent.origin;
-          let referer = hostVal + '/';
+          let referer: string | undefined = hostVal + '/';
           
           if (currentUrl.includes('3iskk.xyz')) {
             referer = 'https://3iskk.xyz/';
+          } else if (currentUrl.includes('3cktv')) {
+            referer = 'https://e.3cktv.com/';
           }
 
-          response = await axios({
-            method: 'get',
-            url: currentUrl,
-            responseType: 'stream',
-            maxRedirects: 0, // Handle redirects manually
-            validateStatus: (status) => status >= 200 && status < 400,
-            httpAgent: new http.Agent({ family: 4 }),
-            httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 }),
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-              'Referer': referer,
-              'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
-            },
-            timeout: 8000
-          });
+          try {
+            response = await axios({
+              method: 'get',
+              url: currentUrl,
+              responseType: 'stream',
+              maxRedirects: 0, // Handle redirects manually
+              validateStatus: (status) => status >= 200 && status < 400,
+              httpAgent: new http.Agent({ family: 4 }),
+              httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 }),
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                ...(referer ? { 'Referer': referer } : {}),
+                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+              },
+              timeout: 8000
+            });
+          } catch (retryErr) {
+            // Fallback: Retry without Referer
+            response = await axios({
+              method: 'get',
+              url: currentUrl,
+              responseType: 'stream',
+              maxRedirects: 0,
+              validateStatus: (status) => status >= 200 && status < 400,
+              httpAgent: new http.Agent({ family: 4 }),
+              httpsAgent: new https.Agent({ rejectUnauthorized: false, family: 4 }),
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+              },
+              timeout: 8000
+            });
+          }
 
           if (response.status >= 300 && response.status < 400 && response.headers.location) {
             let nextUrl = response.headers.location;

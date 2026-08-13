@@ -32,64 +32,19 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
   }, [_hasNew, clicked, item, onPress]);
 
   const [currentSrc, setCurrentSrc] = React.useState<string>(() => {
-    if (isTop10) {
-      const cached = getTMDBPosterSync(item.title, item.category);
-      if (cached) return getProxiedImageUrl(cached);
-    }
-    return getProxiedImageUrl(item.image) || "";
+    return getProxiedImageUrl(item.image) || "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop";
   });
-  const [imageLoaded, setImageLoaded] = React.useState(false);
+  const [imageLoaded, setImageLoaded] = React.useState(true);
 
   const [isVertical, setIsVertical] = React.useState<boolean>(() => {
-    if (forceVertical || item.isVertical) return true;
-    if (isTop10) {
-      const cached = getTMDBPosterSync(item.title, item.category);
-      const src = cached || item.image || '';
-      if (src.includes('image.tmdb.org') || src.includes('/t/p/') || src.includes('poster')) return true;
-    } else {
-      const src = item.image || '';
-      if (src.includes('image.tmdb.org') || src.includes('/t/p/') || src.includes('poster')) return true;
-    }
-    return false;
+    return item.isVertical !== undefined ? item.isVertical : true;
   });
 
   React.useEffect(() => {
-    if (forceVertical || item.isVertical) {
-      setIsVertical(true);
-      return;
-    }
-    if (currentSrc.includes('image.tmdb.org') || currentSrc.includes('/t/p/') || currentSrc.includes('poster')) {
-      setIsVertical(true);
-    }
-  }, [currentSrc, forceVertical, item.isVertical]);
-
-  React.useEffect(() => {
-    if (isTop10) {
-      const cached = getTMDBPosterSync(item.title, item.category);
-      if (cached) {
-        setCurrentSrc(getProxiedImageUrl(cached));
-        return;
-      }
-    }
-
-    const isPlaceholder = !item.image || 
-      item.image.includes('images.unsplash.com') || 
-      item.image.includes('default_image') || 
-      item.image.includes('thumbnail.jpg') || 
-      item.image.includes('logo.png') ||
-      item.image.includes('video_thumb');
-
-    if (isPlaceholder && isTop10) {
-      getTMDBPoster(item.title, item.category).then((healedUrl) => {
-        if (healedUrl) {
-          setCurrentSrc(getProxiedImageUrl(healedUrl));
-          setIsVertical(true);
-        }
-      });
-    } else {
-      setCurrentSrc(getProxiedImageUrl(item.image) || (isPlaceholder ? "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop" : ""));
-    }
-  }, [item.title, item.image, item.category, isTop10]);
+    setCurrentSrc(getProxiedImageUrl(item.image) || "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
+    setIsVertical(item.isVertical !== undefined ? item.isVertical : true);
+    setImageLoaded(false);
+  }, [item.id, item.image, item.isVertical]);
 
   const displayRating = React.useMemo(() => {
     if (item.rating && item.rating > 0) {
@@ -109,6 +64,36 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
   }, [item.rating, item.title, item.id]);
 
   const totalEpisodes = item.episodes?.length || 0;
+
+  const overlayBadge = React.useMemo(() => {
+    const title = (item.title || "").toLowerCase();
+    const category = (item.category || "").toLowerCase();
+    const episode = (item.episode || item.episodes_count || "").toLowerCase();
+
+    const isSeasonEnd = 
+      title.includes("نهاية موسم") || 
+      title.includes("نهاية الموسم") || 
+      title.includes("الموسم الأخير") || 
+      title.includes("الموسم الاخير") ||
+      episode.includes("الأخيرة") ||
+      episode.includes("الاخيرة") ||
+      episode.includes("النهائية") ||
+      episode.includes("نهاية");
+
+    const isDubbed = 
+      category.includes("مدبلج") || 
+      category.includes("مدبلجة") || 
+      title.includes("مدبلج") || 
+      title.includes("مدبلجة");
+
+    const isSubbed = 
+      category.includes("مترجم") || 
+      category.includes("مترجمة") || 
+      title.includes("مترجم") || 
+      title.includes("مترجمة");
+
+    return { isSeasonEnd, isDubbed, isSubbed };
+  }, [item.title, item.category, item.episode, item.episodes_count]);
 
   // Render Vertical / Portrait Card (Matches Image 1)
   if (isVertical) {
@@ -141,33 +126,21 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
             loading="lazy"
             decoding="async"
             referrerPolicy="no-referrer"
-            className={cn(
-              "relative w-full h-full object-cover transition-all duration-500 will-change-transform group-hover:scale-105 z-10 drop-shadow-lg",
-              imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-            )}
+            className="relative max-w-full max-h-full object-contain transition-all duration-500 will-change-transform group-hover:scale-105 z-10 drop-shadow-lg"
             onLoad={(e) => {
               const img = e.currentTarget;
               if (img.naturalHeight && img.naturalWidth) {
-                if (img.naturalHeight > img.naturalWidth * 1.05) {
+                if (img.naturalHeight > img.naturalWidth * 1.1) {
                   setIsVertical(true);
+                } else if (img.naturalWidth > img.naturalHeight * 1.1) {
+                  setIsVertical(false);
                 }
               }
               setImageLoaded(true);
             }}
-            onError={() => {
-              if (currentSrc && currentSrc.includes('image.tmdb.org')) return;
-              if (isTop10) {
-                getTMDBPoster(item.title, item.category).then((healedUrl) => {
-                  if (healedUrl) {
-                    setCurrentSrc(getProxiedImageUrl(healedUrl));
-                    setIsVertical(true);
-                  } else {
-                    setCurrentSrc("https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
-                  }
-                });
-              } else {
-                setCurrentSrc("https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
-              }
+            onError={(e) => {
+              e.currentTarget.src = "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop";
+              setImageLoaded(true);
             }}
           />
 
@@ -202,6 +175,26 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
             )}
           </div>
 
+          {/* Translation & Season Indicators on Bottom-Left */}
+          <div className="absolute bottom-2 left-2 flex flex-col gap-1 z-20">
+            {overlayBadge.isSeasonEnd && (
+              <span className="bg-rose-950/90 backdrop-blur-md text-rose-300 border border-rose-500/30 text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded shadow-lg flex items-center gap-1 select-none">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+                نهاية موسم 🎬
+              </span>
+            )}
+            {!overlayBadge.isSeasonEnd && overlayBadge.isDubbed && (
+              <span className="bg-emerald-950/90 backdrop-blur-md text-emerald-300 border border-emerald-500/30 text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded shadow-lg select-none">
+                مدبلج
+              </span>
+            )}
+            {!overlayBadge.isSeasonEnd && overlayBadge.isSubbed && (
+              <span className="bg-blue-950/90 backdrop-blur-md text-blue-300 border border-blue-500/30 text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded shadow-lg select-none">
+                مترجم
+              </span>
+            )}
+          </div>
+
           {/* Play Icon Hover Overlay */}
           <div className="absolute inset-0 bg-primary/25 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center z-25">
             <div className="w-10 h-10 bg-white text-black rounded-full flex items-center justify-center shadow-2xl scale-90 group-hover:scale-100 transition-all duration-300">
@@ -211,8 +204,8 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
         </div>
 
         {/* Title & Subtitle Details below image */}
-        <div className="p-2 sm:p-2.5 bg-zinc-950/95 flex flex-col justify-between min-h-[54px] gap-0.5 z-20 border-t border-white/5">
-          <h3 className="text-white font-black text-xs sm:text-sm leading-tight line-clamp-1 text-center dir-rtl group-hover:text-primary transition-colors">
+        <div className="p-2 sm:p-2.5 bg-zinc-950/95 flex flex-col justify-between min-h-[64px] gap-0.5 z-20 border-t border-white/5">
+          <h3 className="text-white font-black text-xs sm:text-sm leading-tight line-clamp-2 text-center dir-rtl group-hover:text-primary transition-colors">
             {item.title}
           </h3>
           <p className="text-[10px] text-zinc-400 font-bold text-center">
@@ -253,15 +246,14 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
-          className={cn(
-            "relative max-w-full max-h-full object-contain transition-all duration-500 will-change-transform group-hover:scale-105 z-10 drop-shadow-lg",
-            imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-          )}
+          className="relative max-w-full max-h-full object-contain transition-all duration-500 will-change-transform group-hover:scale-105 z-10 drop-shadow-lg"
           onLoad={(e) => {
             const img = e.currentTarget;
             if (img.naturalHeight && img.naturalWidth) {
-              if (img.naturalHeight > img.naturalWidth * 1.05) {
+              if (img.naturalHeight > img.naturalWidth * 1.1) {
                 setIsVertical(true);
+              } else if (img.naturalWidth > img.naturalHeight * 1.1) {
+                setIsVertical(false);
               }
             }
             setImageLoaded(true);
@@ -311,6 +303,26 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
           <div className="w-11 h-11 bg-white text-black rounded-full flex items-center justify-center shadow-2xl scale-90 group-hover:scale-100 transition-all duration-300">
             <Play className="w-5 h-5 fill-current translate-x-0.5" />
           </div>
+        </div>
+
+        {/* Translation & Season Indicators on Bottom-Left */}
+        <div className="absolute bottom-2 left-2 flex flex-col gap-1 z-20">
+          {overlayBadge.isSeasonEnd && (
+            <span className="bg-rose-950/90 backdrop-blur-md text-rose-300 border border-rose-500/30 text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded shadow-lg flex items-center gap-1 select-none">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+              نهاية موسم 🎬
+            </span>
+          )}
+          {!overlayBadge.isSeasonEnd && overlayBadge.isDubbed && (
+            <span className="bg-emerald-950/90 backdrop-blur-md text-emerald-300 border border-emerald-500/30 text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded shadow-lg select-none">
+              مدبلج
+            </span>
+          )}
+          {!overlayBadge.isSeasonEnd && overlayBadge.isSubbed && (
+            <span className="bg-blue-950/90 backdrop-blur-md text-blue-300 border border-blue-500/30 text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded shadow-lg select-none">
+              مترجم
+            </span>
+          )}
         </div>
       </div>
 

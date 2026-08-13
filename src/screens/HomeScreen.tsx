@@ -5,6 +5,7 @@ import Footer from "../components/Footer";
 import CategoryBar from "../components/CategoryBar";
 import SeriesCard from "../components/SeriesCard";
 import BottomNav from "../components/BottomNav";
+import FeaturedSlider from "../components/FeaturedSlider";
 import { fetchCategoryPage, getCachedSeriesByCategory, getAllCachedSeries, fetchAllSeries, extractMainSeriesTitle, isEpisodeItem, isSimilarTitle } from "../services/dataService";
 import { applyPrioritySort, searchQesehLive } from "../services/api";
 import { useAuth } from "../context/AuthContext";
@@ -91,7 +92,7 @@ export default function HomeScreen() {
       }
 
       try {
-        if (selectedCategory === "الكل" || selectedCategory === "مسلسلات" || selectedCategory === "أفلام") {
+        if (selectedCategory === "الكل" || selectedCategory === "مترجم" || selectedCategory === "مدبلج" || selectedCategory === "مسلسلات" || selectedCategory === "مسلسلات مدبلجة" || selectedCategory === "أفلام") {
           const allFetched = await fetchAllSeries(false);
           if (isMounted && allFetched && allFetched.length > 0) {
             initializeEpisodeTracking(allFetched);
@@ -299,64 +300,14 @@ export default function HomeScreen() {
     // 2. Default logic (fallback)
     let rank = 1;
     for (const item of processedSeries) {
-      const cached = getTMDBPosterSync(item.title, item.category);
-      const src = cached || item.image || "";
-      const isVert = item.isVertical || src.includes("image.tmdb.org") || src.includes("/t/p/") || src.includes("poster");
-
-      if (isVert) {
-        list.push({ series: item, rank });
-        map.set(item.id, rank);
-        rank++;
-        if (rank > 10) break;
-      }
-    }
-
-    // Fallback if fewer than 10 vertical series detected initially
-    if (list.length < 10) {
-      for (const item of processedSeries) {
-        if (!map.has(item.id)) {
-          list.push({ series: item, rank });
-          map.set(item.id, rank);
-          rank++;
-          if (rank > 10) break;
-        }
-      }
+      list.push({ series: item, rank });
+      map.set(item.id, rank);
+      rank++;
+      if (rank > 10) break;
     }
 
     return { top10VerticalSeries: list, top10RankMap: map };
   }, [processedSeries, topSeriesOrder, globalCache]);
-
-  const [topTMDBPosters, setTopTMDBPosters] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (!top10VerticalSeries || top10VerticalSeries.length === 0) return;
-    let active = true;
-
-    async function healTopPosters() {
-      const results: Record<string, string> = {};
-      const tasks = top10VerticalSeries.map(async (item) => {
-        const title = item.series.title;
-        const cached = getTMDBPosterSync(title, item.series.category);
-        if (cached) {
-          results[item.series.id] = cached;
-        } else {
-          try {
-            const tmdbImg = await getTMDBPoster(title, item.series.category);
-            if (tmdbImg) {
-              results[item.series.id] = tmdbImg;
-            }
-          } catch (e) {}
-        }
-      });
-      await Promise.allSettled(tasks);
-      if (active && Object.keys(results).length > 0) {
-        setTopTMDBPosters(prev => ({ ...prev, ...results }));
-      }
-    }
-
-    healTopPosters();
-    return () => { active = false; };
-  }, [top10VerticalSeries]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -406,6 +357,18 @@ export default function HomeScreen() {
   return (
     <div className="min-h-screen bg-[#050505]">
       <Header />
+
+      {/* Featured Hero Slider Banner at the very top of page (Full-width) */}
+      {!query && currentPage === 1 && top10VerticalSeries.length > 0 && (
+        <FeaturedSlider
+          items={top10VerticalSeries.map(x => x.series)}
+          onPlay={(item) => {
+            markSeriesAsRead(item);
+            navigateToWatchOrAds(navigate, item);
+          }}
+        />
+      )}
+
       <CategoryBar selected={selectedCategory} onSelect={handleCategoryChange} />
 
       <AnimatePresence>
@@ -478,11 +441,9 @@ export default function HomeScreen() {
                     if (finalTitle === "في" || finalTitle === "فى") {
                       finalTitle = "في سابعة عشر";
                     }
-                    const syncPoster = getTMDBPosterSync(finalTitle, series.category);
                     const displaySeries = {
                       ...series,
-                      title: finalTitle,
-                      image: syncPoster || topTMDBPosters[series.id] || series.image
+                      title: finalTitle
                     };
                     return (
                       <div key={`top10-slider-${series.id}`} className="min-w-[135px] sm:min-w-[165px] max-w-[180px] flex-shrink-0 snap-start">
@@ -541,6 +502,7 @@ export default function HomeScreen() {
                       item={item}
                       isTop10={topRank !== undefined && topRank > 0 && topRank <= 10}
                       topRank={topRank}
+                      forceVertical={true}
                       onPress={() => {
                         markSeriesAsRead(item);
                         navigateToWatchOrAds(navigate, item);

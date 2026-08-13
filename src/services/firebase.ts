@@ -45,6 +45,8 @@ export interface Series {
   isNew?: boolean;
   isPriority?: boolean;
   isVertical?: boolean;
+  episode?: string;
+  episodes_count?: string;
 }
 
 export interface TopSeriesItem {

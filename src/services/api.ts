@@ -5,8 +5,7 @@ export function getProxiedImageUrl(url: string | undefined): string {
   if (!url) return "";
   if (url.startsWith("/") || url.startsWith("data:") || url.includes("image.tmdb.org")) return url;
   
-  // Only proxy if it's a 3isk or external potentially protected image
-  if (url.includes("3iskk.xyz") || url.includes("wp-content") || url.includes("uploads")) {
+  if (url.startsWith("http://") || url.startsWith("https://")) {
     const encrypted = encodeURIComponent(encryptValue(url));
     return getApiUrl(`/api/v1/image-proxy?url=${encrypted}`);
   }
@@ -264,20 +263,7 @@ export async function fetchQesehDiscover(): Promise<any[]> {
 export async function fetchAllFromAPI(isBackground = false) {
   const allMap = new Map<string, any>();
 
-  // 1. First fetch master discover catalog (https://wwv.qeseh.com/discover/)
-  try {
-    const discoverList = await fetchQesehDiscover();
-    discoverList.forEach((s: any, idx: number) => {
-      if (s.title && !allMap.has(s.title)) {
-        allMap.set(s.title, {
-          ...s,
-          rank: idx
-        });
-      }
-    });
-  } catch (e) {}
-
-  // 2. Next fetch master catalog from Qeseh scraper endpoint
+  // Fetch master catalog from 3cktv endpoint
   try {
     const res = await resilientFetch(getApiUrl(API_BASE + "/qeseh/all-series"));
     const data = await res.json();
@@ -289,43 +275,15 @@ export async function fetchAllFromAPI(isBackground = false) {
             title: s.title,
             image: s.image || s.img || '',
             url: s.url || '',
-            category: s.category || 'مسلسلات',
+            category: s.category || 'مسلسلات مترجمة',
             episodes_count: s.episodes_count || s.episode || '0',
-            rank: idx + 100
+            rank: idx
           });
         }
       });
     }
   } catch (e) {
-    console.warn("Failed fetching qeseh master catalog, falling back to categories", e);
-  }
-
-  // 2. Fetch category pages to ensure fallback & full coverage
-  const allCats = await fetchCategories();
-  if (allCats.length > 0) {
-    const pageUrls: { url: string; catName: string }[] = [];
-    allCats.slice(0, 20).forEach(c => {
-      const maxPages = c.name.includes("جميع المسلسلات") ? 20 : 10;
-      const pagesToFetch = (c.pages || [c.url]).slice(0, maxPages);
-      pagesToFetch.forEach(p => {
-        pageUrls.push({ url: p, catName: c.name });
-      });
-    });
-
-    const batchSize = 6;
-    for (let i = 0; i < pageUrls.length; i += batchSize) {
-      const batch = pageUrls.slice(i, i + batchSize);
-      const results = await Promise.allSettled(batch.map(item => fetchSeriesByCategory(item.url)));
-      results.forEach((r, idx) => {
-        if (r.status === "fulfilled") {
-          r.value.forEach((s: any, iRank: number) => {
-            if (!allMap.has(s.title)) {
-              allMap.set(s.title, { ...s, category: batch[idx].catName, rank: iRank });
-            }
-          });
-        }
-      });
-    }
+    console.warn("Failed fetching master catalog", e);
   }
 
   const firebaseData = await fetchAllFromFirebase();
