@@ -53,28 +53,37 @@ export function applyPrioritySort(seriesList: any[]): any[] {
   const excludedTitles = ["حلم أشرف ج1 مترجم", "المدينة البعيدة ج1 مترجم", "حلم اشرف ج1", "المدينة البعيدة ج1", "في نوم"];
   const mapped = seriesList
     .filter(s => s && s.title && !excludedTitles.some(title => s.title.includes(title)))
-    .map(s => {
+    .map((s, idx) => {
       const pinData = categoryPins[s.id];
       const isPinned = pinData && pinData.pinned === true || s.id === "movie_titanic_999";
       const hasNew = hasNewEpisode(s);
       const updatedAt = getEpisodeUpdatedAt(s) || 0;
-      return { ...s, _isPinned: isPinned, _pinnedAt: isPinned ? (s.id === "movie_titanic_999" ? Date.now() + 1000000 : (pinData?.pinnedAt || 0)) : 0, _hasNew: hasNew, _updatedAt: updatedAt, _rank: s.rank !== undefined ? s.rank : 9999 };
+      const rank = s.rank !== undefined ? s.rank : (idx + 1);
+      return { 
+        ...s, 
+        _isPinned: isPinned, 
+        _pinnedAt: isPinned ? (s.id === "movie_titanic_999" ? Date.now() + 1000000 : (pinData?.pinnedAt || 0)) : 0, 
+        _hasNew: hasNew, 
+        _updatedAt: updatedAt, 
+        _rank: rank 
+      };
     });
 
   mapped.sort((a, b) => {
     if (a._isPinned && !b._isPinned) return -1;
     if (!a._isPinned && b._isPinned) return 1;
     if (a._isPinned && b._isPinned) return b._pinnedAt - a._pinnedAt;
+    
+    // Priority: preserve exact source site order
+    if (a._rank !== b._rank) return a._rank - b._rank;
+
     if (a._hasNew && !b._hasNew) return -1;
     if (!a._hasNew && b._hasNew) return 1;
-    if (a._hasNew && b._hasNew) {
-      if (a._rank !== b._rank) return a._rank - b._rank;
-      return b._updatedAt - a._updatedAt;
-    }
+    if (a._hasNew && b._hasNew) return b._updatedAt - a._updatedAt;
+    
     if (a.isPriority && !b.isPriority) return -1;
     if (!a.isPriority && b.isPriority) return 1;
-    if (a.rating !== b.rating) return (b.rating || 0) - (a.rating || 0);
-    return a._rank - b._rank;
+    return 0;
   });
 
   sortCache.set(cacheKey, mapped);
@@ -276,8 +285,13 @@ export async function fetchAllFromAPI(isBackground = false) {
             image: s.image || s.img || '',
             url: s.url || '',
             category: s.category || 'مسلسلات مترجمة',
+            episode: s.episode || '',
             episodes_count: s.episodes_count || s.episode || '0',
-            rank: idx
+            latestEpisode: s.latestEpisode || s.episode || '',
+            isFinal: s.isFinal || false,
+            rank: s.rank !== undefined ? s.rank : idx,
+            isTopTrending: s.isTopTrending || false,
+            isVertical: true
           });
         }
       });

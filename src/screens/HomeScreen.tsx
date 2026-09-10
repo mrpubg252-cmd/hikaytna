@@ -9,11 +9,11 @@ import FeaturedSlider from "../components/FeaturedSlider";
 import { fetchCategoryPage, getCachedSeriesByCategory, getAllCachedSeries, fetchAllSeries, extractMainSeriesTitle, isEpisodeItem, isSimilarTitle } from "../services/dataService";
 import { applyPrioritySort, searchQesehLive } from "../services/api";
 import { useAuth } from "../context/AuthContext";
-import { Series, TopSeriesItem, subscribeTopSeriesOrder } from "../services/firebase";
+import { Series, TopSeriesItem, subscribeTopSeriesOrder, subscribeSliderSeries, SliderSeriesItem } from "../services/firebase";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronLeft, ChevronRight, ArrowLeft, AlertCircle, AlertTriangle, X } from "lucide-react";
 import NoticeAndSupportBubble from "../components/NoticeAndSupportBubble";
-import { fuzzyMatchArabic } from "../lib/utils";
+import { fuzzyMatchArabic, calculateSearchRelevance } from "../lib/utils";
 import { navigateToWatchOrAds } from "../utils/watchNavigation";
 import { getTMDBPosterSync, getTMDBPoster } from "../lib/tmdbHealing";
 import {
@@ -40,6 +40,16 @@ export default function HomeScreen() {
 
   const [showCheatedAlert, setShowCheatedAlert] = useState(false);
   const [topSeriesOrder, setTopSeriesOrder] = useState<TopSeriesItem[]>([]);
+  const [firebaseSliderSeries, setFirebaseSliderSeries] = useState<Series[]>(() => {
+    try {
+      const saved = localStorage.getItem('cached_firebase_slider_series');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
 
   useEffect(() => {
     const unsub = subscribeTopSeriesOrder((items) => {
@@ -47,6 +57,39 @@ export default function HomeScreen() {
     });
     return () => unsub();
   }, []);
+
+  // Live subscription to admin-curated Slider Series from Firebase (loads instantly from cache + syncs in background)
+  useEffect(() => {
+    const unsub = subscribeSliderSeries((items) => {
+      if (items && items.length > 0) {
+        const cachedAll = getAllCachedSeries();
+        const mapped: Series[] = items.map((it) => {
+          const matched = cachedAll.find(c => c.id === it.id || c.title === it.title || isSimilarTitle(c.title, it.title));
+          return {
+            id: it.id || matched?.id || '',
+            title: it.title,
+            image: it.image || matched?.image || (matched as any)?.img || '',
+            category: it.category || matched?.category || 'مسلسلات',
+            rating: it.rating || matched?.rating || 9.0,
+            trailer: it.trailer || matched?.trailer || '',
+            url: it.url || matched?.url || '',
+            episodes: matched?.episodes || [],
+            episodes_count: it.episodes_count || (matched?.episodes?.length ? `${matched.episodes.length} حلقة` : undefined)
+          } as Series;
+        });
+        setFirebaseSliderSeries(mapped);
+        try {
+          localStorage.setItem('cached_firebase_slider_series', JSON.stringify(mapped));
+        } catch (e) {}
+      } else {
+        setFirebaseSliderSeries([]);
+        try {
+          localStorage.removeItem('cached_firebase_slider_series');
+        } catch (e) {}
+      }
+    });
+    return () => unsub();
+  }, [globalCache]);
 
   useEffect(() => {
     const checkAlert = () => {
@@ -88,7 +131,12 @@ export default function HomeScreen() {
         setAllSeriesRaw(cached);
         setLoading(false);
       } else {
-        setLoading(true);
+        const hasSliderCache = localStorage.getItem('cached_firebase_slider_series');
+        if (!hasSliderCache) {
+          setLoading(true);
+        } else {
+          setLoading(false);
+        }
       }
 
       try {
@@ -181,39 +229,64 @@ export default function HomeScreen() {
     };
   }, [query]);
 
-  // 3. Centralized Processing (Sorting + Filtering) - This is where the magic happens!
-  // We apply the heavy logic here in useMemo to keep the UI buttery smooth.
+  // 3. Centralized Processing (Sorting + Filtering) - Highly Accurate Search & Priority Sorting
   const processedSeries = useMemo(() => {
     try {
-      // Step A: Determine base list (Search vs Category)
-      let list: Series[] = [];
-      if (query) {
-        const q = query.toLowerCase().trim();
+      if (query && query.trim().length > 0) {
+        const q = query.trim();
         // Index search across ALL loaded series
-        const seenIds = new Set();
-        const pool = [...allSeriesRaw];
-        pool.forEach(s => seenIds.add(s.id));
-        
-        globalCache.forEach(s => {
-          if (!seenIds.has(s.id)) pool.push(s);
+        const seenKeys = new Set<string>();
+        const pool: Series[] = [];
+
+        const addToPool = (s: Series) => {
+          if (!s || !s.title) return;
+          // Clean title key to avoid duplicate items in search results
+          const key = s.title.toLowerCase().replace(/ـ/g, '').replace(/\s+/g, ' ').trim();
+          if (seenKeys.has(key)) return;
+          seenKeys.add(key);
+
+          // Exclude single episode entries
+          const isEpisode = /الحلقة|الحلقه|حلقة|حلقه/.test(s.title);
+          if (isEpisode) return;
+
+          pool.push(s);
+        };
+
+        allSeriesRaw.forEach(addToPool);
+        globalCache.forEach(addToPool);
+
+        // Score every item using Arabic Search Relevance Engine
+        const scoredItems = pool
+          .map(s => {
+            const score = calculateSearchRelevance(s.title || '', q, s.category);
+            return { series: s, score };
+          })
+          .filter(item => item.score > 0);
+
+        // Sort: Highest Relevance Score FIRST!
+        scoredItems.sort((a, b) => {
+          if (b.score !== a.score) {
+            return b.score - a.score;
+          }
+          // Secondary tie-breaker: pinned or rank
+          const aPin = (a.series as any)._isPinned;
+          const bPin = (b.series as any)._isPinned;
+          if (aPin && !bPin) return -1;
+          if (!aPin && bPin) return 1;
+          return ((a.series as any).rank || 0) - ((b.series as any).rank || 0);
         });
 
-        list = pool.filter(s => 
-          fuzzyMatchArabic(s.title || "", q) || 
-          fuzzyMatchArabic(s.category || "", q)
-        );
-      } else {
-        list = allSeriesRaw;
+        return scoredItems.map(item => item.series);
       }
 
-      // Filter out individual episode posters so only the main series show up
-      list = list.filter(s => {
+      // Default Category List
+      const list = allSeriesRaw.filter(s => {
         const title = s.title || "";
         const isEpisode = /الحلقة|الحلقه|حلقة|حلقه/.test(title);
         return !isEpisode;
       });
 
-      // Step B: Apply Universal Professional Sort (handled by API service for consistency)
+      // Apply Universal Priority Sort for Category browsing
       return applyPrioritySort(list);
     } catch (err) {
       console.error("Processing series failed:", err);
@@ -232,72 +305,8 @@ export default function HomeScreen() {
   const { top10VerticalSeries, top10RankMap } = useMemo(() => {
     const list: { series: Series; rank: number }[] = [];
     const map = new Map<string, number>();
-    
-    // 1. If admin provided a specific order, use it!
-    if (topSeriesOrder && topSeriesOrder.length > 0) {
-      let rank = 1;
-      const isSingleEp = (u?: string) => u ? (u.includes('.html') || u.includes('-episode-') || u.includes('/watch/') || u.includes('/episode/')) : false;
 
-      for (const orderedItem of topSeriesOrder) {
-        let cleanTitle = extractMainSeriesTitle(orderedItem.title) || orderedItem.title;
-        cleanTitle = cleanTitle.replace(/[«»"'"]/g, '').trim();
-        if (cleanTitle === "في" || cleanTitle === "فى" || cleanTitle === "« في »" || cleanTitle === "« فى »") {
-          cleanTitle = "في سابعة عشر";
-        }
-        // Find full series from allSeriesRaw, globalCache or processedSeries matching ID or title
-        let found = allSeriesRaw.find(s => !isEpisodeItem(s) && (
-                      (orderedItem.id && s.id === orderedItem.id) ||
-                      (orderedItem.url && s.url && s.url === orderedItem.url) ||
-                      isSimilarTitle(s.title, orderedItem.title) ||
-                      isSimilarTitle(s.title, cleanTitle)
-                    )) || 
-                    globalCache.find(s => !isEpisodeItem(s) && (
-                      (orderedItem.id && s.id === orderedItem.id) ||
-                      (orderedItem.url && s.url && s.url === orderedItem.url) ||
-                      isSimilarTitle(s.title, orderedItem.title) ||
-                      isSimilarTitle(s.title, cleanTitle)
-                    )) ||
-                    processedSeries.find(s => !isEpisodeItem(s) && (
-                      (orderedItem.id && s.id === orderedItem.id) ||
-                      (orderedItem.url && s.url && s.url === orderedItem.url) ||
-                      isSimilarTitle(s.title, orderedItem.title) ||
-                      isSimilarTitle(s.title, cleanTitle)
-                    ));
-        
-        if (!found) {
-           found = {
-             id: orderedItem.id || `top_${rank}_${cleanTitle.replace(/[^a-zA-Z0-9]/g, '_')}`,
-             title: cleanTitle,
-             image: getTMDBPosterSync(cleanTitle, orderedItem.category) || "https://3iskk.xyz/wp-content/uploads/2026/05/daha-17-dizi.jpg",
-             category: orderedItem.category || "مسلسلات",
-             rating: 0,
-             episodes: [],
-             trailer: "",
-             url: isSingleEp(orderedItem.url) ? "" : (orderedItem.url || "")
-           };
-        } else {
-           let foundTitle = extractMainSeriesTitle(found.title) || found.title;
-           foundTitle = foundTitle.replace(/[«»"'"]/g, '').trim();
-           if (foundTitle === "في" || foundTitle === "فى" || foundTitle === "« في »" || foundTitle === "« فى »") {
-             foundTitle = "في سابعة عشر";
-           }
-           found = {
-             ...found,
-             title: foundTitle,
-             image: getTMDBPosterSync(foundTitle, found.category) || "https://3iskk.xyz/wp-content/uploads/2026/05/daha-17-dizi.jpg",
-             url: (!isSingleEp(found.url) && found.url) ? found.url : ((orderedItem.url && !isSingleEp(orderedItem.url)) ? orderedItem.url : "")
-           };
-        }
-        if (found) {
-          list.push({ series: found, rank });
-          map.set(found.id, rank);
-          rank++;
-        }
-      }
-      return { top10VerticalSeries: list, top10RankMap: map };
-    }
-
-    // 2. Default logic (fallback)
+    // Take top 10 directly from processedSeries (which are ordered by the source site's trending order)
     let rank = 1;
     for (const item of processedSeries) {
       list.push({ series: item, rank });
@@ -307,7 +316,7 @@ export default function HomeScreen() {
     }
 
     return { top10VerticalSeries: list, top10RankMap: map };
-  }, [processedSeries, topSeriesOrder, globalCache]);
+  }, [processedSeries]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -359,9 +368,9 @@ export default function HomeScreen() {
       <Header />
 
       {/* Featured Hero Slider Banner at the very top of page (Full-width) */}
-      {!query && currentPage === 1 && top10VerticalSeries.length > 0 && (
+      {!query && currentPage === 1 && (firebaseSliderSeries.length > 0 || top10VerticalSeries.length > 0) && (
         <FeaturedSlider
-          items={top10VerticalSeries.map(x => x.series)}
+          items={firebaseSliderSeries.length > 0 ? firebaseSliderSeries : top10VerticalSeries.map(x => x.series)}
           onPlay={(item) => {
             markSeriesAsRead(item);
             navigateToWatchOrAds(navigate, item);

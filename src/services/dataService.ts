@@ -71,8 +71,8 @@ function fixImageUrl(url: string, title: string = "") {
     const normTitle = title.toLowerCase();
     if (normTitle.includes("في سابعة عشر") || normTitle.includes("في السابعة عشر")) {
       finalUrl = "https://3iskk.xyz/wp-content/uploads/2026/05/daha-17-dizi.jpg";
-    } else if (normTitle.includes("حلم اشرف") || normTitle.includes("حلم أشرف") || normTitle.includes("حلم الشرف")) {
-      finalUrl = "https://3iskk.xyz/wp-content/uploads/2025/03/Esref-Ruya.jpg";
+    } else if (normTitle.includes("حلم اشرف") || normTitle.includes("حلم أشرف") || normTitle.includes("حلم الشرف") || normTitle.includes("esref")) {
+      finalUrl = "/esref_ruya.jpg";
     } else if (normTitle.includes("هذا بحر سوف يفيض") || normTitle.includes("هذا البحر سوف يفيض")) {
       finalUrl = "https://3iskk.xyz/wp-content/uploads/2025/10/uHIOTJXN9nNTc51WyunL43Fvge3.jpg";
     } else if (
@@ -114,12 +114,20 @@ function fixImageUrl(url: string, title: string = "") {
 // Client-side simple in-memory cache with localStorage sync for instant loading!
 let cachedSeriesList: Series[] | null = null;
 let lastFetchTime = 0;
-const CACHE_DURATION_MS = 4 * 60 * 60 * 1000; // Fresh for 4 hours
-const LOCAL_STORAGE_KEY = "serene_series_cache_v3";
+const CACHE_DURATION_MS = 2 * 60 * 1000; // Fresh for 2 minutes (keeps live synced with 3cktv homepage)
+const LOCAL_STORAGE_KEY = "serene_series_cache_v7";
 
 // Initial load from localStorage
 if (typeof window !== "undefined") {
   try {
+    // Clear outdated legacy caches to ensure user gets real-time 3cktv homepage order immediately
+    localStorage.removeItem("serene_series_cache_v1");
+    localStorage.removeItem("serene_series_cache_v2");
+    localStorage.removeItem("serene_series_cache_v3");
+    localStorage.removeItem("serene_series_cache_v4");
+    localStorage.removeItem("serene_series_cache_v5");
+    localStorage.removeItem("serene_series_cache_v6");
+
     const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
@@ -243,8 +251,8 @@ export function clearCache() {
 
 export async function fetchAllSeries(forceRefresh = false): Promise<Series[]> {
   if (!forceRefresh && cachedSeriesList && cachedSeriesList.length > 0 && Date.now() - lastFetchTime < CACHE_DURATION_MS) {
-    // If cache is older than 15 minutes, trigger a background refresh quietly
-    if (Date.now() - lastFetchTime > 15 * 60 * 1000) {
+    // If cache is older than 45 seconds, trigger a background refresh quietly
+    if (Date.now() - lastFetchTime > 45 * 1000) {
       triggerBackgroundFetch();
     }
     return cachedSeriesList;

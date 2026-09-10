@@ -816,144 +816,160 @@ export default function WatchScreen() {
   }, [currentEpisode, episodes]);
   
   async function loadEpisodes(signal?: AbortSignal) {
-    let activeUrl = series.url;
-    const cleanTitle = extractMainSeriesTitle(series.title) || series.title;
+    try {
+      let activeUrl = series.url;
+      const cleanTitle = extractMainSeriesTitle(series.title) || series.title;
 
-    const isSingleEpisodeUrl = (url?: string) => {
-      if (!url) return true;
-      return url.includes('-episode-') || url.includes('.html') || url.includes('/watch/') || url.includes('/episode/');
-    };
+      const isSingleEpisodeUrl = (url?: string) => {
+        if (!url) return true;
+        return url.includes('-episode-') || url.includes('.html') || url.includes('/watch/') || url.includes('/episode/');
+      };
 
-    // If activeUrl is missing or points to a single episode page, attempt parent resolution from cache first
-    if (!activeUrl || isSingleEpisodeUrl(activeUrl) || isEpisodeItem(series)) {
-      let cached = getAllCachedSeries();
-      if (!cached || cached.length === 0) {
-        cached = await fetchAllSeries(false);
-      }
-      const parent = cached.find(s => !isEpisodeItem(s) && s.url && !isSingleEpisodeUrl(s.url) && (s.title === cleanTitle || isSimilarTitle(s.title, cleanTitle)));
-      if (parent && parent.url) {
-        activeUrl = parent.url;
-      }
-    }
-
-    let eps: Episode[] = [];
-    
-    if (activeUrl) {
-      eps = await fetchEpisodesFromAPI(activeUrl, signal);
-    }
-
-    if (signal?.aborted) return;
-
-    // Fallback Step 1: If eps returned 0 or 1 episode, search local cache & discover for parent series URL
-    if (eps.length <= 1) {
-      let cached = getAllCachedSeries();
-      if (!cached || cached.length === 0) {
-        cached = await fetchAllSeries(false);
-      }
-      const parent = cached.find(s => !isEpisodeItem(s) && s.url && !isSingleEpisodeUrl(s.url) && (s.title === cleanTitle || isSimilarTitle(s.title, cleanTitle) || isSimilarTitle(s.title, series.title)));
-      if (parent && parent.url) {
-        const parentEps = await fetchEpisodesFromAPI(parent.url, signal);
-        if (parentEps && parentEps.length > 1) {
-          eps = parentEps;
+      // If activeUrl is missing or points to a single episode page, attempt parent resolution from cache first
+      if (!activeUrl || isSingleEpisodeUrl(activeUrl) || isEpisodeItem(series)) {
+        let cached = getAllCachedSeries();
+        if (!cached || cached.length === 0) {
+          cached = await fetchAllSeries(false);
+        }
+        const parent = cached.find(s => !isEpisodeItem(s) && s.url && !isSingleEpisodeUrl(s.url) && (s.title === cleanTitle || isSimilarTitle(s.title, cleanTitle)));
+        if (parent && parent.url) {
           activeUrl = parent.url;
         }
       }
-    }
 
-    if (signal?.aborted) return;
+      let eps: Episode[] = [];
+      
+      if (activeUrl) {
+        eps = await fetchEpisodesFromAPI(activeUrl, signal);
+      }
 
-    // Fallback Step 2: Perform Live Qeseh Search for cleanTitle if eps is still <= 1
-    if (eps.length <= 1 && cleanTitle) {
-      try {
-        const searchResults = await searchQesehLive(cleanTitle);
-        if (searchResults && searchResults.length > 0) {
-          const matchedSeries = searchResults.find((s: any) => !isEpisodeItem(s) && s.url && !isSingleEpisodeUrl(s.url)) || searchResults[0];
-          if (matchedSeries && matchedSeries.url) {
-            const liveEps = await fetchEpisodesFromAPI(matchedSeries.url, signal);
-            if (liveEps && liveEps.length > 0) {
-              eps = liveEps;
-              activeUrl = matchedSeries.url;
-            }
+      if (signal?.aborted) return;
+
+      // Fallback Step 1: If eps returned 0 or 1 episode, search local cache & discover for parent series URL
+      if (eps.length <= 1) {
+        let cached = getAllCachedSeries();
+        if (!cached || cached.length === 0) {
+          cached = await fetchAllSeries(false);
+        }
+        const parent = cached.find(s => !isEpisodeItem(s) && s.url && !isSingleEpisodeUrl(s.url) && (s.title === cleanTitle || isSimilarTitle(s.title, cleanTitle) || isSimilarTitle(s.title, series.title)));
+        if (parent && parent.url) {
+          const parentEps = await fetchEpisodesFromAPI(parent.url, signal);
+          if (parentEps && parentEps.length > 1) {
+            eps = parentEps;
+            activeUrl = parent.url;
           }
         }
-      } catch (err) {
-        console.warn("Live search episode fallback error:", err);
       }
-    }
-    
-    if ((eps.length === 0 || eps.length === 1) && series.episodes && Array.isArray(series.episodes) && series.episodes.length > 1) {
-      eps = series.episodes;
-    }
-    
-    if (signal?.aborted) return;
 
-    // Filter duplicates if not "حلم اشرف" or "ليلى_مدبلج"
-    let finalEps = eps;
-    if (series.title !== "حلم اشرف" && series.title !== "ليلى_مدبلج") {
-      const uniqueEps: Episode[] = [];
-      const seenTitles = new Set();
-      for (const ep of eps) {
-        if (!ep || !ep.title) continue;
-        const normTitle = ep.title.trim().replace(/\s+/g, ' ');
-        if (!seenTitles.has(normTitle)) {
-          uniqueEps.push(ep);
-          seenTitles.add(normTitle);
+      if (signal?.aborted) return;
+
+      // Fallback Step 2: Perform Live Qeseh Search for cleanTitle if eps is still <= 1
+      if (eps.length <= 1 && cleanTitle) {
+        try {
+          const searchResults = await searchQesehLive(cleanTitle);
+          if (searchResults && searchResults.length > 0) {
+            const matchedSeries = searchResults.find((s: any) => !isEpisodeItem(s) && s.url && !isSingleEpisodeUrl(s.url)) || searchResults[0];
+            if (matchedSeries && matchedSeries.url) {
+              const liveEps = await fetchEpisodesFromAPI(matchedSeries.url, signal);
+              if (liveEps && liveEps.length > 0) {
+                eps = liveEps;
+                activeUrl = matchedSeries.url;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("Live search episode fallback error:", err);
         }
       }
-      finalEps = uniqueEps;
-    }
-    
-    // Sort episodes numerically based on title, handling special keywords
-    finalEps.sort((a, b) => {
-      const getOrder = (title: string) => {
-        const cleanTitle = title.toLowerCase();
-        if (cleanTitle.includes('الاخيرة') || cleanTitle.includes('الأخيرة') || cleanTitle.includes('last')) return 99999;
-        
-        // Extract the first number found in the title
-        const match = title.match(/\d+/);
-        if (match) return parseInt(match[0]);
-        
-        return 0;
-      };
       
-      const orderA = getOrder(a.title);
-      const orderB = getOrder(b.title);
+      if ((eps.length === 0 || eps.length === 1) && series.episodes && Array.isArray(series.episodes) && series.episodes.length > 1) {
+        eps = series.episodes;
+      }
       
-      if (orderA !== orderB) return orderA - orderB;
-      return a.title.localeCompare(b.title);
-    });
-    
-    // Only set episodes if we found episodes OR if we had none
-    if (finalEps.length > 0) {
-      setEpisodes(finalEps);
-    } else {
-      setEpisodes(prev => prev.length > 0 ? prev : finalEps);
-    }
+      if (signal?.aborted) return;
 
-    if (finalEps.length > 0) {
-      // Respect dynamic route episodeIndex first
-      let indexToPlay = 0;
-      if (episodeIndex) {
-        const parsed = parseInt(episodeIndex, 10);
-        if (!isNaN(parsed) && parsed >= 0 && parsed < finalEps.length) {
-          indexToPlay = parsed;
+      // Filter duplicates if not "حلم اشرف" or "ليلى_مدبلج"
+      let finalEps = eps;
+      if (series.title !== "حلم اشرف" && series.title !== "ليلى_مدبلج") {
+        const uniqueEps: Episode[] = [];
+        const seenTitles = new Set();
+        for (const ep of eps) {
+          if (!ep || !ep.title) continue;
+          const normTitle = ep.title.trim().replace(/\s+/g, ' ');
+          if (!seenTitles.has(normTitle)) {
+            uniqueEps.push(ep);
+            seenTitles.add(normTitle);
+          }
         }
+        finalEps = uniqueEps;
+      }
+      
+      // Sort episodes numerically based on title, handling special keywords
+      finalEps.sort((a, b) => {
+        const getOrder = (title: string) => {
+          const cleanTitle = title.toLowerCase();
+          if (cleanTitle.includes('الاخيرة') || cleanTitle.includes('الأخيرة') || cleanTitle.includes('last')) return 99999;
+          
+          // Extract the first number found in the title
+          const match = title.match(/\d+/);
+          if (match) return parseInt(match[0]);
+          
+          return 0;
+        };
+        
+        const orderA = getOrder(a.title);
+        const orderB = getOrder(b.title);
+        
+        if (orderA !== orderB) return orderA - orderB;
+        return a.title.localeCompare(b.title);
+      });
+      
+      // Check if the series is identified as completed/final
+      const isSeriesFinal = (series as any).isFinal === true ||
+        /الأخي?رة/i.test((series as any).episode || '') ||
+        /الأخي?رة/i.test((series as any).latestEpisode || '') ||
+        /الأخي?رة/i.test(series.title || '');
+
+      if (isSeriesFinal && finalEps.length > 0) {
+        const lastEp = finalEps[finalEps.length - 1];
+        lastEp.isFinal = true;
+      }
+
+      // Only set episodes if we found episodes OR if we had none
+      if (finalEps.length > 0) {
+        setEpisodes(finalEps);
       } else {
-        const savedIndex = localStorage.getItem(`mo_play_last_ep_${series.id}`);
-        if (savedIndex) {
-          const parsed = parseInt(savedIndex, 10);
+        setEpisodes(prev => prev.length > 0 ? prev : finalEps);
+      }
+
+      if (finalEps.length > 0) {
+        // Respect dynamic route episodeIndex first
+        let indexToPlay = 0;
+        if (episodeIndex) {
+          const parsed = parseInt(episodeIndex, 10);
           if (!isNaN(parsed) && parsed >= 0 && parsed < finalEps.length) {
             indexToPlay = parsed;
           }
+        } else {
+          const savedIndex = localStorage.getItem(`mo_play_last_ep_${series.id}`);
+          if (savedIndex) {
+            const parsed = parseInt(savedIndex, 10);
+            if (!isNaN(parsed) && parsed >= 0 && parsed < finalEps.length) {
+              indexToPlay = parsed;
+            }
+          }
+        }
+        const episodeToPlay = finalEps[indexToPlay] || finalEps[0];
+        if (episodeToPlay && !signal?.aborted) {
+          playEpisode(episodeToPlay, indexToPlay, false);
         }
       }
-      const episodeToPlay = finalEps[indexToPlay] || finalEps[0];
-      if (episodeToPlay && !signal?.aborted) {
-        playEpisode(episodeToPlay, indexToPlay, false);
+    } catch (e) {
+      console.warn("loadEpisodes failed:", e);
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false);
       }
-    }
-    if (!signal?.aborted) {
-      setLoading(false);
     }
   }
   
@@ -1557,8 +1573,10 @@ export default function WatchScreen() {
                 seriesId={series.id}
                 seriesImage={resolvedSeriesImage}
                 seriesTitle={series.title}
+                isSeriesFinal={(series as any).isFinal === true || /الأخي?رة/i.test((series as any).episode || '') || /الأخي?رة/i.test((series as any).latestEpisode || '') || /الأخي?رة/i.test(series.title || '')}
                 isMovie={episodes.length === 1 && (/فيلم|افلام/i.test(series.category || "") || /فيلم/i.test(series.title || ""))}
                 onSelect={(ep, idx) => playEpisode(ep, idx)}
+                isLoading={loading}
               />
             </section>
           </div>

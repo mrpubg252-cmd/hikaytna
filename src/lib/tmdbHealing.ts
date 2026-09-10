@@ -29,11 +29,28 @@ const DIRECT_SERIES_POSTERS: Record<string, string> = {
   "في السابعة عشرة": "https://3iskk.xyz/wp-content/uploads/2026/05/daha-17-dizi.jpg",
   "هذا بحر سوف يفيض": "https://3iskk.xyz/wp-content/uploads/2025/10/uHIOTJXN9nNTc51WyunL43Fvge3.jpg",
   "هذا البحر سوف يفيض": "https://3iskk.xyz/wp-content/uploads/2025/10/uHIOTJXN9nNTc51WyunL43Fvge3.jpg",
+  "حلم اشرف": "/esref_ruya.jpg",
+  "حلم أشرف": "/esref_ruya.jpg",
+  "حلم اشرف مترجم": "/esref_ruya.jpg",
+  "حلم أشرف مترجم": "/esref_ruya.jpg",
+  "حلم اشرف مدبلج": "/esref_ruya.jpg",
+  "حلم أشرف مدبلج": "/esref_ruya.jpg",
+  "مسلسل حلم اشرف": "/esref_ruya.jpg",
+  "مسلسل حلم أشرف": "/esref_ruya.jpg",
+  "مسلسل حلم اشرف مترجم": "/esref_ruya.jpg",
+  "مسلسل حلم أشرف مترجم": "/esref_ruya.jpg",
+  "مسلسل حلم اشرف مدبلج": "/esref_ruya.jpg",
+  "مسلسل حلم أشرف مدبلج": "/esref_ruya.jpg",
+  "esref ruya": "/esref_ruya.jpg",
+  "eşref rüya": "/esref_ruya.jpg",
 };
 
 function getDirectSeriesPoster(title: string): string | null {
   if (!title) return null;
   const clean = title.replace(/[«»"'"]/g, '').trim().toLowerCase();
+  if (clean.includes("حلم اشرف") || clean.includes("حلم أشرف") || clean.includes("حلم الشرف") || clean.includes("esref ruya") || clean.includes("eşref rüya")) {
+    return "/esref_ruya.jpg";
+  }
   for (const key in DIRECT_SERIES_POSTERS) {
     const keyClean = key.replace(/[«»"'"]/g, '').trim().toLowerCase();
     if (clean === keyClean || (clean.length > 3 && (clean.includes(keyClean) || keyClean.includes(clean)))) {
@@ -402,6 +419,8 @@ function getTitleMatchScore(item: any, targetQuery: string): number {
  * Returns healed image poster path, or null if no match could be found on TMDB.
  */
 export async function getTMDBPoster(title: string, category?: string): Promise<string | null> {
+  const direct = getDirectSeriesPoster(title);
+  if (direct) return direct;
   return null;
 }
 
@@ -409,5 +428,7 @@ export async function getTMDBPoster(title: string, category?: string): Promise<s
  * Helper to check memory cache synchronously (instant check during rendering to prevent jumpiness)
  */
 export function getTMDBPosterSync(title: string, category?: string): string | null {
+  const direct = getDirectSeriesPoster(title);
+  if (direct) return direct;
   return null;
 }

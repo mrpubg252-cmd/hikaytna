@@ -28,6 +28,7 @@ export interface Episode {
   link2?: string;
   link3?: string;
   url?: string;
+  isFinal?: boolean;
 }
 
 export interface Series {
@@ -47,6 +48,8 @@ export interface Series {
   isVertical?: boolean;
   episode?: string;
   episodes_count?: string;
+  latestEpisode?: string;
+  isFinal?: boolean;
 }
 
 export interface TopSeriesItem {
@@ -168,6 +171,90 @@ export function subscribeTopSeriesOrder(callback: (items: TopSeriesItem[]) => vo
     }
   }, (err) => {
     console.warn("RTDB top series sub error:", err);
+  });
+
+  return () => {
+    unsubFs();
+    unsubRtdb();
+  };
+}
+
+// ----------------- Featured Slider Series (Firebase Sync) -----------------
+export interface SliderSeriesItem {
+  id: string;
+  title: string;
+  image?: string;
+  category?: string;
+  rating?: number;
+  trailer?: string;
+  url?: string;
+  episodes_count?: string;
+  rank?: number;
+}
+
+export async function saveSliderSeries(items: SliderSeriesItem[]): Promise<boolean> {
+  const cleanList = items.map((item, index) => ({
+    id: item.id || `slider_${index}_${(item.title || 'item').replace(/[^a-zA-Z0-9]/g, '_')}`,
+    title: item.title || '',
+    image: item.image || '',
+    category: item.category || 'مسلسلات',
+    rating: item.rating || 8.5,
+    trailer: item.trailer || '',
+    url: item.url || '',
+    episodes_count: item.episodes_count || '',
+    rank: index + 1
+  }));
+
+  let saved = false;
+
+  // Channel 1: Firestore
+  try {
+    await setDoc(doc(firestore, 'shorts', 'featured_slider_series'), {
+      updatedAt: Date.now(),
+      items: cleanList
+    });
+    saved = true;
+  } catch (e) {
+    console.warn("Firestore saveSliderSeries error:", e);
+  }
+
+  // Channel 2: Realtime Database
+  try {
+    await set(ref(db, 'featured_slider_series'), cleanList);
+    saved = true;
+  } catch (e) {
+    console.warn("RTDB saveSliderSeries error:", e);
+  }
+
+  return saved;
+}
+
+export function subscribeSliderSeries(callback: (items: SliderSeriesItem[]) => void): () => void {
+  // 1. Try Firestore snapshot
+  const unsubFs = onSnapshot(doc(firestore, 'shorts', 'featured_slider_series'), (docSnap) => {
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (Array.isArray(data.items)) {
+        callback(data.items);
+        return;
+      }
+    }
+  }, (err) => {
+    console.warn("Firestore slider series sub error:", err);
+  });
+
+  // 2. Try Realtime DB fallback
+  const unsubRtdb = onValue(ref(db, 'featured_slider_series'), (snap) => {
+    const val = snap.val();
+    if (Array.isArray(val)) {
+      callback(val);
+    } else if (val && typeof val === 'object') {
+      const list = Object.values(val) as SliderSeriesItem[];
+      list.sort((a, b) => (a.rank || 0) - (b.rank || 0));
+      callback(list);
+    }
+  }, (err) => {
+    console.warn("RTDB slider series sub error:", err);
   });
 
   return () => {

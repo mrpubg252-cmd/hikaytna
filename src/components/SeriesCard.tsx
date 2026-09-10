@@ -32,6 +32,8 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
   }, [_hasNew, clicked, item, onPress]);
 
   const [currentSrc, setCurrentSrc] = React.useState<string>(() => {
+    const direct = getTMDBPosterSync(item.title, item.category);
+    if (direct) return direct;
     return getProxiedImageUrl(item.image) || "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop";
   });
   const [imageLoaded, setImageLoaded] = React.useState(true);
@@ -41,10 +43,11 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
   });
 
   React.useEffect(() => {
-    setCurrentSrc(getProxiedImageUrl(item.image) || "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
+    const direct = getTMDBPosterSync(item.title, item.category);
+    setCurrentSrc(direct || getProxiedImageUrl(item.image) || "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
     setIsVertical(item.isVertical !== undefined ? item.isVertical : true);
     setImageLoaded(false);
-  }, [item.id, item.image, item.isVertical]);
+  }, [item.id, item.image, item.title, item.category, item.isVertical]);
 
   const displayRating = React.useMemo(() => {
     if (item.rating && item.rating > 0) {
@@ -95,8 +98,41 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
     return { isSeasonEnd, isDubbed, isSubbed };
   }, [item.title, item.category, item.episode, item.episodes_count]);
 
-  // Render Vertical / Portrait Card (Matches Image 1)
-  if (isVertical) {
+  // Format episode as simple normal text without "الأخيرة" in the main list
+  const episodeDisplay = React.useMemo(() => {
+    let epText = (item.latestEpisode || item.episode || '').trim();
+
+    // Strip out any "الأخيرة" or "الاخيرة" mentions in main list cards as requested
+    epText = epText.replace(/[-–—]?\s*(?:الحلقة\s*)?الأخي?رة\s*/gi, '').trim();
+
+    if (!epText && item.episodes_count && item.episodes_count !== '0') {
+      epText = isNaN(Number(item.episodes_count)) ? item.episodes_count : `الحلقة ${item.episodes_count}`;
+    }
+    if (!epText && item.episodes && item.episodes.length > 0) {
+      const last = item.episodes[item.episodes.length - 1];
+      if (last?.title) {
+        let cleanLast = last.title.replace(/[-–—]?\s*(?:الحلقة\s*)?الأخي?رة\s*/gi, '').trim();
+        if (cleanLast) {
+          epText = cleanLast.startsWith('الحلقة') ? cleanLast : `الحلقة ${cleanLast}`;
+        }
+      }
+    }
+
+    if (epText) {
+      epText = epText.replace(/\s+/g, ' ').trim();
+      return epText.startsWith('الحلقة') ? epText : `الحلقة ${epText}`;
+    }
+
+    if (totalEpisodes > 0) {
+      return `${totalEpisodes} حلقة`;
+    }
+
+    return item.category || 'مسلسل';
+  }, [item, totalEpisodes]);
+
+  // Render Vertical / Portrait Card
+  const isPortrait = forceVertical || isVertical;
+  if (isPortrait) {
     return (
       <div
         className={cn(
@@ -119,28 +155,37 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
             />
           )}
 
-          {/* Main Vertical Poster Artwork */}
+          {/* Main Vertical Poster Artwork - Stretched to fill card completely */}
           <img 
             src={currentSrc} 
             alt={item.title} 
             loading="lazy"
             decoding="async"
             referrerPolicy="no-referrer"
-            className="relative max-w-full max-h-full object-contain transition-all duration-500 will-change-transform group-hover:scale-105 z-10 drop-shadow-lg"
+            className="w-full h-full object-fill transition-all duration-500 will-change-transform group-hover:scale-105 z-10 drop-shadow-lg"
+            style={{ width: '100%', height: '100%', objectFit: 'fill' }}
             onLoad={(e) => {
-              const img = e.currentTarget;
-              if (img.naturalHeight && img.naturalWidth) {
-                if (img.naturalHeight > img.naturalWidth * 1.1) {
-                  setIsVertical(true);
-                } else if (img.naturalWidth > img.naturalHeight * 1.1) {
-                  setIsVertical(false);
+              if (!forceVertical) {
+                const img = e.currentTarget;
+                if (img.naturalHeight && img.naturalWidth) {
+                  if (img.naturalHeight > img.naturalWidth * 1.1) {
+                    setIsVertical(true);
+                  } else if (img.naturalWidth > img.naturalHeight * 1.1) {
+                    setIsVertical(false);
+                  }
                 }
               }
               setImageLoaded(true);
             }}
-            onError={(e) => {
-              e.currentTarget.src = "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop";
-              setImageLoaded(true);
+            onError={() => {
+              if (currentSrc && currentSrc.includes('image.tmdb.org')) return;
+              getTMDBPoster(item.title, item.category).then((healedUrl) => {
+                if (healedUrl) {
+                  setCurrentSrc(getProxiedImageUrl(healedUrl));
+                } else {
+                  setCurrentSrc("https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop");
+                }
+              });
             }}
           />
 
@@ -160,20 +205,15 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
             ⭐ <span className="text-zinc-100">{displayRating}</span>
           </div>
 
-          {/* Badges (جديد / LEGENDARY) */}
-          <div className="absolute bottom-2 right-2 flex items-center gap-1 z-20">
-            {_hasNew && !clicked && (
-              <span className="bg-red-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md shadow-lg animate-pulse">
-                جديد 🔥
-              </span>
-            )}
-            {isLegendary && (
+          {/* Badges (LEGENDARY) */}
+          {isLegendary && (
+            <div className="absolute bottom-2 right-2 flex items-center gap-1 z-20">
               <span className="bg-amber-500 text-black text-[7px] font-black px-1 py-0.5 rounded flex items-center gap-0.5 shadow-xl select-none">
                 <Sparkles className="w-2 h-2 fill-current" />
                 LEGENDARY
               </span>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Translation & Season Indicators on Bottom-Left */}
           <div className="absolute bottom-2 left-2 flex flex-col gap-1 z-20">
@@ -208,8 +248,8 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
           <h3 className="text-white font-black text-xs sm:text-sm leading-tight line-clamp-2 text-center dir-rtl group-hover:text-primary transition-colors">
             {item.title}
           </h3>
-          <p className="text-[10px] text-zinc-400 font-bold text-center">
-            {totalEpisodes > 0 ? `${totalEpisodes} حلقة` : 'متوفر مجاناً'}
+          <p className="text-[11px] text-zinc-400 font-medium text-center dir-rtl line-clamp-1">
+            {episodeDisplay}
           </p>
         </div>
       </div>
@@ -246,7 +286,8 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
-          className="relative max-w-full max-h-full object-contain transition-all duration-500 will-change-transform group-hover:scale-105 z-10 drop-shadow-lg"
+          className="w-full h-full object-fill transition-all duration-500 will-change-transform group-hover:scale-105 z-10 drop-shadow-lg"
+          style={{ width: '100%', height: '100%', objectFit: 'fill' }}
           onLoad={(e) => {
             const img = e.currentTarget;
             if (img.naturalHeight && img.naturalWidth) {
@@ -284,19 +325,14 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
         </div>
 
         {/* Badges */}
-        <div className="absolute top-2 right-2 flex items-center gap-1 z-20">
-          {_hasNew && !clicked && (
-            <span className="bg-red-600 text-white text-[8px] sm:text-[9px] font-black px-2 py-0.5 rounded-md shadow-lg animate-pulse">
-              جديد 🔥
-            </span>
-          )}
-          {isLegendary && (
+        {isLegendary && (
+          <div className="absolute top-2 right-2 flex items-center gap-1 z-20">
             <span className="bg-amber-500 text-black text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-xl select-none">
               <Sparkles className="w-2.5 h-2.5 fill-current" />
               LEGENDARY
             </span>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Play Icon Hover Overlay */}
         <div className="absolute inset-0 bg-primary/25 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center z-25">
@@ -331,8 +367,8 @@ const SeriesCard = React.memo(({ item, onPress, isTop10, topRank, forceVertical 
         <h3 className="text-white font-black text-xs sm:text-sm leading-tight line-clamp-2 text-right dir-rtl group-hover:text-primary transition-colors">
           {item.title}
         </h3>
-        <div className="flex items-center justify-between text-[10px] text-zinc-400 font-bold pt-0.5">
-          <span className="text-zinc-300">{totalEpisodes > 0 ? `${totalEpisodes} حلقة` : 'متوفر الآن'}</span>
+        <div className="flex items-center justify-between text-[11px] text-zinc-400 font-medium pt-0.5 dir-rtl">
+          <span className="text-zinc-300">{episodeDisplay}</span>
           {item.category && <span className="text-zinc-500 truncate max-w-[120px]">{item.category}</span>}
         </div>
       </div>

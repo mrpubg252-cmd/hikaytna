@@ -987,18 +987,126 @@ async function startServer() {
     }
   });
 
-  // Master 3cktv Scraper function across 50 pages for all series (translated & dubbed)
+  // Helper to extract clean canonical series URL
+  function getClean3cktvSeriesUrl(rawUrl: string): string {
+    if (!rawUrl) return "";
+    let slug = rawUrl.replace(/^https?:\/\/[^\/]+\/(video\/)?(series\/)?/i, "")
+                     .replace(/-ep-[^\/]+.*/, "")
+                     .replace(/-s\d+e[^\/]+.*/, "")
+                     .replace(/\/?$/, "");
+    return `https://e.3cktv.cam/video/series/${slug}/`;
+  }
+
+  // Master 3cktv Scraper function across homepage and catalog pages
   async function scrape3cktvMasterSeries() {
     const allMap = new Map<string, any>();
-    const pagesToScrape: string[] = ['https://e.3cktv.com/', 'https://e.3cktv.com/video/series/'];
-    for (let i = 2; i <= 50; i++) {
-      pagesToScrape.push(`https://e.3cktv.com/video/series/page/${i}/`);
+    let currentRank = 1;
+
+    // Phase 1: Scrape Homepage FIRST for Top Trending Featured Series
+    try {
+      const homeResponse = await axios.get('https://e.3cktv.com/', {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0',
+          'Accept-Language': 'ar,en-US;q=0.9,en;q=0.8'
+        },
+        timeout: 12000
+      });
+
+      if (homeResponse.data) {
+        const $ = cheerio.load(homeResponse.data);
+        $('.block-post, article.postEp, .postEp').each((_, el) => {
+          const aTag = $(el).find('a').first().length ? $(el).find('a').first() : $(el);
+          let itemUrl = aTag.attr('href');
+          if (!itemUrl) return;
+
+          let rawTitle = aTag.attr('title') || $(el).find('.title').text().trim() || aTag.text().trim();
+          if (!rawTitle) return;
+
+          const seasonNameText = $(el).find('.seasonName').text().trim();
+          const isDubbed = rawTitle.includes('مدبلج') || rawTitle.includes('مدبلجة') || itemUrl.includes('modablaj') || seasonNameText.includes('مدبلج');
+          
+          let title = rawTitle
+            .replace(/\s*-\s*قصة عشق$/i, '')
+            .replace(/قصة عشق$/i, '')
+            .replace(/للعربية\s*HD/gi, '')
+            .replace(/\s*HD\s*$/gi, '')
+            .replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '')
+            .replace(/\s*الحلقة\s*\d+.*$/i, '')
+            .replace(/\s*الموسم\s*\d+.*$/i, '')
+            .trim();
+
+          const cleanUrl = getClean3cktvSeriesUrl(itemUrl);
+
+          // Extract real vertical poster (349x520, etc.) from data-img, data-src, or img src
+          let img = $(el).find('img').attr('data-img') || $(el).find('img').attr('data-src') || $(el).find('img').attr('data-original') || '';
+          if (!img) {
+            const src = $(el).find('img').attr('src') || '';
+            if (src && !src.includes('grey.gif') && !src.includes('loading')) {
+              img = src;
+            }
+          }
+          if (!img) {
+            const styleElem = $(el).find('[style*="url"]').first().length ? $(el).find('[style*="url"]').first() : $(el).find('.imgSer, .imgBg').first();
+            const styleAttr = styleElem.attr('style') || $(el).attr('style') || '';
+            const match = styleAttr.match(/url\(([^)]+)\)/i);
+            if (match) img = match[1].replace(/['";]/g, '').trim();
+          }
+
+          const episodeNum = $(el).find('.episodeNum').text().trim().replace(/\s+/g, ' ');
+          const alertText = $(el).find('.singleAlert, .alert, span').map((_, s) => $(s).text().trim()).get().join(' ');
+          const isFinal = alertText.includes('الأخيرة') || $(el).text().includes('الأخيرة') || rawTitle.includes('الأخيرة');
+          
+          let parsedEp = episodeNum;
+          if (!parsedEp) {
+            const m = rawTitle.match(/الحلقة\s*(\d+)/i);
+            if (m) parsedEp = `الحلقة ${m[1]}`;
+          }
+
+          let latestEpisode = '';
+          if (isFinal) {
+            latestEpisode = parsedEp ? (parsedEp.includes('الأخيرة') ? parsedEp : `${parsedEp} - الأخيرة`) : 'الحلقة الأخيرة';
+          } else if (parsedEp) {
+            latestEpisode = parsedEp;
+          }
+
+          const category = isDubbed ? 'مسلسلات مدبلجة' : 'مسلسلات مترجمة';
+
+          if (title && cleanUrl) {
+            const normKey = cleanUrl.toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
+            if (!allMap.has(normKey)) {
+              allMap.set(normKey, {
+                id: normKey,
+                title: title,
+                url: cleanUrl,
+                image: img || '',
+                img: img || '',
+                category: category,
+                episode: parsedEp || (isFinal ? 'الحلقة الأخيرة' : ''),
+                episodes_count: parsedEp ? parsedEp.replace(/\D/g, '') : '0',
+                latestEpisode: latestEpisode || (isFinal ? 'الحلقة الأخيرة' : ''),
+                isFinal: isFinal,
+                isVertical: true,
+                isTopTrending: true,
+                rank: currentRank++
+              });
+            }
+          }
+        });
+      }
+    } catch (e: any) {
+      console.warn("Homepage top trending scrape error:", e.message);
     }
 
-    const pageResults: any[][] = new Array(pagesToScrape.length).fill([]);
+    // Phase 2: Scrape Series Catalog Pages
+    const catalogPages: string[] = ['https://e.3cktv.com/video/series/'];
+    for (let i = 2; i <= 50; i++) {
+      catalogPages.push(`https://e.3cktv.com/video/series/page/${i}/`);
+    }
+
+    const pageResults: any[][] = Array.from({ length: catalogPages.length }, () => []);
     const batchSize = 10;
-    for (let i = 0; i < pagesToScrape.length; i += batchSize) {
-      const batch = pagesToScrape.slice(i, i + batchSize);
+    for (let i = 0; i < catalogPages.length; i += batchSize) {
+      const batch = catalogPages.slice(i, i + batchSize);
       await Promise.allSettled(
         batch.map(async (url, idx) => {
           const globalIdx = i + idx;
@@ -1019,25 +1127,24 @@ async function startServer() {
               let itemUrl = aTag.attr('href');
               if (!itemUrl) return;
 
-              let title = aTag.attr('title') || $(el).find('.title').text().trim() || aTag.text().trim();
-              if (!title) return;
+              let rawTitle = aTag.attr('title') || $(el).find('.title').text().trim() || aTag.text().trim();
+              if (!rawTitle) return;
 
               const seasonNameText = $(el).find('.seasonName').text().trim();
-              const isDubbed = title.includes('مدبلج') || title.includes('مدبلجة') || itemUrl.includes('modablaj') || seasonNameText.includes('مدبلج');
+              const isDubbed = rawTitle.includes('مدبلج') || rawTitle.includes('مدبلجة') || itemUrl.includes('modablaj') || seasonNameText.includes('مدبلج');
               
-              title = title.replace(/\s*-\s*قصة عشق$/i, '')
-                           .replace(/قصة عشق$/i, '')
-                           .replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '')
-                           .replace(/\s*الحلقة\s*\d+.*$/i, '')
-                           .replace(/\s*الموسم\s*\d+.*$/i, '')
-                           .trim();
+              let title = rawTitle
+                .replace(/\s*-\s*قصة عشق$/i, '')
+                .replace(/قصة عشق$/i, '')
+                .replace(/للعربية\s*HD/gi, '')
+                .replace(/\s*HD\s*$/gi, '')
+                .replace(/مترجم$|مترجمة$|مدبلج$|مدبلجة$/, '')
+                .replace(/\s*الحلقة\s*\d+.*$/i, '')
+                .replace(/\s*الموسم\s*\d+.*$/i, '')
+                .trim();
 
-              itemUrl = itemUrl.replace(/-ep-[^\/]+/, '')
-                               .replace(/-s(\d+)e[^\/]+/, '-s$1')
-                               .replace(/\/video\//, '/video/series/')
-                               .replace(/\/?$/, '/');
+              const cleanUrl = getClean3cktvSeriesUrl(itemUrl);
 
-              // Extract image using style background-image, data-img, data-src, or img src
               let img = '';
               const styleElem = $(el).find('[style*="url"]').first().length ? $(el).find('[style*="url"]').first() : $(el).find('.imgSer, .imgBg').first();
               const styleAttr = styleElem.attr('style') || $(el).attr('style') || '';
@@ -1056,7 +1163,6 @@ async function startServer() {
               }
 
               const episodeNum = $(el).find('.episodeNum').text().trim().replace(/\s+/g, ' ');
-              const cleanUrl = itemUrl.replace('e.3cktv.com', 'e.3cktv.cam');
               const category = isDubbed ? 'مسلسلات مدبلجة' : 'مسلسلات مترجمة';
 
               if (title && cleanUrl) {
@@ -1080,9 +1186,10 @@ async function startServer() {
       );
     }
     
-    // Flatten and maintain order
+    // Flatten and maintain catalog order without overwriting homepage priority
     pageResults.flat().forEach(item => {
       if (item && item.id && !allMap.has(item.id)) {
+        item.rank = currentRank++;
         allMap.set(item.id, item);
       }
     });
@@ -1093,8 +1200,9 @@ async function startServer() {
   // Master aggregator endpoint: Scrapes 3cktv catalog
   app.get("/api/v1/qeseh/all-series", async (req, res) => {
     try {
-      const cacheKey = "3cktv_all_master_catalog_v1";
-      const cached = getCachedData(cacheKey);
+      const cacheKey = "3cktv_all_master_catalog_v3";
+      const isForceRefresh = req.query.refresh === 'true';
+      const cached = isForceRefresh ? null : getCachedData(cacheKey);
       if (cached) {
         return res.json(cached);
       }
@@ -1102,7 +1210,7 @@ async function startServer() {
       const results = await scrape3cktvMasterSeries();
       const responseData = { status: true, data: results, total: results.length };
       if (results.length > 0) {
-        setCachedData(cacheKey, responseData, 3 * 60 * 60 * 1000); // 3 hour cache
+        setCachedData(cacheKey, responseData, 3 * 60 * 1000); // 3 minutes fresh cache so new releases reflect dynamically
       }
       res.json(responseData);
     } catch (error: any) {
@@ -1114,14 +1222,15 @@ async function startServer() {
   // Dedicated Top Series Discover Endpoint
   app.get("/api/v1/qeseh/discover", async (req, res) => {
     try {
-      const cacheKey = "3cktv_discover_catalog_v1";
-      const cached = getCachedData(cacheKey);
+      const cacheKey = "3cktv_discover_catalog_v3";
+      const isForceRefresh = req.query.refresh === 'true';
+      const cached = isForceRefresh ? null : getCachedData(cacheKey);
       if (cached) return res.json(cached);
 
       const results = await scrape3cktvMasterSeries();
       const responseData = { status: true, data: results, total: results.length };
       if (results.length > 0) {
-        setCachedData(cacheKey, responseData, 3 * 60 * 60 * 1000);
+        setCachedData(cacheKey, responseData, 3 * 60 * 1000); // 3 minutes fresh cache
       }
       res.json(responseData);
     } catch (error: any) {
@@ -1195,6 +1304,38 @@ async function startServer() {
           });
         }
       });
+
+      // Sort search results strictly by match relevance to the query
+      const normArabicText = (s: string) => {
+        return (s || '').toLowerCase()
+          .replace(/^(المسلسل التركي|المسلسل الكوري|المسلسل|الفيلم|مسلسل|فيلم|برنامج|انمي)\s+/gi, '')
+          .replace(/\s*(مترجم|مترجمة|مدبلج|مدبلجة|قصة عشق|كاملة?|جودة عالية|hd)\s*$/gi, '')
+          .replace(/[أإآٱ]/g, 'ا')
+          .replace(/ة/g, 'ه')
+          .replace(/ى/g, 'ي')
+          .replace(/[\u064B-\u065F]/g, '')
+          .replace(/[^\u0621-\u064Aa-z0-9\s]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+
+      const calcServerScore = (title: string, queryStr: string) => {
+        const t = normArabicText(title);
+        const qu = normArabicText(queryStr);
+        if (!t || !qu) return 0;
+        if (t === qu) return 100000;
+        if (t.startsWith(qu)) return 80000 - Math.min((t.length - qu.length) * 50, 20000);
+        if (t.includes(qu)) return 50000 - (t.indexOf(qu) * 100);
+        const tWords = t.split(' ');
+        const qWords = qu.split(' ');
+        let matches = 0;
+        qWords.forEach(qw => {
+          if (tWords.some(tw => tw === qw || (tw.includes(qw) && qw.length >= 2))) matches++;
+        });
+        return matches * 2000;
+      };
+
+      results.sort((a, b) => calcServerScore(b.title, q) - calcServerScore(a.title, q));
 
       const responseData = { status: true, data: results };
       if (results.length > 0) {
@@ -1403,6 +1544,9 @@ async function startServer() {
         });
       } else if ($('ul.eplist, .eplist').length > 0 || $('.epNum').length > 0) {
         // e.3cktv.com style episodes list
+        const pageAlertText = $('.singleAlertSec, .singleAlert, .alert, .ribbon').text().trim();
+        const hasFinalAlert = pageAlertText.includes('الأخيرة') || pageAlertText.includes('الاخيرة') || $('h1.title').text().includes('الأخيرة');
+
         $('ul.eplist a, .eplist a, a.epNum').each((i, el) => {
           let epUrl = $(el).attr('href');
           if (!epUrl) return;
@@ -1411,11 +1555,19 @@ async function startServer() {
           epTitle = epTitle.replace(/\s*-\s*قصة عشق$/i, '')
                            .replace(/قصة عشق$/i, '')
                            .trim();
+
+          const isActive = $(el).hasClass('active');
+          const isThisEpFinal = hasFinalAlert && (isActive || i === 0);
+
+          if (isThisEpFinal && !epTitle.includes('الأخيرة') && !epTitle.includes('الاخيرة')) {
+            epTitle = `${epTitle} - الأخيرة`;
+          }
           
           if (epUrl) {
             data.push({
               name: epTitle,
-              url: encryptValue(epUrl)
+              url: encryptValue(epUrl),
+              isFinal: isThisEpFinal
             });
           }
         });
@@ -1446,7 +1598,8 @@ async function startServer() {
                            .trim();
 
           const epNum = $(el).find('.episodeNum').text().trim().replace(/\s+/g, ' ');
-          const ribbon = $(el).find('.ribbon').text().trim();
+          const ribbon = $(el).find('.ribbon, .singleAlert, .alert').text().trim();
+          const isArticleFinal = ribbon.includes('الأخيرة') || ribbon.includes('الاخيرة') || epTitle.includes('الأخيرة');
           
           let parsedNum = "";
           const numMatch = epNum.match(/(\d+)/) || epTitle.match(/(?:الحلقة|حلقة)\s*(\d+)/i);
@@ -1456,14 +1609,18 @@ async function startServer() {
 
           if (parsedNum) {
             epTitle = `الحلقة ${parsedNum}`;
-            if (ribbon) {
+            if (isArticleFinal) {
+              epTitle = `${epTitle} - الأخيرة`;
+            } else if (ribbon) {
               epTitle = `${epTitle} - ${ribbon}`;
             }
           } else {
             if (epNum && !epTitle.includes(epNum)) {
               epTitle = `${epTitle} (${epNum})`;
             }
-            if (ribbon) {
+            if (isArticleFinal && !epTitle.includes('الأخيرة') && !epTitle.includes('الاخيرة')) {
+              epTitle = `${epTitle} - الأخيرة`;
+            } else if (ribbon && !epTitle.includes(ribbon)) {
               epTitle = `${epTitle} - ${ribbon}`;
             }
           }
@@ -1471,7 +1628,8 @@ async function startServer() {
           if (epUrl) {
             data.push({
               name: epTitle,
-              url: encryptValue(epUrl)
+              url: encryptValue(epUrl),
+              isFinal: isArticleFinal
             });
           }
         });
@@ -3518,15 +3676,16 @@ async function startServer() {
 
   app.options("/api/v1/stream-range-proxy", (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || '*');
     res.setHeader('Access-Control-Max-Age', '86400');
     res.status(204).end();
   });
 
-  // Range Request Proxy to stream chat videos / audio files flawlessly on iOS Safari
-  app.get("/api/v1/stream-range-proxy", async (req, res) => {
+  // Range Request Proxy to stream chat videos / audio files flawlessly on iOS Safari & Android
+  const handleStreamProxy = async (req: any, res: any, isHeadOnly = false) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Accept-Ranges', 'bytes');
     const targetUrl = req.query.url;
     if (!targetUrl || typeof targetUrl !== "string") {
       return res.status(400).send("Missing target URL parameter");
@@ -3536,7 +3695,7 @@ async function startServer() {
       const decodedUrl = decodeURIComponent(targetUrl);
       
       const clientHeaders: Record<string, string> = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
       };
       
       // If client requested specific Byte Range, forward it to the asset host
@@ -3544,17 +3703,22 @@ async function startServer() {
         clientHeaders['Range'] = req.headers.range;
       }
 
-      try {
-        const parsedUrl = new URL(decodedUrl);
-        clientHeaders['Referer'] = parsedUrl.origin + '/';
-      } catch (ex) {}
+      // Only add referer if not top4top or catbox (which block custom referer)
+      const lower = decodedUrl.toLowerCase();
+      if (!lower.includes('top4top') && !lower.includes('catbox') && !lower.includes('moe')) {
+        try {
+          const parsedUrl = new URL(decodedUrl);
+          clientHeaders['Referer'] = parsedUrl.origin + '/';
+        } catch (ex) {}
+      }
 
       const axiosResponse = await axios({
-        method: "get",
+        method: isHeadOnly ? "head" : "get",
         url: decodedUrl,
         headers: clientHeaders,
-        responseType: "stream",
+        responseType: isHeadOnly ? "text" : "stream",
         timeout: 90000,
+        validateStatus: (status) => status < 400 || status === 416
       });
 
       // Stream matching headers back to iOS
@@ -3564,6 +3728,8 @@ async function startServer() {
         'content-range',
         'accept-ranges',
         'cache-control',
+        'last-modified',
+        'etag'
       ];
 
       headersToForward.forEach(header => {
@@ -3573,7 +3739,17 @@ async function startServer() {
         }
       });
 
+      // Default to video/mp4 if missing for video streams
+      if (!res.getHeader('content-type') && (lower.endsWith('.mp4') || lower.includes('/mp4') || lower.includes('video'))) {
+        res.setHeader('content-type', 'video/mp4');
+      }
+
       res.status(axiosResponse.status);
+
+      if (isHeadOnly) {
+        return res.end();
+      }
+
       axiosResponse.data.pipe(res);
 
       axiosResponse.data.on('error', (err: any) => {
@@ -3586,7 +3762,10 @@ async function startServer() {
         res.status(500).send("Stream range proxy error: " + err.message);
       }
     }
-  });
+  };
+
+  app.get("/api/v1/stream-range-proxy", (req, res) => handleStreamProxy(req, res, false));
+  app.head("/api/v1/stream-range-proxy", (req, res) => handleStreamProxy(req, res, true));
 
   // Hakeem AI Activation & Status Management with dynamic synchronization
   app.get("/api/v1/hakeem/status", async (req, res) => {

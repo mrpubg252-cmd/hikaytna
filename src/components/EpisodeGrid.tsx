@@ -8,6 +8,7 @@ import {
   Search,
   SlidersHorizontal,
   Sparkles,
+  Loader2,
 } from "lucide-react";
 import { progressService } from "../services/progressService";
 import {
@@ -42,6 +43,8 @@ interface EpisodeGridProps {
   isMovie?: boolean;
   onSelect: (ep: Episode, index: number) => void;
   seriesTitle?: string;
+  isSeriesFinal?: boolean;
+  isLoading?: boolean;
 }
 
 export function formatEpisodeTitle(title: string, index: number, isMovie: boolean): string {
@@ -85,6 +88,8 @@ export default function EpisodeGrid({
   isMovie = false,
   onSelect,
   seriesTitle,
+  isSeriesFinal,
+  isLoading = false,
 }: EpisodeGridProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [jumpToRange, setJumpToRange] = useState(0); // 0 means first block of 50
@@ -151,6 +156,15 @@ export default function EpisodeGrid({
     // We take the slice from the current order (original or reversed)
     return filteredEpisodes.slice(start, end);
   }, [filteredEpisodes, searchQuery, jumpToRange, episodes.length]);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 bg-zinc-900/40 rounded-3xl border border-white/5 w-full my-8 animate-in fade-in duration-300 select-none">
+        <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
+        <h3 className="text-xl md:text-2xl font-black text-white tracking-tight">يرجى الانتظار</h3>
+      </div>
+    );
+  }
 
   if (!episodes || episodes.length === 0) {
     return (
@@ -256,6 +270,8 @@ export default function EpisodeGrid({
                 isWatched={isWatched}
                 onSelect={onSelect}
                 tmdbEpisodes={tmdbEpisodes}
+                totalEpisodes={episodes.length}
+                isSeriesFinal={isSeriesFinal}
               />
             );
           })}
@@ -308,6 +324,8 @@ interface EpisodeGridItemProps {
   isWatched: boolean;
   onSelect: (ep: Episode, index: number) => void;
   tmdbEpisodes: TMDBSimplifiedEpisode[];
+  totalEpisodes: number;
+  isSeriesFinal?: boolean;
 }
 
 function EpisodeGridItem({
@@ -320,14 +338,20 @@ function EpisodeGridItem({
   isActive,
   isWatched,
   onSelect,
-  tmdbEpisodes
+  tmdbEpisodes,
+  totalEpisodes,
+  isSeriesFinal
 }: EpisodeGridItemProps) {
   const displayTitle = formatEpisodeTitle(ep.title || (ep as any).name || "", originalIndex, isMovie || false);
+  const isLastEpisode = originalIndex === totalEpisodes - 1;
   const isFinalEpisode =
+    ep.isFinal === true ||
+    (ep as any).isFinal === true ||
     /الأخي?رة/i.test(ep.title || "") ||
     /الاخي?ره/i.test(ep.title || "") ||
     /النهائية/i.test(ep.title || "") ||
-    /النهائيه/i.test(ep.title || "");
+    /النهائيه/i.test(ep.title || "") ||
+    Boolean(isLastEpisode && isSeriesFinal);
 
   // Parse actual episode number from title (e.g. "الحلقة 37" -> 37, or defaults to originalIndex + 1)
   let epNum = originalIndex + 1;
@@ -465,9 +489,12 @@ function EpisodeGridItem({
           )}
         >
           {displayTitle}
+          {isFinalEpisode && !displayTitle.includes("الأخيرة") && !displayTitle.includes("الاخيرة") && (
+            <span className="text-amber-400 font-bold mr-1"> (حلقة أخيرة)</span>
+          )}
         </span>
 
-        <div className="flex items-center gap-1.5 mt-0.5">
+        <div className="flex items-center gap-2 mt-0.5">
           {isActive ? (
             <span className={cn(
               "text-[10px] font-black animate-pulse flex items-center gap-1",
@@ -484,8 +511,8 @@ function EpisodeGridItem({
           )}
 
           {isFinalEpisode && (
-            <span className="text-[9px] text-[#ffca28] font-black bg-[#ffca28]/10 px-1.5 py-0.5 rounded-md border border-[#ffca28]/20 shadow-sm animate-pulse">
-              👑 الأخيرة
+            <span className="text-[11px] text-amber-400 font-bold">
+              حلقة أخيرة
             </span>
           )}
         </div>

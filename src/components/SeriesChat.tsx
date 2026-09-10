@@ -16,6 +16,7 @@ import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
 import { firestore } from '../services/firebase';
 import { checkBanStatus, reportComment, getOrCreateUserId } from '../services/banService';
 import ProfileTemplateOverlay from './ProfileTemplateOverlay';
+import ChatVideoPlayer from './ChatVideoPlayer';
 
 const getProxiedUrl = (url?: string) => {
   if (!url) return '';
@@ -2176,60 +2177,25 @@ export default function SeriesChat({
                       )
                     )}
                     {msg.videoUrl && (
-                      msg.isSticker ? (
-                        <div 
-                          className="relative mt-2 w-20 h-20 rounded-xl overflow-hidden shadow-sm group cursor-pointer"
-                        >
-                          <video 
-                            src={getProxiedUrl(msg.videoUrl)} 
-                            autoPlay 
-                            loop 
-                            muted 
-                            playsInline
-                            webkitPlaysInline={true}
-                            className="w-full h-full object-cover"
-                            referrerPolicy="no-referrer"
-                          />
+                      <div className="relative">
+                        <ChatVideoPlayer 
+                          src={msg.videoUrl} 
+                          isSticker={msg.isSticker} 
+                          fileName={`حكايتنا_${msg.id || Date.now()}.mp4`}
+                        />
+                        {msg.isSticker && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleSaveExternalSticker(msg.videoUrl!);
                             }}
-                            className="absolute top-1 right-1 p-1 bg-black/75 hover:bg-black/90 backdrop-blur-md rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-primary shadow-md"
+                            className="absolute top-2 right-2 p-1.5 bg-black/75 hover:bg-black/90 backdrop-blur-md rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-pointer shadow-md"
                             title="حفظ الملصق ⭐️"
                           >
                             <Plus className="w-3 h-3 text-emerald-400" />
                           </button>
-                        </div>
-                      ) : (
-                        <div 
-                          className="relative overflow-hidden rounded-xl border border-zinc-900 bg-black mt-2 max-w-[240px] group cursor-pointer"
-                          onClick={(e) => { e.stopPropagation(); setPreviewVideo(msg.videoUrl!); }}
-                        >
-                          <video 
-                            src={getProxiedUrl(msg.videoUrl)} 
-                            playsInline
-                            webkitPlaysInline={true}
-                            preload="metadata"
-                            className="w-full h-auto max-h-[180px] object-cover rounded-xl bg-black pointer-events-none"
-                            referrerPolicy="no-referrer"
-                          />
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/30 transition-all">
-                            <div className="w-10 h-10 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/10 group-hover:scale-110 transition-transform">
-                              <Play className="w-5 h-5 text-white fill-white ml-0.5" />
-                            </div>
-                          </div>
-                          <a 
-                            href={`/api/v1/download-proxy?url=${encodeURIComponent(msg.videoUrl)}&filename=${encodeURIComponent(`حكايتنا_${Date.now()}.mp4`)}`}
-                            download
-                            className="absolute top-2 left-2 p-2 bg-black/60 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                            onClick={(e) => e.stopPropagation()}
-                            title="تحميل الفيديو"
-                          >
-                            <Share2 className="w-4 h-4" />
-                          </a>
-                        </div>
-                      )
+                        )}
+                      </div>
                     )}
                     {msg.audioUrl && (
                       <div className="mt-2" onClick={(e) => e.stopPropagation()}>

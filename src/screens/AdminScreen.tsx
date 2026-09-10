@@ -6,7 +6,10 @@ import {
   Star, Type, Hash, ExternalLink, Sparkles, Pencil, RefreshCw,
   Settings, Smartphone, Link, ChevronUp, ChevronDown
 } from 'lucide-react';
-import { db, firestore, TopSeriesItem, saveTopSeriesOrder, subscribeTopSeriesOrder } from '../services/firebase';
+import { 
+  db, firestore, TopSeriesItem, saveTopSeriesOrder, subscribeTopSeriesOrder,
+  SliderSeriesItem, saveSliderSeries, subscribeSliderSeries
+} from '../services/firebase';
 import { ref, onValue, push, remove, set } from 'firebase/database';
 import { getFirestore, collection, getDocs, deleteDoc, doc, setDoc, getDoc, query, orderBy } from 'firebase/firestore';
 import { cn, normalizeArabic, fuzzyMatchArabic } from '../lib/utils';
@@ -37,7 +40,7 @@ export default function AdminScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [notices, setNotices] = useState<Notice[]>([]);
-  const [activeTab, setActiveTab] = useState<'notices' | 'series' | 'settings' | 'top10'>('series');
+  const [activeTab, setActiveTab] = useState<'notices' | 'series' | 'settings' | 'top10' | 'slider'>('series');
   
   // Notice states
   const [text, setText] = useState('');
@@ -65,6 +68,18 @@ export default function AdminScreen() {
   const [topSearchQuery, setTopSearchQuery] = useState('');
   const [isSavingTopSeries, setIsSavingTopSeries] = useState(false);
 
+  // Slider Series states (Firebase synced to save hosting resources)
+  const [sliderSeriesItems, setSliderSeriesItems] = useState<SliderSeriesItem[]>([]);
+  const [sliderSearchQuery, setSliderSearchQuery] = useState('');
+  const [isSavingSlider, setIsSavingSlider] = useState(false);
+  const [isLoadingAvailableSeries, setIsLoadingAvailableSeries] = useState(false);
+  const [newSliderCustom, setNewSliderCustom] = useState({
+    title: '',
+    image: '',
+    trailer: '',
+    category: 'مسلسلات'
+  });
+
   const filteredAvailableSeries = useMemo(() => {
     const q = topSearchQuery.trim();
     if (!q) return allAvailableSeries;
@@ -75,6 +90,17 @@ export default function AdminScreen() {
       return normTitle.includes(normQ) || fuzzyMatchArabic(s.title, q);
     });
   }, [allAvailableSeries, topSearchQuery]);
+
+  const filteredAvailableSliderSeries = useMemo(() => {
+    const q = sliderSearchQuery.trim();
+    if (!q) return allAvailableSeries;
+    const normQ = normalizeArabic(q);
+    return allAvailableSeries.filter(s => {
+      if (!s || !s.title) return false;
+      const normTitle = normalizeArabic(s.title);
+      return normTitle.includes(normQ) || fuzzyMatchArabic(s.title, q);
+    });
+  }, [allAvailableSeries, sliderSearchQuery]);
 
   // App settings state
   const [appDownloadUrl, setAppDownloadUrl] = useState('');
@@ -148,22 +174,58 @@ export default function AdminScreen() {
     fetchSeries();
   }, [isAuthenticated, activeTab]);
 
-  // Load Top 10 series data
+  // Realtime Subscriptions for Top 10 and Slider Series (Live whenever logged in)
   useEffect(() => {
-    if (!isAuthenticated || activeTab !== 'top10') return;
+    if (!isAuthenticated) return;
 
+    const unsubTop = subscribeTopSeriesOrder((items) => {
+      setTopSeriesItems(items);
+    });
+
+    const unsubSlider = subscribeSliderSeries((items) => {
+      setSliderSeriesItems(items);
+    });
+
+    return () => {
+      unsubTop();
+      unsubSlider();
+    };
+  }, [isAuthenticated]);
+
+  // Load available series when Top 10 or Slider tab is active
+  useEffect(() => {
+    if (!isAuthenticated || (activeTab !== 'top10' && activeTab !== 'slider')) return;
+
+    let isMounted = true;
     const fetchAllData = async () => {
+      setIsLoadingAvailableSeries(true);
       try {
-        const discoverList = await fetchQesehDiscover();
-        const fullList = await fetchAllSeries(true);
-        // Combine with custom series list if any
         const combinedMap = new Map<string, any>();
-        
+
+        // Step 1: Immediately populate from cache if present
+        const cached = getAllCachedSeries();
+        if (cached && cached.length > 0) {
+          cached.forEach(s => {
+            if (!isEpisodeItem(s) && s.id && s.title) {
+              combinedMap.set(s.id, s);
+            }
+          });
+          if (isMounted && combinedMap.size > 0) {
+            setAllAvailableSeries(Array.from(combinedMap.values()));
+          }
+        }
+
+        // Step 2: Fetch fresh discover & catalog series in parallel
+        const [discoverList, fullList] = await Promise.all([
+          fetchQesehDiscover().catch(() => []),
+          fetchAllSeries(false).catch(() => [])
+        ]);
+
         discoverList.forEach(s => {
           if (s.id && s.title) {
             combinedMap.set(s.id, {
               ...s,
-              category: 'مسلسلات'
+              category: s.category || 'مسلسلات'
             });
           }
         });
@@ -188,18 +250,23 @@ export default function AdminScreen() {
           }
         });
 
-        setAllAvailableSeries(Array.from(combinedMap.values()));
+        if (isMounted) {
+          setAllAvailableSeries(Array.from(combinedMap.values()));
+        }
       } catch (e) {
-        console.error(e);
+        console.error("Error loading available series for admin:", e);
+      } finally {
+        if (isMounted) {
+          setIsLoadingAvailableSeries(false);
+        }
       }
     };
+
     fetchAllData();
 
-    const unsub = subscribeTopSeriesOrder((items) => {
-      setTopSeriesItems(items);
-    });
-
-    return () => unsub();
+    return () => {
+      isMounted = false;
+    };
   }, [isAuthenticated, activeTab, customSeriesList]);
 
   // Load app settings
@@ -596,6 +663,16 @@ export default function AdminScreen() {
           >
             <Star className="w-4 h-4 shrink-0" />
             <span>الترتيب</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('slider')}
+            className={cn(
+              "flex-1 min-w-[80px] py-3 px-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5",
+              activeTab === 'slider' ? "bg-primary text-white shadow-lg" : "text-zinc-500 hover:text-white"
+            )}
+          >
+            <Film className="w-4 h-4 shrink-0" />
+            <span>السلايدر والتريلر</span>
           </button>
           <button
             onClick={() => setActiveTab('notices')}
@@ -1147,6 +1224,297 @@ export default function AdminScreen() {
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'slider' && (
+          <section className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center">
+                  <Film className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-white">إدارة سلايدر وتريلرات الصفحة الرئيسية</h2>
+                  <p className="text-zinc-400 text-xs mt-0.5">
+                    حدد المسلسلات وروابط مقاطع التريلر التي تظهر في السلايدر، ويتم حفظها مباشرة في فايربيس لتوفير استهلاك موارد الاستضافة.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={async () => {
+                  setIsSavingSlider(true);
+                  const ok = await saveSliderSeries(sliderSeriesItems);
+                  setIsSavingSlider(false);
+                  if (ok) {
+                    setText('تم حفظ سلايدر الصفحة الرئيسية في فايربيس بنجاح!');
+                    setType('success');
+                  } else {
+                    setText('تعذر الحفظ في فايربيس، يرجى المحاولة ثانية');
+                    setType('error');
+                  }
+                  setTimeout(() => setText(''), 4000);
+                }}
+                disabled={isSavingSlider}
+                className="flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-3 rounded-xl text-xs font-black transition-all shadow-lg hover:shadow-primary/25 disabled:opacity-50 cursor-pointer shrink-0"
+              >
+                {isSavingSlider ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                <span>حفظ السلايدر في فايربيس</span>
+              </button>
+            </div>
+
+            <div className="flex flex-col lg:flex-row gap-6">
+              {/* Left Column: Choose series or add manual */}
+              <div className="w-full lg:w-1/2 space-y-5">
+                {/* Search & Add From Available Series */}
+                <div className="space-y-3 bg-zinc-950/60 p-4 rounded-2xl border border-zinc-800">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-zinc-300 flex items-center gap-1.5">
+                      <span>البحث لإضافة مسلسل للسلايدر</span>
+                    </label>
+                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-2.5 py-0.5 rounded-full">
+                      {filteredAvailableSliderSeries.length} متاح
+                    </span>
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={sliderSearchQuery}
+                      onChange={(e) => setSliderSearchQuery(e.target.value)}
+                      placeholder="اكتب اسم العمل للبحث والإضافة للسلايدر..."
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary transition-colors text-xs pl-10"
+                    />
+                    {sliderSearchQuery && (
+                      <button
+                        onClick={() => setSliderSearchQuery('')}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="max-h-60 overflow-y-auto no-scrollbar space-y-1 divide-y divide-zinc-800/50">
+                    {filteredAvailableSliderSeries.length === 0 ? (
+                      <div className="p-4 text-center text-zinc-500 text-xs">
+                        لا توجد أعمال تطابق بحثك
+                      </div>
+                    ) : (
+                      filteredAvailableSliderSeries.slice(0, 30).map((s) => {
+                        const cleanTitle = extractMainSeriesTitle(s.title);
+                        const isAdded = sliderSeriesItems.some(i => i.id === s.id || i.title === cleanTitle);
+                        return (
+                          <div key={`slider-search-${s.id}`} className="flex items-center justify-between p-2 hover:bg-white/5 rounded-lg transition-colors">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {s.image ? (
+                                <img src={s.image} alt={cleanTitle} className="w-9 h-9 object-cover rounded-lg shrink-0" />
+                              ) : (
+                                <div className="w-9 h-9 bg-zinc-800 rounded-lg shrink-0" />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <h4 className="text-white text-xs font-bold truncate">{cleanTitle}</h4>
+                                <span className="text-[10px] text-zinc-400">{s.category || 'مسلسلات'}</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                if (isAdded) return;
+                                setSliderSeriesItems([
+                                  ...sliderSeriesItems,
+                                  {
+                                    id: s.id,
+                                    title: cleanTitle,
+                                    image: s.image || '',
+                                    category: s.category || 'مسلسلات',
+                                    rating: 9.0,
+                                    trailer: s.trailer || '',
+                                    url: s.url || '',
+                                    rank: sliderSeriesItems.length + 1
+                                  }
+                                ]);
+                              }}
+                              disabled={isAdded}
+                              className={cn(
+                                "shrink-0 px-2.5 py-1.5 rounded-lg transition-all text-xs font-bold flex items-center gap-1",
+                                isAdded
+                                  ? "bg-white/5 text-zinc-500 cursor-not-allowed"
+                                  : "bg-primary/20 text-primary hover:bg-primary hover:text-white"
+                              )}
+                            >
+                              {isAdded ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <Plus className="w-3.5 h-3.5" />}
+                              <span>{isAdded ? 'مضاف' : 'إضافة'}</span>
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Add Custom Series To Slider */}
+                <div className="space-y-3 bg-zinc-950/60 p-4 rounded-2xl border border-zinc-800">
+                  <h4 className="text-xs font-black text-zinc-300">أو إضافة عمل وتريلر جديد يدوياً للسلايدر</h4>
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="عنوان العمل..."
+                      value={newSliderCustom.title}
+                      onChange={(e) => setNewSliderCustom({ ...newSliderCustom, title: e.target.value })}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-primary"
+                    />
+                    <input
+                      type="text"
+                      placeholder="رابط صورة البوستر (Image URL)..."
+                      value={newSliderCustom.image}
+                      onChange={(e) => setNewSliderCustom({ ...newSliderCustom, image: e.target.value })}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-primary"
+                    />
+                    <input
+                      type="text"
+                      placeholder="رابط مقطع التريلر (YouTube أو MP4 مباشر)..."
+                      value={newSliderCustom.trailer}
+                      onChange={(e) => setNewSliderCustom({ ...newSliderCustom, trailer: e.target.value })}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-primary"
+                    />
+                    <button
+                      onClick={() => {
+                        if (!newSliderCustom.title.trim()) {
+                          alert('الرجاء إدخال عنوان العمل');
+                          return;
+                        }
+                        const customId = `custom_slider_${Date.now()}`;
+                        setSliderSeriesItems([
+                          ...sliderSeriesItems,
+                          {
+                            id: customId,
+                            title: newSliderCustom.title.trim(),
+                            image: newSliderCustom.image.trim(),
+                            category: newSliderCustom.category || 'مسلسلات',
+                            rating: 9.0,
+                            trailer: newSliderCustom.trailer.trim(),
+                            rank: sliderSeriesItems.length + 1
+                          }
+                        ]);
+                        setNewSliderCustom({ title: '', image: '', trailer: '', category: 'مسلسلات' });
+                      }}
+                      className="w-full bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold py-2 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      إضافة للسلايدر
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Currently Configured Slider Items */}
+              <div className="w-full lg:w-1/2 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-black text-white flex items-center gap-2">
+                    مسلسلات وتريلرات السلايدر في فايربيس
+                    <span className="text-xs bg-primary/20 text-primary px-2.5 py-0.5 rounded-full font-bold">
+                      {sliderSeriesItems.length} أعمال
+                    </span>
+                  </h3>
+                  <span className="text-[10px] text-zinc-500">الأعمال المزودة بتريلر تظهر أولاً</span>
+                </div>
+
+                <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl max-h-[520px] overflow-y-auto no-scrollbar p-2 space-y-2.5">
+                  {sliderSeriesItems.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center p-12 text-zinc-500 text-center">
+                      <Film className="w-10 h-10 mb-3 opacity-40 text-primary" />
+                      <p className="text-xs font-bold text-zinc-400">السلايدر فارغ في فايربيس حتى الآن</p>
+                      <p className="text-[11px] text-zinc-600 mt-1">اختر من القائمة المتاحة على اليمين وأدخل رابط التريلر</p>
+                    </div>
+                  ) : (
+                    sliderSeriesItems.map((item, idx) => (
+                      <div
+                        key={`slider-item-${item.id}-${idx}`}
+                        className="bg-zinc-900 p-3 rounded-xl border border-white/5 space-y-2 hover:border-white/10 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="w-6 h-6 shrink-0 flex items-center justify-center bg-black/60 text-white font-black text-xs rounded-full border border-white/10">
+                            {idx + 1}
+                          </span>
+                          {item.image ? (
+                            <img src={item.image} alt={item.title} className="w-10 h-12 object-cover rounded-lg shrink-0 shadow" />
+                          ) : (
+                            <div className="w-10 h-12 bg-zinc-800 rounded-lg shrink-0 flex items-center justify-center">
+                              <Film className="w-4 h-4 text-zinc-600" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-white text-xs font-bold truncate">{item.title}</h4>
+                            <span className="text-[10px] text-zinc-400">{item.category || 'مسلسلات'}</span>
+                          </div>
+
+                          {/* Reorder & Delete */}
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => {
+                                if (idx > 0) {
+                                  const newList = [...sliderSeriesItems];
+                                  [newList[idx - 1], newList[idx]] = [newList[idx], newList[idx - 1]];
+                                  setSliderSeriesItems(newList);
+                                }
+                              }}
+                              disabled={idx === 0}
+                              className="p-1.5 text-zinc-400 hover:text-white disabled:opacity-30 rounded hover:bg-zinc-800"
+                              title="تحريك لأعلى"
+                            >
+                              <ChevronUp className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (idx < sliderSeriesItems.length - 1) {
+                                  const newList = [...sliderSeriesItems];
+                                  [newList[idx + 1], newList[idx]] = [newList[idx], newList[idx + 1]];
+                                  setSliderSeriesItems(newList);
+                                }
+                              }}
+                              disabled={idx === sliderSeriesItems.length - 1}
+                              className="p-1.5 text-zinc-400 hover:text-white disabled:opacity-30 rounded hover:bg-zinc-800"
+                              title="تحريك لأسفل"
+                            >
+                              <ChevronDown className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSliderSeriesItems(sliderSeriesItems.filter((_, i) => i !== idx));
+                              }}
+                              className="p-1.5 text-red-400 hover:bg-red-500/20 rounded transition-colors"
+                              title="حذف من السلايدر"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Trailer link input */}
+                        <div className="pt-1 flex items-center gap-2">
+                          <span className="text-[10px] font-bold text-amber-400 shrink-0 flex items-center gap-1">
+                            <Film className="w-3 h-3" />
+                            التريلر:
+                          </span>
+                          <input
+                            type="text"
+                            value={item.trailer || ''}
+                            onChange={(e) => {
+                              const updated = [...sliderSeriesItems];
+                              updated[idx] = { ...updated[idx], trailer: e.target.value };
+                              setSliderSeriesItems(updated);
+                            }}
+                            placeholder="ضع رابط التريلر (YouTube أو فيديو MP4)..."
+                            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-white text-[11px] focus:outline-none focus:border-primary font-mono dir-ltr text-left"
+                          />
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               </div>

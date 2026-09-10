@@ -44,6 +44,121 @@ export function normalizeArabic(text: string): string {
 }
 
 /**
+ * Advanced Arabic Search Relevance Scorer.
+ * Returns a score from 0 to 100,000+.
+ * Higher score = higher relevance to what the user actually searched.
+ */
+export function calculateSearchRelevance(target: string, query: string, category?: string): number {
+  if (!target || !query) return 0;
+
+  const rawTarget = target.trim().toLowerCase();
+  const rawQuery = query.trim().toLowerCase();
+
+  // Basic normalized string helper
+  const normBasic = (str: string) => {
+    return str.toLowerCase()
+      .replace(/^(المسلسل التركي|المسلسل الكوري|المسلسل المكسيكي|المسلسل الاسيوي|المسلسل|الفيلم|البرنامج|مسلسل|برنامج|فيلم|انمي|أنمي)\s+/gi, "")
+      .replace(/\s*(مترجم|مترجمة|مدبلج|مدبلجة|قصة عشق|كاملة?|جودة عالية|hd|الموسم\s*\d+|الجزء\s*\d+|ج\s*\d+)\s*$/gi, "")
+      .replace(/[أإآٱ]/g, "ا")
+      .replace(/ة/g, "ه")
+      .replace(/ى/g, "ي")
+      .replace(/[\u064B-\u065F]/g, "") // Diacritics
+      .replace(/[^\u0621-\u064Aa-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+
+  const basicTarget = normBasic(rawTarget);
+  const basicQuery = normBasic(rawQuery);
+
+  const cleanTarget = normalizeArabic(rawTarget);
+  const cleanQuery = normalizeArabic(rawQuery);
+
+  if (!basicQuery && !cleanQuery) return 0;
+
+  // 1. EXACT FULL MATCH (Top Tier: 100,000+)
+  if (basicTarget === basicQuery) {
+    return 100000;
+  }
+  if (cleanTarget === cleanQuery && cleanTarget.length > 0) {
+    return 95000;
+  }
+
+  // 2. STARTS WITH EXACT QUERY (Second Tier: 60,000 - 85,000)
+  if (basicTarget.startsWith(basicQuery) && basicQuery.length >= 2) {
+    const lengthPenalty = Math.min((basicTarget.length - basicQuery.length) * 50, 20000);
+    return 85000 - lengthPenalty;
+  }
+  if (cleanTarget.startsWith(cleanQuery) && cleanQuery.length >= 2) {
+    const lengthPenalty = Math.min((cleanTarget.length - cleanQuery.length) * 50, 20000);
+    return 75000 - lengthPenalty;
+  }
+
+  // 3. CONTAINS FULL CONSECUTIVE PHRASE (Third Tier: 35,000 - 55,000)
+  if (basicTarget.includes(basicQuery) && basicQuery.length >= 2) {
+    const idx = basicTarget.indexOf(basicQuery);
+    const posPenalty = idx * 100;
+    const lengthPenalty = (basicTarget.length - basicQuery.length) * 30;
+    return Math.max(35000, 55000 - posPenalty - lengthPenalty);
+  }
+  if (cleanTarget.includes(cleanQuery) && cleanQuery.length >= 2) {
+    return 40000;
+  }
+
+  // 4. WORD-BY-WORD PRECISION & COVERAGE (Fourth Tier: 5,000 - 30,000)
+  const targetWords = basicTarget.split(/\s+/).filter(w => w.length > 0);
+  const queryWords = basicQuery.split(/\s+/).filter(w => w.length > 0);
+
+  if (queryWords.length > 0 && targetWords.length > 0) {
+    let matchedQueryWordsCount = 0;
+    let exactWordBonus = 0;
+    let firstWordMatchBonus = 0;
+
+    queryWords.forEach((qWord, qIdx) => {
+      let wordMatched = false;
+      targetWords.forEach((tWord, tIdx) => {
+        if (tWord === qWord) {
+          wordMatched = true;
+          exactWordBonus += 4000;
+          if (tIdx === 0 && qIdx === 0) firstWordMatchBonus += 5000;
+        } else if (tWord.startsWith(qWord) && qWord.length >= 2) {
+          wordMatched = true;
+          exactWordBonus += 2000;
+        } else if (tWord.includes(qWord) && qWord.length >= 3) {
+          wordMatched = true;
+          exactWordBonus += 1000;
+        }
+      });
+      if (wordMatched) matchedQueryWordsCount++;
+    });
+
+    const matchRatio = matchedQueryWordsCount / queryWords.length;
+
+    // If ALL words in user query matched target words!
+    if (matchRatio === 1) {
+      const targetCoverage = queryWords.length / Math.max(targetWords.length, 1);
+      const coverageBonus = targetCoverage * 8000;
+      return 20000 + exactWordBonus + firstWordMatchBonus + coverageBonus;
+    }
+
+    if (matchRatio >= 0.5) {
+      return (10000 * matchRatio) + exactWordBonus + firstWordMatchBonus;
+    }
+
+    if (matchedQueryWordsCount > 0) {
+      return (3000 * matchRatio) + exactWordBonus;
+    }
+  }
+
+  // 5. FUZZY / TYPO MATCHING (Fifth Tier: 200 - 1,500)
+  if (fuzzyMatchArabic(target, query)) {
+    return 800;
+  }
+
+  return 0;
+}
+
+/**
  * Checks if a target string matches a query string using fuzzy logic specifically for Arabic.
  */
 export function fuzzyMatchArabic(target: string, query: string): boolean {
