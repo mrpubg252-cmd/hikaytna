@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, get, set, onValue } from 'firebase/database';
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, getDocs } from 'firebase/firestore';
+import { getDatabase, ref, get, set, onValue, remove } from 'firebase/database';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, getDocs, deleteDoc } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import appletConfig from '../../firebase-applet-config.json';
 
 const config = appletConfig as any;
@@ -21,6 +22,7 @@ export const db = getDatabase(app);
 
 const dbId = isRemixed && config.firestoreDatabaseId ? config.firestoreDatabaseId : "(default)";
 export const firestore = getFirestore(app, dbId);
+export const storage = getStorage(app);
 
 export interface Episode {
   title: string;
@@ -184,6 +186,7 @@ export interface SliderSeriesItem {
   id: string;
   title: string;
   image?: string;
+  originalImage?: string;
   category?: string;
   rating?: number;
   trailer?: string;
@@ -192,11 +195,16 @@ export interface SliderSeriesItem {
   rank?: number;
 }
 
+export interface SliderImageOverrides {
+  [key: string]: string; // seriesId or title -> image URL
+}
+
 export async function saveSliderSeries(items: SliderSeriesItem[]): Promise<boolean> {
   const cleanList = items.map((item, index) => ({
     id: item.id || `slider_${index}_${(item.title || 'item').replace(/[^a-zA-Z0-9]/g, '_')}`,
     title: item.title || '',
     image: item.image || '',
+    originalImage: item.originalImage || item.image || '',
     category: item.category || 'مسلسلات',
     rating: item.rating || 8.5,
     trailer: item.trailer || '',
@@ -204,6 +212,15 @@ export async function saveSliderSeries(items: SliderSeriesItem[]): Promise<boole
     episodes_count: item.episodes_count || '',
     rank: index + 1
   }));
+
+  // Also build overrides mapping
+  const overrides: SliderImageOverrides = {};
+  cleanList.forEach(item => {
+    if (item.image) {
+      if (item.id) overrides[item.id] = item.image;
+      if (item.title) overrides[item.title] = item.image;
+    }
+  });
 
   let saved = false;
 
@@ -213,6 +230,12 @@ export async function saveSliderSeries(items: SliderSeriesItem[]): Promise<boole
       updatedAt: Date.now(),
       items: cleanList
     });
+    if (Object.keys(overrides).length > 0) {
+      await setDoc(doc(firestore, 'shorts', 'slider_image_overrides'), {
+        updatedAt: Date.now(),
+        overrides
+      });
+    }
     saved = true;
   } catch (e) {
     console.warn("Firestore saveSliderSeries error:", e);
@@ -221,6 +244,9 @@ export async function saveSliderSeries(items: SliderSeriesItem[]): Promise<boole
   // Channel 2: Realtime Database
   try {
     await set(ref(db, 'featured_slider_series'), cleanList);
+    if (Object.keys(overrides).length > 0) {
+      await set(ref(db, 'slider_image_overrides'), overrides);
+    }
     saved = true;
   } catch (e) {
     console.warn("RTDB saveSliderSeries error:", e);
@@ -262,4 +288,189 @@ export function subscribeSliderSeries(callback: (items: SliderSeriesItem[]) => v
     unsubRtdb();
   };
 }
+
+export async function saveSliderImageOverrides(overrides: SliderImageOverrides): Promise<boolean> {
+  let saved = false;
+  try {
+    await setDoc(doc(firestore, 'shorts', 'slider_image_overrides'), {
+      updatedAt: Date.now(),
+      overrides
+    });
+    saved = true;
+  } catch (e) {
+    console.warn("Firestore saveSliderImageOverrides error:", e);
+  }
+
+  try {
+    await set(ref(db, 'slider_image_overrides'), overrides);
+    saved = true;
+  } catch (e) {
+    console.warn("RTDB saveSliderImageOverrides error:", e);
+  }
+  return saved;
+}
+
+export function subscribeSliderImageOverrides(callback: (overrides: SliderImageOverrides) => void): () => void {
+  const unsubFs = onSnapshot(doc(firestore, 'shorts', 'slider_image_overrides'), (docSnap) => {
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (data && data.overrides && typeof data.overrides === 'object') {
+        callback(data.overrides);
+        return;
+      }
+    }
+  }, (err) => {
+    console.warn("Firestore slider overrides sub error:", err);
+  });
+
+  const unsubRtdb = onValue(ref(db, 'slider_image_overrides'), (snap) => {
+    const val = snap.val();
+    if (val && typeof val === 'object') {
+      callback(val);
+    }
+  }, (err) => {
+    console.warn("RTDB slider overrides sub error:", err);
+  });
+
+  return () => {
+    unsubFs();
+    unsubRtdb();
+  };
+}
+
+// ==========================================
+// Hakeem AI Chat Sessions (Firebase Storage)
+// Zero server hosting resources consumed!
+// ==========================================
+
+export interface HakeemMessage {
+  id: string;
+  role: 'user' | 'model';
+  text: string;
+  timestamp: number;
+  fileUrls?: string[];
+  image?: string;
+  audio?: boolean;
+}
+
+export interface HakeemSession {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: HakeemMessage[];
+}
+
+export async function saveHakeemSession(userId: string, session: HakeemSession): Promise<boolean> {
+  if (!userId || !session || !session.id) return false;
+  let saved = false;
+
+  // 1. Save directly to RTDB for immediate sync
+  try {
+    const sessionRef = ref(db, `hakeem_sessions/${userId}/${session.id}`);
+    await set(sessionRef, {
+      ...session,
+      updatedAt: Date.now()
+    });
+    saved = true;
+  } catch (err: any) {
+    console.warn("RTDB saveHakeemSession error:", err.message);
+  }
+
+  // 2. Backup to Firestore
+  try {
+    const docRef = doc(firestore, 'hakeem_sessions', `${userId}_${session.id}`);
+    await setDoc(docRef, {
+      ...session,
+      userId,
+      updatedAt: Date.now()
+    });
+    saved = true;
+  } catch (err: any) {
+    console.warn("Firestore saveHakeemSession error:", err.message);
+  }
+
+  return saved;
+}
+
+export async function getUserHakeemSessions(userId: string): Promise<HakeemSession[]> {
+  if (!userId) return [];
+
+  // Try RTDB first
+  try {
+    const snap = await get(ref(db, `hakeem_sessions/${userId}`));
+    if (snap.exists()) {
+      const val = snap.val();
+      const sessions: HakeemSession[] = Object.values(val || {});
+      sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      return sessions;
+    }
+  } catch (err: any) {
+    console.warn("RTDB getUserHakeemSessions error:", err.message);
+  }
+
+  // Fallback to Firestore
+  try {
+    const collRef = collection(firestore, 'hakeem_sessions');
+    const snap = await getDocs(collRef);
+    const sessions: HakeemSession[] = [];
+    snap.forEach((d) => {
+      const data = d.data() as any;
+      if (data && data.userId === userId) {
+        sessions.push(data as HakeemSession);
+      }
+    });
+    sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    return sessions;
+  } catch (err: any) {
+    console.warn("Firestore getUserHakeemSessions error:", err.message);
+  }
+
+  return [];
+}
+
+export async function deleteHakeemSession(userId: string, sessionId: string): Promise<boolean> {
+  if (!userId || !sessionId) return false;
+  let removed = false;
+
+  try {
+    await remove(ref(db, `hakeem_sessions/${userId}/${sessionId}`));
+    removed = true;
+  } catch (err: any) {
+    console.warn("RTDB deleteHakeemSession error:", err.message);
+  }
+
+  try {
+    await deleteDoc(doc(firestore, 'hakeem_sessions', `${userId}_${sessionId}`));
+    removed = true;
+  } catch (err: any) {
+    console.warn("Firestore deleteHakeemSession error:", err.message);
+  }
+
+  return removed;
+}
+
+export function subscribeUserHakeemSessions(userId: string, callback: (sessions: HakeemSession[]) => void): () => void {
+  if (!userId) return () => {};
+
+  const rtdbRef = ref(db, `hakeem_sessions/${userId}`);
+  const unsubRtdb = onValue(rtdbRef, (snap) => {
+    if (snap.exists()) {
+      const val = snap.val();
+      const sessions: HakeemSession[] = Object.values(val || {});
+      sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      callback(sessions);
+    } else {
+      callback([]);
+    }
+  }, (err) => {
+    console.warn("RTDB subscribeUserHakeemSessions error:", err.message);
+  });
+
+  return () => {
+    unsubRtdb();
+  };
+}
+
+
 

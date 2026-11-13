@@ -172,29 +172,29 @@ export default function FeaturedSlider({ items, onPlay }: FeaturedSliderProps) {
 
   // Slide auto-advance duration:
   // If trailer is present and not failed, wait until trailer finishes (onEnded).
-  // If no trailer, or if video failed, switch smoothly after 7 seconds.
+  // If no trailer, or if video failed, switch smoothly after 10 seconds.
   useEffect(() => {
     if (sliderItems.length <= 1) return;
 
+    // If a trailer is currently active and hasn't failed, do NOT set any auto-advance timer.
+    // The handleVideoEnded will be called by the video 'onEnded' or YouTube 'message' listener.
     if (hasTrailer && !videoFailed) {
-      // Allow the trailer video to play completely without interrupting it!
-      // Set generous safety timeout (3 minutes) in case video never finishes
+      // Set a very long safety timeout (5 minutes) just in case something hangs
       const safetyTimeout = setTimeout(() => {
-        handleVideoEnded();
-      }, 180000);
+        if (hasTrailer && !videoFailed) {
+          handleVideoEnded();
+        }
+      }, 300000);
       return () => clearTimeout(safetyTimeout);
     }
 
+    // Standard auto-advance for items without trailers
     const interval = setInterval(() => {
-      if (hideDetailsTimerRef.current) clearTimeout(hideDetailsTimerRef.current);
-      setShowTrailer(false);
-      setVideoLoaded(false);
-      setShowDetails(true);
-      setCurrentIndex((prev) => (prev + 1) % sliderItems.length);
-    }, 7000);
+      handleNext({ stopPropagation: () => {} } as any);
+    }, 10000); // 10 seconds for static posters
 
     return () => clearInterval(interval);
-  }, [sliderItems.length, currentIndex, hasTrailer, videoFailed]);
+  }, [currentIndex, hasTrailer, videoFailed, sliderItems.length]);
 
   // Listen for YouTube trailer iframe ended event
   useEffect(() => {
@@ -278,7 +278,7 @@ export default function FeaturedSlider({ items, onPlay }: FeaturedSliderProps) {
       {/* Background Slides with AnimatePresence */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={currentItem.id}
+          key={`${currentItem.id}-${imgUrl}`}
           initial={{ opacity: 0, scale: 1.01 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.99 }}
@@ -293,6 +293,9 @@ export default function FeaturedSlider({ items, onPlay }: FeaturedSliderProps) {
               src={imgUrl}
               alt={currentItem.title}
               referrerPolicy="no-referrer"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=1200&auto=format&fit=crop";
+              }}
               className={cn(
                 "absolute inset-0 w-full h-full object-cover select-none pointer-events-none transition-opacity duration-1000",
                 isTrailerPlaying ? "opacity-0" : "opacity-100"
@@ -309,7 +312,7 @@ export default function FeaturedSlider({ items, onPlay }: FeaturedSliderProps) {
               >
                 {ytId ? (
                   <iframe
-                    src={`https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&mute=${isMuted ? 1 : 0}&controls=0&loop=1&playlist=${ytId}&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&enablejsapi=1`}
+                    src={`https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&mute=${isMuted ? 1 : 0}&controls=0&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3&enablejsapi=1`}
                     title="Trailer"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     className="w-full h-full object-cover pointer-events-none"

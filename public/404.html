@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>حكايتنا - جاري التحويل...</title>
+    <script>
+      (function () {
+        var l = window.location;
+        var pathParts = l.pathname.split('/').filter(Boolean);
+        var search = l.search || '';
+        var hash = l.hash || '';
+
+        if (pathParts.length === 0) {
+          l.replace(l.origin + '/#/' + search);
+          return;
+        }
+
+        // Detect whether the first path segment is a GitHub Pages repo subpath
+        var firstSeg = pathParts[0];
+        var checkUrl = '/' + firstSeg + '/manifest.json';
+
+        fetch(checkUrl, { method: 'HEAD' })
+          .then(function (res) {
+            if (res.ok) {
+              var subRoute = pathParts.slice(1).join('/');
+              l.replace(l.origin + '/' + firstSeg + '/#/' + subRoute + search + hash);
+            } else {
+              var fullRoute = pathParts.join('/');
+              l.replace(l.origin + '/#/' + fullRoute + search + hash);
+            }
+          })
+          .catch(function () {
+            var fullRoute = pathParts.join('/');
+            l.replace(l.origin + '/#/' + fullRoute + search + hash);
+          });
+      })();
+    </script>
+  </head>
+  <body style="background:#000;color:#fff;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+    <p>جاري توجيهك إلى حكايتنا...</p>
+  </body>
+</html>

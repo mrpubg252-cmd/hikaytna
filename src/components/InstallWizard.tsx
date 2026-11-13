@@ -241,7 +241,7 @@ export default function InstallWizard({ isOpen, onClose }: InstallWizardProps) {
                           <span className="text-[9px] text-zinc-500 font-extrabold block uppercase mb-1">توضيح مرئي لخدمة iOS:</span>
                           <div className="bg-black/80 rounded-2xl p-3 border border-white/5 space-y-2 text-right">
                             <div className="flex items-center gap-3.5 flex-row-reverse border-b border-white/5 pb-2">
-                              <img src="/logo.png" className="w-10 h-10 rounded-xl border border-white/10 animate-pulse" alt="logo" />
+                              <img src={`${import.meta.env.BASE_URL}logo.png`} className="w-10 h-10 rounded-xl border border-white/10 animate-pulse" alt="logo" />
                               <div className="flex-1 text-right">
                                 <span className="text-xs font-black text-white block">تطبيق حكايتنا 🍿</span>
                                 <span className="text-[9px] text-zinc-500 font-bold block">hikayatna.my</span>

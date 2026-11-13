@@ -15,7 +15,7 @@ import { progressService } from '../services/progressService';
 import { encryptValue } from '../lib/security';
 import SeriesChat from '../components/SeriesChat';
 import { offlineService } from '../services/offlineService';
-import { getApiUrl } from '../lib/apiConfig';
+import { getApiUrl, getAppRouteUrl, getGatewayUrl, isGitHubPages } from '../lib/apiConfig';
 import { getTMDBPosterSync } from '../lib/tmdbHealing';
 
 export default function WatchScreen() {
@@ -188,10 +188,9 @@ export default function WatchScreen() {
       sessionStorage.setItem('unlocked_' + series.id, 'true');
     } else {
       setIsAdGatePassed(false);
-      // Direct full standalone window replace to the Express-served /ads endpoint (prevents history pollution)
-      const currentPathName = window.location.pathname;
-      const targetRedirect = `${window.location.origin}${currentPathName}?unlocked=true`;
-      window.location.replace(`/gateway?id=${encodeURIComponent(series.id)}&redirect=${encodeURIComponent(targetRedirect)}`);
+      // Direct full standalone window replace to the gateway endpoint (prevents history pollution)
+      const targetRedirect = getAppRouteUrl(`${location.pathname}?unlocked=true`);
+      window.location.replace(getGatewayUrl(series.id, targetRedirect));
     }
   }, [series, location.search]);
 
@@ -248,7 +247,12 @@ export default function WatchScreen() {
     return getTMDBPosterSync(series.title, series.category) || getProxiedImageUrl(series.image) || "";
   }, [series]);
 
-  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [episodes, setEpisodes] = useState<Episode[]>(() => {
+    if (series?.episodes && Array.isArray(series.episodes) && series.episodes.length > 0) {
+      return series.episodes;
+    }
+    return [];
+  });
   const [currentEpisode, setCurrentEpisode] = useState(() => {
     if (episodeIndex) {
       const parsed = parseInt(episodeIndex, 10);
@@ -335,7 +339,7 @@ export default function WatchScreen() {
       };
 
       // 1. Persist directly inside Node back-end memory/JSON (100% reliable)
-      const res = await fetch(`/api/v1/pins/${series.id}`, {
+      const res = await fetch(getApiUrl(`/api/v1/pins/${series.id}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(pinData || { pinned: false })
@@ -975,7 +979,7 @@ export default function WatchScreen() {
   
   async function getSecuredUrl(rawUrl: string, signal?: AbortSignal) {
     if (!rawUrl) return '';
-    if (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be') || rawUrl.startsWith('/api/v1/')) {
+    if (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be') || rawUrl.includes('/api/v1/')) {
       return rawUrl;
     }
     
@@ -1019,7 +1023,7 @@ export default function WatchScreen() {
                      resultLower.includes('play.php') || 
                      resultLower.includes('iframe');
 
-    if ((isVideoFile || is3iskSource) && !isIframe && !result.startsWith('/api/v1/')) {
+    if ((isVideoFile || is3iskSource) && !isIframe && !result.includes('/api/v1/')) {
       const encrypted = encodeURIComponent(encryptValue(result));
       result = getApiUrl(`/api/v1/stream-proxy/${encrypted}`);
     }
@@ -1060,7 +1064,8 @@ export default function WatchScreen() {
           localStorage.setItem(`mo_play_last_ep_${series.id}`, index.toString());
           try {
             const cleanUrl = `/watch/${encodeURIComponent(series.title || series.id)}/${index}`;
-            window.history.replaceState({ ...window.history.state }, '', cleanUrl);
+            const targetHistoryUrl = isGitHubPages() ? `${window.location.pathname}#${cleanUrl}` : cleanUrl;
+            window.history.replaceState({ ...window.history.state }, '', targetHistoryUrl);
           } catch (e) {
             console.warn("Unable to push clean state offline", e);
           }
@@ -1108,7 +1113,8 @@ export default function WatchScreen() {
     // Gracefully update browser address bar with the clean URL without reloading!
     try {
       const cleanUrl = `/watch/${encodeURIComponent(series.title || series.id)}/${index}`;
-      window.history.replaceState({ ...window.history.state }, '', cleanUrl);
+      const targetHistoryUrl = isGitHubPages() ? `${window.location.pathname}#${cleanUrl}` : cleanUrl;
+      window.history.replaceState({ ...window.history.state }, '', targetHistoryUrl);
     } catch (e) {
       console.warn("Unable to push clean state", e);
     }
@@ -1119,7 +1125,7 @@ export default function WatchScreen() {
     let finalUrl = '';
     let fetchedServers: { name: string; url: string }[] = [];
 
-    if (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be') || rawUrl.startsWith('/api/v1/')) {
+    if (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be') || rawUrl.includes('/api/v1/')) {
       finalUrl = rawUrl;
       fetchedServers = [{ name: 'سيرفر رئيسي', url: rawUrl }];
     } else {
@@ -1175,53 +1181,6 @@ export default function WatchScreen() {
 
   if (!series) return null;
 
-  if (!loading && episodes.length === 0 && series.title.includes("رأساً على عقب")) {
-    return (
-      <div className="min-h-screen bg-[#050505] pb-20 relative overflow-hidden font-cairo">
-        {/* Immersive Background Backdrop */}
-        {tmdbData?.backdrop && (
-          <div className="absolute top-0 left-0 w-full h-[600px] pointer-events-none opacity-20 z-0">
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#050505]/60 to-[#050505]" />
-            <img 
-              src={tmdbData.backdrop} 
-              alt="" 
-              className="w-full h-full object-cover"
-            />
-          </div>
-        )}
-        
-        <div className="relative z-10 flex flex-col min-h-screen">
-          <Header />
-          
-          <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 mt-4 sm:mt-12">
-            <div className="w-full max-w-3xl bg-zinc-900/40 rounded-[2.5rem] border border-white/10 p-10 sm:p-16 flex flex-col items-center justify-center text-center shadow-2xl relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-              
-              <div className="relative z-10 flex flex-col items-center">
-                <Sparkles className="w-20 h-20 sm:w-24 sm:h-24 text-primary mb-6 sm:mb-8 animate-pulse drop-shadow-[0_0_15px_rgba(229,9,20,0.5)]" />
-                <h1 className="text-4xl sm:text-5xl md:text-6xl font-black text-white mb-6 tracking-tight font-black-italic leading-tight drop-shadow-md">
-                  قريباً انتظرونا
-                </h1>
-                <p className="text-zinc-400 text-sm sm:text-base md:text-lg lg:text-xl font-bold leading-relaxed max-w-xl mb-10">
-                  {series.title.includes("رأساً على عقب") ? "هذا العمل قيد الإضافة، " : ""}
-                  لا توجد حلقات أو سيرفرات متوفرة لهذا العمل حالياً. نعمل على توفيرها بأقرب وقت ممكن، شكراً لانتظاركم وتفهمكم.
-                </p>
-                
-                <button 
-                  onClick={() => navigate('/')}
-                  className="px-10 py-4 bg-primary hover:bg-primary/90 text-white rounded-2xl font-black text-lg transition-all duration-300 shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:-translate-y-1 flex items-center gap-3"
-                >
-                  <ChevronRight className="w-5 h-5 rotate-180" />
-                  العودة للرئيسية
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  
   return (
     <div className="min-h-screen bg-[#050505] pb-20 relative overflow-hidden">
       {/* Immersive Background Backdrop */}
@@ -1567,19 +1526,40 @@ export default function WatchScreen() {
                   </h2>
                 </div>
               </div>
-              <EpisodeGrid 
-                episodes={episodes}
-                currentIndex={currentEpisode}
-                seriesId={series.id}
-                seriesImage={resolvedSeriesImage}
-                seriesTitle={series.title}
-                isSeriesFinal={(series as any).isFinal === true || /الأخي?رة/i.test((series as any).episode || '') || /الأخي?رة/i.test((series as any).latestEpisode || '') || /الأخي?رة/i.test(series.title || '')}
-                isMovie={episodes.length === 1 && (/فيلم|افلام/i.test(series.category || "") || /فيلم/i.test(series.title || ""))}
-                onSelect={(ep, idx) => playEpisode(ep, idx)}
-                isLoading={loading}
-              />
+              {episodes.length > 0 ? (
+                <EpisodeGrid 
+                  episodes={episodes}
+                  currentIndex={currentEpisode}
+                  seriesId={series.id}
+                  seriesImage={resolvedSeriesImage}
+                  seriesTitle={series.title}
+                  isSeriesFinal={(series as any).isFinal === true || /الأخي?رة/i.test((series as any).episode || '') || /الأخي?رة/i.test((series as any).latestEpisode || '') || /الأخي?رة/i.test(series.title || '')}
+                  isMovie={episodes.length === 1 && (/فيلم|افلام/i.test(series.category || "") || /فيلم/i.test(series.title || ""))}
+                  onSelect={(ep, idx) => playEpisode(ep, idx)}
+                  isLoading={loading}
+                />
+              ) : (
+                <div className="w-full bg-[#121218]/40 border border-white/5 rounded-[2rem] p-8 sm:p-12 flex flex-col items-center justify-center text-center shadow-xl animate-fade-in">
+                  {loading ? (
+                    <div className="space-y-6 flex flex-col items-center">
+                      <Loader2 className="w-16 h-16 text-primary animate-spin" />
+                      <div>
+                        <h3 className="text-2xl sm:text-3xl font-black text-white mb-2">يرجى الانتظار</h3>
+                        <p className="text-zinc-500 text-sm font-bold">جاري فحص وتجهيز حلقات المسلسل من خوادم البث...</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-6 flex flex-col items-center">
+                      <Sparkles className="w-16 h-16 text-primary animate-pulse" />
+                      <div>
+                        <h3 className="text-2xl sm:text-3xl font-black text-white mb-2">قريباً انتظرونا</h3>
+                        <p className="text-zinc-500 text-sm font-bold">لا توجد حلقات أو سيرفرات متوفرة حالياً. نعمل على توفيرها بأقرب وقت، شكراً لانتظاركم.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
-          </div>
 
           {/* Sidebar */}
           <aside className="w-full lg:w-96 flex flex-col gap-6">
@@ -1854,7 +1834,7 @@ export default function WatchScreen() {
           </motion.div>
         )}
       </AnimatePresence>
-
+      </div>
     </div>
   );
 }

@@ -6,14 +6,13 @@ import {
   Star, Type, Hash, ExternalLink, Sparkles, Pencil, RefreshCw,
   Settings, Smartphone, Link, ChevronUp, ChevronDown
 } from 'lucide-react';
-import { 
-  db, firestore, TopSeriesItem, saveTopSeriesOrder, subscribeTopSeriesOrder,
-  SliderSeriesItem, saveSliderSeries, subscribeSliderSeries
-} from '../services/firebase';
+import { db, firestore, storage, TopSeriesItem, saveTopSeriesOrder, subscribeTopSeriesOrder, SliderSeriesItem, saveSliderSeries, subscribeSliderSeries } from '../services/firebase';
 import { ref, onValue, push, remove, set } from 'firebase/database';
+import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFirestore, collection, getDocs, deleteDoc, doc, setDoc, getDoc, query, orderBy } from 'firebase/firestore';
 import { cn, normalizeArabic, fuzzyMatchArabic } from '../lib/utils';
 import { useNavigate } from 'react-router-dom';
+import { getApiUrl } from '../lib/apiConfig';
 import { clearCache, fetchAllSeries, getAllCachedSeries, isEpisodeItem, extractMainSeriesTitle } from '../services/dataService';
 import { fetchQesehDiscover } from '../services/api';
 
@@ -1235,41 +1234,49 @@ export default function AdminScreen() {
           <section className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-5">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center">
+                <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center shrink-0">
                   <Film className="w-6 h-6 text-primary" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-black text-white">إدارة سلايدر وتريلرات الصفحة الرئيسية</h2>
-                  <p className="text-zinc-400 text-xs mt-0.5">
-                    حدد المسلسلات وروابط مقاطع التريلر التي تظهر في السلايدر، ويتم حفظها مباشرة في فايربيس لتوفير استهلاك موارد الاستضافة.
+                  <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2 flex-wrap">
+                    <span>إدارة سلايدر وتريلرات الصفحة الرئيسية</span>
+                    <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/20 flex items-center gap-1">
+                      <ImageIcon className="w-3 h-3" />
+                      تخصيص صور السلايدر
+                    </span>
+                  </h2>
+                  <p className="text-zinc-400 text-xs mt-1 leading-relaxed">
+                    يمكنك تغيير رابط صورة أي مسلسل في السلايدر (لتغيير الغلاف/البوستر في السلايدر فقط) ووضع رابط التريلر. يتم حفظ الروابط مباشرة في فايربيس دون استهلاك موارد الاستضافة.
                   </p>
                 </div>
               </div>
 
-              <button
-                onClick={async () => {
-                  setIsSavingSlider(true);
-                  const ok = await saveSliderSeries(sliderSeriesItems);
-                  setIsSavingSlider(false);
-                  if (ok) {
-                    setText('تم حفظ سلايدر الصفحة الرئيسية في فايربيس بنجاح!');
-                    setType('success');
-                  } else {
-                    setText('تعذر الحفظ في فايربيس، يرجى المحاولة ثانية');
-                    setType('error');
-                  }
-                  setTimeout(() => setText(''), 4000);
-                }}
-                disabled={isSavingSlider}
-                className="flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-3 rounded-xl text-xs font-black transition-all shadow-lg hover:shadow-primary/25 disabled:opacity-50 cursor-pointer shrink-0"
-              >
-                {isSavingSlider ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                <span>حفظ السلايدر في فايربيس</span>
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={async () => {
+                    setIsSavingSlider(true);
+                    const ok = await saveSliderSeries(sliderSeriesItems);
+                    setIsSavingSlider(false);
+                    if (ok) {
+                      setText('تم حفظ صور وتريلرات السلايدر في فايربيس بنجاح بدون استهلاك موارد استضافة!');
+                      setType('success');
+                    } else {
+                      setText('تعذر الحفظ في فايربيس، يرجى التحقق من الاتصال والمحاولة ثانية');
+                      setType('error');
+                    }
+                    setTimeout(() => setText(''), 4500);
+                  }}
+                  disabled={isSavingSlider}
+                  className="flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white px-5 py-3 rounded-xl text-xs font-black transition-all shadow-lg hover:shadow-primary/25 disabled:opacity-50 cursor-pointer"
+                >
+                  {isSavingSlider ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  <span>حفظ السلايدر في فايربيس</span>
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-col lg:flex-row gap-6">
-              {/* Left Column: Choose series or add manual */}
+              {/* Left Column: Search & Add */}
               <div className="w-full lg:w-1/2 space-y-5">
                 {/* Search & Add From Available Series */}
                 <div className="space-y-3 bg-zinc-950/60 p-4 rounded-2xl border border-zinc-800">
@@ -1331,6 +1338,7 @@ export default function AdminScreen() {
                                     id: s.id,
                                     title: cleanTitle,
                                     image: s.image || '',
+                                    originalImage: s.image || '',
                                     category: s.category || 'مسلسلات',
                                     rating: 9.0,
                                     trailer: s.trailer || '',
@@ -1370,17 +1378,17 @@ export default function AdminScreen() {
                     />
                     <input
                       type="text"
-                      placeholder="رابط صورة البوستر (Image URL)..."
+                      placeholder="رابط صورة البوستر / الغلاف للسلايدر (Image URL)..."
                       value={newSliderCustom.image}
                       onChange={(e) => setNewSliderCustom({ ...newSliderCustom, image: e.target.value })}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-primary"
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-primary font-mono dir-ltr text-left"
                     />
                     <input
                       type="text"
                       placeholder="رابط مقطع التريلر (YouTube أو MP4 مباشر)..."
                       value={newSliderCustom.trailer}
                       onChange={(e) => setNewSliderCustom({ ...newSliderCustom, trailer: e.target.value })}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-primary"
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-primary font-mono dir-ltr text-left"
                     />
                     <button
                       onClick={() => {
@@ -1395,6 +1403,7 @@ export default function AdminScreen() {
                             id: customId,
                             title: newSliderCustom.title.trim(),
                             image: newSliderCustom.image.trim(),
+                            originalImage: newSliderCustom.image.trim(),
                             category: newSliderCustom.category || 'مسلسلات',
                             rating: 9.0,
                             trailer: newSliderCustom.trailer.trim(),
@@ -1414,43 +1423,134 @@ export default function AdminScreen() {
 
               {/* Right Column: Currently Configured Slider Items */}
               <div className="w-full lg:w-1/2 space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <h3 className="text-sm font-black text-white flex items-center gap-2">
-                    مسلسلات وتريلرات السلايدر في فايربيس
+                    مسلسلات وتريلرات وصور السلايدر
                     <span className="text-xs bg-primary/20 text-primary px-2.5 py-0.5 rounded-full font-bold">
                       {sliderSeriesItems.length} أعمال
                     </span>
                   </h3>
-                  <span className="text-[10px] text-zinc-500">الأعمال المزودة بتريلر تظهر أولاً</span>
+                  
+                  <div className="flex items-center gap-2">
+                    {sliderSeriesItems.length === 0 && allAvailableSeries.length > 0 && (
+                      <button
+                        onClick={() => {
+                          const source = topSeriesItems.length > 0 ? topSeriesItems : allAvailableSeries.slice(0, 10);
+                          const imported: SliderSeriesItem[] = source.map((s, i) => {
+                            const cleanTitle = extractMainSeriesTitle(s.title);
+                            return {
+                              id: s.id,
+                              title: cleanTitle,
+                              image: s.image || '',
+                              originalImage: s.image || '',
+                              category: s.category || 'مسلسلات',
+                              rating: 9.0,
+                              trailer: (s as any).trailer || '',
+                              url: s.url || '',
+                              rank: i + 1
+                            };
+                          });
+                          setSliderSeriesItems(imported);
+                        }}
+                        className="text-[11px] px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 font-bold transition-all flex items-center gap-1"
+                        title="استيراد أعمال التوب 10 لتعديل صورها وتريلراتها"
+                      >
+                        <Plus className="w-3 h-3" />
+                        استيراد التوب 10 للسلايدر
+                      </button>
+                    )}
+                    {sliderSeriesItems.length > 0 && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm('هل أنت متأكد من تفريغ قائمة السلايدر؟')) {
+                            setSliderSeriesItems([]);
+                          }
+                        }}
+                        className="text-[11px] px-2.5 py-1 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all font-bold"
+                        title="تفريغ القائمة"
+                      >
+                        تفريغ السلايدر
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl max-h-[520px] overflow-y-auto no-scrollbar p-2 space-y-2.5">
+                <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl max-h-[580px] overflow-y-auto no-scrollbar p-2.5 space-y-3">
                   {sliderSeriesItems.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center p-12 text-zinc-500 text-center">
-                      <Film className="w-10 h-10 mb-3 opacity-40 text-primary" />
-                      <p className="text-xs font-bold text-zinc-400">السلايدر فارغ في فايربيس حتى الآن</p>
-                      <p className="text-[11px] text-zinc-600 mt-1">اختر من القائمة المتاحة على اليمين وأدخل رابط التريلر</p>
+                    <div className="flex flex-col items-center justify-center p-12 text-zinc-500 text-center space-y-3">
+                      <Film className="w-10 h-10 opacity-40 text-primary" />
+                      <div>
+                        <p className="text-xs font-bold text-zinc-300">السلايدر فارغ في فايربيس حالياً</p>
+                        <p className="text-[11px] text-zinc-500 mt-1">
+                          اختر مسلسلات من القائمة على اليمين أو اضغط على استيراد التوب 10 للبدء بتخصيص صور السلايدر وتريلراتها
+                        </p>
+                      </div>
+                      {allAvailableSeries.length > 0 && (
+                        <button
+                          onClick={() => {
+                            const source = topSeriesItems.length > 0 ? topSeriesItems : allAvailableSeries.slice(0, 10);
+                            const imported: SliderSeriesItem[] = source.map((s, i) => {
+                              const cleanTitle = extractMainSeriesTitle(s.title);
+                              return {
+                                id: s.id,
+                                title: cleanTitle,
+                                image: s.image || '',
+                                originalImage: s.image || '',
+                                category: s.category || 'مسلسلات',
+                                rating: 9.0,
+                                trailer: (s as any).trailer || '',
+                                url: s.url || '',
+                                rank: i + 1
+                              };
+                            });
+                            setSliderSeriesItems(imported);
+                          }}
+                          className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-primary/20"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>استيراد أعمال التوب 10 الحالية للبدء بتخصيص صورها</span>
+                        </button>
+                      )}
                     </div>
                   ) : (
                     sliderSeriesItems.map((item, idx) => (
                       <div
                         key={`slider-item-${item.id}-${idx}`}
-                        className="bg-zinc-900 p-3 rounded-xl border border-white/5 space-y-2 hover:border-white/10 transition-colors"
+                        className="bg-zinc-900 p-3.5 rounded-xl border border-white/5 space-y-2.5 hover:border-white/10 transition-colors"
                       >
                         <div className="flex items-center gap-3">
                           <span className="w-6 h-6 shrink-0 flex items-center justify-center bg-black/60 text-white font-black text-xs rounded-full border border-white/10">
                             {idx + 1}
                           </span>
-                          {item.image ? (
-                            <img src={item.image} alt={item.title} className="w-10 h-12 object-cover rounded-lg shrink-0 shadow" />
-                          ) : (
-                            <div className="w-10 h-12 bg-zinc-800 rounded-lg shrink-0 flex items-center justify-center">
-                              <Film className="w-4 h-4 text-zinc-600" />
-                            </div>
-                          )}
+                          
+                          {/* Poster thumbnail with preview fallback */}
+                          <div className="relative w-12 h-14 rounded-lg overflow-hidden shrink-0 bg-zinc-800 border border-white/10 group/img">
+                            {item.image ? (
+                              <img
+                                src={item.image}
+                                alt={item.title}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).src = "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?q=80&w=400&auto=format&fit=crop";
+                                }}
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-zinc-600">
+                                <ImageIcon className="w-5 h-5" />
+                              </div>
+                            )}
+                          </div>
+
                           <div className="flex-1 min-w-0">
                             <h4 className="text-white text-xs font-bold truncate">{item.title}</h4>
-                            <span className="text-[10px] text-zinc-400">{item.category || 'مسلسلات'}</span>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[10px] text-zinc-400">{item.category || 'مسلسلات'}</span>
+                              {item.originalImage && item.image && item.originalImage !== item.image && (
+                                <span className="text-[9px] bg-sky-500/15 text-sky-400 border border-sky-500/20 px-1.5 py-0.2 rounded font-bold">
+                                  صورة مخصصة للسلايدر ✨
+                                </span>
+                              )}
+                            </div>
                           </div>
 
                           {/* Reorder & Delete */}
@@ -1495,8 +1595,85 @@ export default function AdminScreen() {
                           </div>
                         </div>
 
+                        {/* Custom Image URL for the Slider */}
+                        <div className="pt-1 flex flex-col gap-1 bg-black/30 p-2 rounded-lg border border-white/5">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="font-bold text-sky-400 flex items-center gap-1">
+                              <ImageIcon className="w-3 h-3" />
+                              رابط صورة السلايدر (غلاف عريض أو بوستر عالي الدقة):
+                            </span>
+                            {item.originalImage && item.image && item.originalImage !== item.image && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = [...sliderSeriesItems];
+                                  updated[idx] = { ...updated[idx], image: item.originalImage };
+                                  setSliderSeriesItems(updated);
+                                }}
+                                className="text-zinc-400 hover:text-white text-[10px] font-bold underline cursor-pointer"
+                              >
+                                استعادة الأصلية ↺
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={item.image || ''}
+                              onChange={(e) => {
+                                const updated = [...sliderSeriesItems];
+                                updated[idx] = { ...updated[idx], image: e.target.value };
+                                setSliderSeriesItems(updated);
+                              }}
+                              placeholder="ضع رابط الصورة المباشر أو ارفع صورة..."
+                              className="flex-1 bg-zinc-950 border border-zinc-800 focus:border-sky-500 rounded-lg px-2.5 py-1.5 text-white text-[11px] outline-none font-mono dir-ltr text-left transition-colors"
+                            />
+                            
+                            {/* NEW: Upload Button for Slider Image */}
+                            <label className="p-2 bg-zinc-800 hover:bg-sky-600 text-zinc-300 hover:text-white rounded-lg cursor-pointer transition-all shadow-md flex items-center justify-center shrink-0">
+                              <input 
+                                type="file" 
+                                className="hidden" 
+                                accept="image/*"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  
+                                  try {
+                                    const fileName = `slider_${Date.now()}_${file.name}`;
+                                    const storageRef = sRef(storage, `slider_images/${fileName}`);
+                                    const snapshot = await uploadBytes(storageRef, file);
+                                    const url = await getDownloadURL(snapshot.ref);
+                                    
+                                    const updated = [...sliderSeriesItems];
+                                    updated[idx] = { ...updated[idx], image: url };
+                                    setSliderSeriesItems(updated);
+                                    alert('تم رفع الصورة إلى Firebase بنجاح! سيتم حفظها عند الضغط على حفظ السلايدر.');
+                                  } catch (err: any) {
+                                    console.error("Firebase Storage Upload Error:", err);
+                                    alert('فشل رفع الصورة لـ Firebase: ' + (err.message || 'خطأ غير معروف'));
+                                  }
+                                }}
+                              />
+                              <Plus className="w-3.5 h-3.5" />
+                            </label>
+
+                            {item.image && (
+                              <a
+                                href={item.image}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-[10px] shrink-0"
+                                title="فتح الصورة للتأكد"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
                         {/* Trailer link input */}
-                        <div className="pt-1 flex items-center gap-2">
+                        <div className="flex items-center gap-2 bg-black/30 p-2 rounded-lg border border-white/5">
                           <span className="text-[10px] font-bold text-amber-400 shrink-0 flex items-center gap-1">
                             <Film className="w-3 h-3" />
                             التريلر:
@@ -1509,8 +1686,8 @@ export default function AdminScreen() {
                               updated[idx] = { ...updated[idx], trailer: e.target.value };
                               setSliderSeriesItems(updated);
                             }}
-                            placeholder="ضع رابط التريلر (YouTube أو فيديو MP4)..."
-                            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-white text-[11px] focus:outline-none focus:border-primary font-mono dir-ltr text-left"
+                            placeholder="ضع رابط مقطع التريلر (YouTube أو فيديو MP4)..."
+                            className="flex-1 bg-zinc-950 border border-zinc-800 focus:border-primary rounded-lg px-2.5 py-1.5 text-white text-[11px] outline-none font-mono dir-ltr text-left transition-colors"
                           />
                         </div>
                       </div>

@@ -29,6 +29,7 @@ import Header from '../components/Header';
 import BottomNav from '../components/BottomNav';
 import ProfileTemplateOverlay from '../components/ProfileTemplateOverlay';
 import { syncProfileToFirebase } from '../utils/profileSync';
+import { getApiUrl, getAppRouteUrl, navigateAppUrl } from '../lib/apiConfig';
 
 const getProxiedUrl = (url?: string) => {
   if (!url) return '';
@@ -61,9 +62,9 @@ const getProxiedUrl = (url?: string) => {
 
   if (needsProxy) {
     if (isImage) {
-      return `/api/v1/image-proxy?url=${encodeURIComponent(url)}`;
+      return getApiUrl(`/api/v1/image-proxy?url=${encodeURIComponent(url)}`);
     } else {
-      return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
+      return getApiUrl(`/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`);
     }
   }
 
@@ -164,7 +165,7 @@ export default function ProfileScreen() {
 
   const fetchPointsAndExpiry = (id: string) => {
     setLoadingPoints(true);
-    fetch(`/api/v1/referral/points?id=${id}`)
+    fetch(getApiUrl(`/api/v1/referral/points?id=${id}`))
       .then((res) => res.json())
       .then((data) => {
         if (data.status) {
@@ -183,7 +184,7 @@ export default function ProfileScreen() {
   };
 
   const handleCopyLink = () => {
-    const referralLink = `${window.location.origin}/?ref=${referrerId}`;
+    const referralLink = getAppRouteUrl(`/?ref=${referrerId}`);
     navigator.clipboard.writeText(referralLink)
       .then(() => {
         setIsCopied(true);
@@ -200,7 +201,7 @@ export default function ProfileScreen() {
     setErrorRedeem(null);
     setSuccessRedeem(null);
 
-    fetch('/api/v1/referral/redeem', {
+    fetch(getApiUrl('/api/v1/referral/redeem'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -249,7 +250,7 @@ export default function ProfileScreen() {
 
       // Dynamic wait and direct navigation to admin section
       setTimeout(() => {
-        window.location.href = '/admin';
+        navigateAppUrl('/admin');
       }, 800);
       return;
     }
@@ -285,7 +286,7 @@ export default function ProfileScreen() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('/api/v1/upload-media', {
+      const res = await fetch(getApiUrl('/api/v1/upload-media'), {
         method: 'POST',
         body: formData,
       });

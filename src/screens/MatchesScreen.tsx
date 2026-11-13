@@ -3,8 +3,9 @@ import { Trophy, Tv, Calendar, RefreshCw, Play, X, Loader2, Sparkles, CheckCircl
 import Header from '../components/Header';
 import BottomNav from '../components/BottomNav';
 import MatchChat from '../components/MatchChat';
+import CustomPlayer from '../components/CustomPlayer';
 import { motion, AnimatePresence } from 'motion/react';
-import { getApiUrl } from '../lib/apiConfig';
+import { getApiUrl, getAppRouteUrl, getGatewayUrl, getRouteSearchParams, removeRouteSearchParam } from '../lib/apiConfig';
 import { db, firestore } from '../services/firebase';
 import { ref, get, set, onValue } from 'firebase/database';
 import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -30,11 +31,60 @@ export default function MatchesScreen() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<'yesterday' | 'today' | 'tomorrow'>('today');
   const [activeStream, setActiveStream] = useState<{ match: Match; iframeUrl: string; streamError?: boolean } | null>(null);
+  const [selectedServerUrl, setSelectedServerUrl] = useState<string>('');
   const [loadingStream, setLoadingStream] = useState<string | null>(null); // match ID of the clicked stream
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'live' | 'cup'>('all');
   const [currentTime, setCurrentTime] = useState<string>('');
+  const [activeArticle, setActiveArticle] = useState<{ title: string; img: string; date: string; content: string[] } | null>(null);
+  const [loadingArticle, setLoadingArticle] = useState(false);
+  const [isMatchPlayerMaximized, setIsMatchPlayerMaximized] = useState(false);
+  const [useSeriesPlayerForMatches, setUseSeriesPlayerForMatches] = useState(true);
+
+  React.useEffect(() => {
+    if (activeStream) {
+      setSelectedServerUrl(activeStream.iframeUrl || '');
+    } else {
+      setSelectedServerUrl('');
+    }
+  }, [activeStream]);
+
+  const availableServers = React.useMemo(() => {
+    if (!activeStream) return [];
+    const base = activeStream.iframeUrl || '';
+    const matchUrl = activeStream.match.matchPageUrl || '';
+    
+    let channelNum = '3';
+    const numMatch = (base + ' ' + matchUrl).match(/bein-(\d+)|b(\d+)/i);
+    if (numMatch) {
+      channelNum = numMatch[1] || numMatch[2] || '3';
+    }
+
+    const mainAlbaplayer = `https://x.shotkoora.live/albaplayer/b${channelNum}/`;
+    const albaplayer2 = `https://x.shotkoora.live/albaplayer/b${channelNum === '1' ? '2' : '1'}/`;
+    const albaplayer3 = `https://x.shotkoora.live/albaplayer/b${channelNum === '3' ? '4' : '3'}/`;
+
+    const list = [
+      { id: 1, name: 'سيرفر 1 (البث الرئيسي HD ⚡)', url: base },
+      { id: 2, name: 'سيرفر 2 (بث مباشر HD 📺)', url: mainAlbaplayer },
+      { id: 3, name: 'سيرفر 3 (متعدد الجودات 🍿)', url: albaplayer2 },
+      { id: 4, name: 'سيرفر 4 (سريع للجوال 📱)', url: albaplayer3 },
+      { id: 5, name: 'سيرفر 5 (سيرفر احتياطي 🛡️)', url: matchUrl }
+    ];
+
+    const uniqueList: typeof list = [];
+    const seen = new Set<string>();
+    list.forEach(s => {
+      if (s.url && !seen.has(s.url)) {
+        seen.add(s.url);
+        uniqueList.push(s);
+      }
+    });
+
+    return uniqueList;
+  }, [activeStream]);
 
   // Admin specific states for live match stream override
   const [isAdmin, setIsAdmin] = useState(false);
@@ -72,7 +122,7 @@ export default function MatchesScreen() {
       const formData = new FormData();
       formData.append('file', file);
       
-      const response = await fetch('/api/v1/upload-media', {
+      const response = await fetch(getApiUrl('/api/v1/upload-media'), {
         method: 'POST',
         body: formData
       });
@@ -106,7 +156,7 @@ export default function MatchesScreen() {
         team2: newMatchForm.team2,
         logo1: newMatchForm.logo1 || 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png',
         logo2: newMatchForm.logo2 || 'https://i.ibb.co/0wvJfBH/file-00000000c1e4720a9aba88f120b35bd1.png',
-        matchPageUrl: `https://yalla-shoot-custom/${uniqueId}`,
+        matchPageUrl: `https://hikaytna-matches-custom/${uniqueId}`,
         channel: newMatchForm.channel,
         commentator: newMatchForm.commentator,
         time: newMatchForm.time,
@@ -308,14 +358,31 @@ export default function MatchesScreen() {
     }
   }, []);
 
+  const [sportsNews, setSportsNews] = useState<Array<{ title: string; img: string; link: string }>>([]);
+
   // Helper to determine if a match has ended
   const isMatchEnded = (m: Match) => {
-    if (m.ended) return true;
+    if (m.ended === true) return true;
     const txt = (m.statusText || '').trim();
-    if (txt.includes('انتهت') || txt.includes('انتهي') || txt.includes('منتهية')) return true;
-    if (!m.live && m.result && m.result.trim() !== '' && m.result.trim() !== '-') return true;
+    if (txt.includes('انتهت') || txt.includes('انتهي') || txt.includes('منتهية') || txt.includes('Finished') || txt.includes('FT')) return true;
     return false;
   };
+
+  const fetchSportsNews = async () => {
+    try {
+      const res = await fetch(getApiUrl('/api/v1/matches/news'));
+      const data = await res.json();
+      if (data.status && Array.isArray(data.news)) {
+        setSportsNews(data.news);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch sports news:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchSportsNews();
+  }, []);
 
   // Clock Ticker
   useEffect(() => {
@@ -328,45 +395,48 @@ export default function MatchesScreen() {
     return () => clearInterval(tInterval);
   }, []);
 
-  const fetchMatches = async (isRefresh = false) => {
+  const fetchMatches = async (isRefresh = false, targetDay?: 'yesterday' | 'today' | 'tomorrow') => {
+    const dayToFetch = targetDay || selectedDay;
     if (!isRefresh) setLoading(true);
     setError(null);
     try {
       // 1. Fetch scraped match feed
-      const res = await fetch(getApiUrl('/api/v1/matches/scrape'));
+      const res = await fetch(getApiUrl(`/api/v1/matches/scrape?day=${dayToFetch}`));
       const data = await res.json();
       let scrapedList: Match[] = [];
       if (data.status && Array.isArray(data.matches)) {
         scrapedList = data.matches;
       }
 
-      // 2. Fetch custom matches from Firestore of persistent schedules
+      // 2. Fetch custom matches from Firestore if today
       let customList: Match[] = [];
-      try {
-        const customSnap = await getDocs(collection(firestore, "custom_matches"));
-        customSnap.forEach((doc) => {
-          const mData = doc.data();
-          if (mData) {
-            customList.push({
-              id: doc.id,
-              team1: mData.team1 || '',
-              team2: mData.team2 || '',
-              logo1: mData.logo1 || mData.team1Logo || '',
-              logo2: mData.logo2 || mData.team2Logo || '',
-              matchPageUrl: mData.matchPageUrl || '',
-              channel: mData.channel || 'beIN Sports Live',
-              commentator: mData.commentator || 'غير معروف',
-              time: mData.time || '22:00',
-              result: mData.result || '-',
-              statusText: mData.statusText || 'تبدأ قريباً',
-              league: mData.league || 'الدوري الإسباني',
-              live: mData.live !== undefined ? mData.live : true,
-              ended: mData.ended !== undefined ? mData.ended : false,
-            });
-          }
-        });
-      } catch (firestoreErr) {
-        console.warn("Could not load custom matches:", firestoreErr);
+      if (dayToFetch === 'today') {
+        try {
+          const customSnap = await getDocs(collection(firestore, "custom_matches"));
+          customSnap.forEach((doc) => {
+            const mData = doc.data();
+            if (mData) {
+              customList.push({
+                id: doc.id,
+                team1: mData.team1 || '',
+                team2: mData.team2 || '',
+                logo1: mData.logo1 || mData.team1Logo || '',
+                logo2: mData.logo2 || mData.team2Logo || '',
+                matchPageUrl: mData.matchPageUrl || '',
+                channel: mData.channel || 'beIN Sports Live',
+                commentator: mData.commentator || 'غير معروف',
+                time: mData.time || '22:00',
+                result: mData.result || '-',
+                statusText: mData.statusText || 'تبدأ قريباً',
+                league: mData.league || 'الدوري الإسباني',
+                live: mData.live !== undefined ? mData.live : true,
+                ended: mData.ended !== undefined ? mData.ended : false,
+              });
+            }
+          });
+        } catch (firestoreErr) {
+          console.warn("Could not load custom matches:", firestoreErr);
+        }
       }
 
       // 3. Prevent duplicate overlaps by ID (Custom matches override duplicates)
@@ -385,6 +455,22 @@ export default function MatchesScreen() {
     }
   };
 
+  const handleOpenArticle = async (newsLink: string) => {
+    if (!newsLink || newsLink === '#') return;
+    setLoadingArticle(true);
+    try {
+      const res = await fetch(getApiUrl(`/api/v1/matches/article?url=${encodeURIComponent(newsLink)}`));
+      const data = await res.json();
+      if (data.status && data.article) {
+        setActiveArticle(data.article);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch article details:', e);
+    } finally {
+      setLoadingArticle(false);
+    }
+  };
+
   useEffect(() => {
     fetchMatches();
     // Auto refresh matches list every 60 seconds
@@ -393,13 +479,12 @@ export default function MatchesScreen() {
   }, []);
 
   const handleWatchStream = async (match: Match, bypassAdGate = false) => {
-    const params = new URLSearchParams(window.location.search);
+    const params = getRouteSearchParams();
     const isUnlocked = params.get('unlocked') === 'true' && params.get('matchId') === match.id;
 
     if (!isUnlocked && !bypassAdGate) {
-      const currentOrigin = window.location.origin;
-      const redirectPath = `${currentOrigin}/matches?matchId=${encodeURIComponent(match.id)}&unlocked=true`;
-      window.location.href = `/gateway?redirect=${encodeURIComponent(redirectPath)}`;
+      const redirectPath = getAppRouteUrl(`/matches?matchId=${encodeURIComponent(match.id)}&unlocked=true`);
+      window.location.href = getGatewayUrl(undefined, redirectPath);
       return;
     }
 
@@ -533,7 +618,7 @@ export default function MatchesScreen() {
   // Watch Screen Ad Redirect Callback Handler
   useEffect(() => {
     if (matches.length === 0) return;
-    const params = new URLSearchParams(window.location.search);
+    const params = getRouteSearchParams();
     const matchId = params.get('matchId');
     const unlocked = params.get('unlocked');
     
@@ -541,8 +626,8 @@ export default function MatchesScreen() {
       const targetMatch = matches.find(m => m.id === matchId);
       if (targetMatch) {
         handleWatchStream(targetMatch, true);
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, '', newUrl);
+        removeRouteSearchParam('matchId');
+        removeRouteSearchParam('unlocked');
       }
     }
   }, [matches]);
@@ -564,6 +649,19 @@ export default function MatchesScreen() {
     return true;
   });
 
+  // Sort matches so LIVE matches ALWAYS appear at the very top
+  const sortedMatches = React.useMemo(() => {
+    return [...filteredMatches].sort((a, b) => {
+      if (a.live && !b.live) return -1;
+      if (!a.live && b.live) return 1;
+      const aEnded = isMatchEnded(a);
+      const bEnded = isMatchEnded(b);
+      if (!aEnded && bEnded) return -1;
+      if (aEnded && !bEnded) return 1;
+      return 0;
+    });
+  }, [filteredMatches]);
+
   const totalLiveCount = matches.filter(m => m.live).length;
 
   return (
@@ -572,11 +670,63 @@ export default function MatchesScreen() {
 
       <main className="max-w-6xl mx-auto px-4 md:px-6 pt-4 sm:pt-6 space-y-6">
         
+        {/* DAY SELECTOR TABS (مباريات الأمس / اليوم / الغد) */}
+        <div className="flex items-center justify-center sm:justify-start gap-2 bg-zinc-950/70 p-2 sm:p-2.5 rounded-2xl border border-zinc-900 overflow-x-auto no-scrollbar shadow-md">
+          <button
+            onClick={() => {
+              setSelectedDay('yesterday');
+              fetchMatches(false, 'yesterday');
+            }}
+            className={`px-3.5 py-2 sm:px-4 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer border flex items-center gap-1.5 shrink-0 ${
+              selectedDay === 'yesterday'
+                ? 'bg-blue-650 text-white border-blue-500 shadow-md shadow-blue-600/20'
+                : 'bg-zinc-900/40 text-zinc-400 border-zinc-850 hover:text-white'
+            }`}
+          >
+            <span>مباريات الأمس ⚽</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setSelectedDay('today');
+              fetchMatches(false, 'today');
+            }}
+            className={`px-3.5 py-2 sm:px-4 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer border flex items-center gap-1.5 shrink-0 ${
+              selectedDay === 'today'
+                ? 'bg-red-600 text-white border-red-500 shadow-md shadow-red-600/20'
+                : 'bg-zinc-900/40 text-zinc-400 border-zinc-850 hover:text-white'
+            }`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+            <span>مباريات اليوم 🔴</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setSelectedDay('tomorrow');
+              fetchMatches(false, 'tomorrow');
+            }}
+            className={`px-3.5 py-2 sm:px-4 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer border flex items-center gap-1.5 shrink-0 ${
+              selectedDay === 'tomorrow'
+                ? 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-600/20'
+                : 'bg-zinc-900/40 text-zinc-400 border-zinc-850 hover:text-white'
+            }`}
+          >
+            <span>مباريات الغد ⏰</span>
+          </button>
+        </div>
+
         {/* CLEAN TABLE/GRID HEADER */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-zinc-950/40 border border-zinc-900/60 p-5 rounded-[2rem] shadow-lg">
           <div className="flex items-center gap-2.5">
             <div className="w-1.5 h-6 bg-red-600 rounded-full" />
-            <h1 className="text-base font-black text-white">جدول مباريات اليوم</h1>
+            <h1 className="text-base font-black text-white">
+              {selectedDay === 'yesterday' 
+                ? 'نتائج مباريات الأمس | حكايتنا ⚽' 
+                : selectedDay === 'tomorrow' 
+                  ? 'جدول مباريات الغد | حكايتنا ⏰' 
+                  : 'جدول مباريات اليوم (البث المباشر) | حكايتنا 🔴'}
+            </h1>
             {isAdmin && (
               <button
                 onClick={() => setShowAddMatchModal(true)}
@@ -640,7 +790,7 @@ export default function MatchesScreen() {
         )}
 
         {/* EMPTY MATCHES STATE */}
-        {!loading && filteredMatches.length === 0 && (
+        {!loading && sortedMatches.length === 0 && (
           <div className="bg-[#0b0b0d] border border-zinc-900 rounded-[2rem] p-16 text-center space-y-3 shadow-md max-w-2xl mx-auto">
             <AlertCircle className="w-12 h-12 text-red-500/20 mx-auto animate-bounce" />
             <h3 className="text-sm font-black text-zinc-300">لا يوجد بث للمباريات حالياً</h3>
@@ -650,14 +800,14 @@ export default function MatchesScreen() {
           </div>
         )}
 
-        {/* MATCHES LIST / CARDS */}
+        {/* MATCHES LIST / CARDS (LIVE MATCHES FIRST) */}
         <AnimatePresence mode="popLayout">
-          {filteredMatches.length > 0 && (
+          {sortedMatches.length > 0 && (
             <motion.div 
               layout
               className="grid grid-cols-1 md:grid-cols-2 gap-6"
             >
-              {filteredMatches.map((m, index) => {
+              {sortedMatches.map((m, index) => {
                 const streamUrl = customStreams[m.id];
                 const isCustomized = typeof streamUrl === 'string' && 
                                      streamUrl.trim().length > 10 && 
@@ -783,13 +933,20 @@ export default function MatchesScreen() {
                   {/* BOTTOM DETAIL AND CTA */}
                   <div className="relative z-10 border-t border-zinc-900/60 pt-4 mt-6 flex items-center justify-between gap-3 flex-wrap">
                     <div className="flex flex-col gap-0.5 items-start">
-                      <div className="flex items-center gap-1.5 text-zinc-400 text-xs font-bold">
-                        <Tv className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                        <span className="truncate max-w-[120px]">{m.channel || 'بث مباشر'}</span>
-                      </div>
-                      {m.commentator && m.commentator !== "غير معروف" && (
+                      {m.channel && m.channel.trim() !== "" && m.channel !== "beIN Sports HD" && m.channel !== "beIN Sports Live" && (
+                        <div className="flex items-center gap-1.5 text-zinc-400 text-[11px] font-bold">
+                          <Tv className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                          <span className="truncate max-w-[120px]">{m.channel}</span>
+                        </div>
+                      )}
+                      {m.commentator && m.commentator.trim() !== "" && m.commentator !== "عصام الشوالي" && m.commentator !== "غير معروف" && (
                         <span className="text-[10px] text-zinc-500 font-bold shrink-0">
                           🎙️ {m.commentator}
+                        </span>
+                      )}
+                      {(!m.channel || m.channel === "beIN Sports HD" || m.channel.trim() === "") && (
+                        <span className="text-[11px] text-zinc-400 font-bold flex items-center gap-1">
+                          ⏰ {m.time}
                         </span>
                       )}
                     </div>
@@ -935,35 +1092,38 @@ export default function MatchesScreen() {
           )}
         </AnimatePresence>
 
-        {/* DETAILED WATCH GAME WITH CHAT MODAL INTERFACE */}
+        {/* STREAM MATCH MODAL: ONLY PLAYER AND SERVER SELECTOR */}
         <AnimatePresence>
           {activeStream && (
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[1000] bg-[#020202]/98 backdrop-blur-2xl flex items-center justify-center p-3 md:p-6"
+              className="fixed inset-0 z-[1000] bg-[#020202]/98 backdrop-blur-2xl flex items-center justify-center p-2 sm:p-4 md:p-6"
             >
               <div 
-                className="absolute inset-0 bg-gradient-to-b from-red-950/5 to-[#000000] pointer-events-none" 
-                onClick={() => setActiveStream(null)}
+                className="absolute inset-0 bg-black/90 cursor-pointer" 
+                onClick={() => {
+                  setActiveStream(null);
+                  setIsAdminEditing(false);
+                }}
               />
               
               <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 30 }}
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 30 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
                 transition={{ type: 'spring', damping: 28, stiffness: 220 }}
-                className="relative bg-[#09090b] border border-zinc-900 rounded-[2rem] w-full max-w-6xl max-h-[95vh] flex flex-col justify-between overflow-hidden shadow-[0_30px_70px_rgba(0,0,0,0.95)] z-10"
+                className="relative bg-[#09090b] border border-zinc-900 rounded-[2.5rem] w-full max-w-5xl overflow-hidden shadow-[0_30px_90px_rgba(0,0,0,0.95)] z-10 flex flex-col my-auto"
               >
-                {/* Modal Header */}
-                <div className="p-4 md:p-5 border-b border-zinc-900 flex items-center justify-between gap-4 shrink-0 bg-zinc-950/60">
+                {/* Match Header Bar */}
+                <div className="p-4 sm:p-5 border-b border-zinc-900 flex items-center justify-between gap-4 shrink-0 bg-zinc-950/80">
                   <div className="flex items-center gap-3 text-right">
-                    <div className="w-10 h-10 rounded-xl bg-red-600/10 border border-red-500/10 flex items-center justify-center text-red-500 shrink-0">
+                    <div className="w-10 h-10 rounded-2xl bg-red-600/10 border border-red-500/20 flex items-center justify-center text-red-500 shrink-0">
                       <Tv className="w-5 h-5 animate-pulse" />
                     </div>
                     <div>
-                      <h3 className="text-xs md:text-sm font-black text-white">
+                      <h3 className="text-xs sm:text-sm font-black text-white">
                         {activeStream.match.team1} ضد {activeStream.match.team2}
                       </h3>
                       <p className="text-[10px] text-red-500 font-bold mt-0.5">
@@ -973,10 +1133,18 @@ export default function MatchesScreen() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setUseSeriesPlayerForMatches(!useSeriesPlayerForMatches)}
+                      className="py-1.5 px-3 border border-red-500/30 bg-red-650/20 text-red-400 hover:bg-red-650/40 rounded-xl text-[10px] font-black flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                      title="التبديل بين مشغل المسلسلات ومشغل البث المباشر"
+                    >
+                      <Sparkles className="w-3 h-3 text-red-500 animate-pulse" />
+                      <span>{useSeriesPlayerForMatches ? 'مشغل المسلسلات 🍿' : 'مشغل البث 📺'}</span>
+                    </button>
                     {isAdmin && (
                       <button
                         onClick={() => {
-                          setCustomUrlInput(activeStream.iframeUrl || '');
+                          setCustomUrlInput(selectedServerUrl || activeStream.iframeUrl || '');
                           setIsAdminEditing(!isAdminEditing);
                         }}
                         className="py-1.5 px-3 border border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 rounded-xl text-[10px] font-black flex items-center gap-1.5 transition cursor-pointer shrink-0"
@@ -998,132 +1166,154 @@ export default function MatchesScreen() {
                   </div>
                 </div>
 
-                {/* Main Shared Grid Area: Left is Player / Error view, Right is Chat */}
-                <div className="flex-1 overflow-y-auto no-scrollbar grid grid-cols-1 lg:grid-cols-3 h-full min-h-0 bg-black">
-                  
-                  {/* Left Box (Cols span 2) - Video Embed or Failure Screen or Admin Editor */}
-                  <div className="lg:col-span-2 relative aspect-video lg:aspect-auto w-full min-h-[220px] md:min-h-[420px] bg-black flex flex-col items-center justify-center border-b lg:border-b-0 lg:border-l border-zinc-900">
-                    {isAdminEditing ? (
-                      /* LUXURY ADMIN COMPACT STREAM OVERRIDE FRAME */
-                      <div className="w-full max-w-xl p-6 md:p-8 space-y-4 text-right font-sans">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
-                            <Sparkles className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <h4 className="text-sm font-black text-white">تعديل رابط البث المباشر (لوحة الإدارة)</h4>
-                            <p className="text-[10px] text-zinc-500 mt-0.5 leading-relaxed">
-                              سيتم مزامنة الرابط الجديد سحابياً في Firebase فوراً، وسيتحول البث تلقائياً عند جميع الزوار بلحظتها!
-                            </p>
-                          </div>
+                {/* Video Player Section */}
+                <div className="relative aspect-video w-full max-h-[65vh] bg-black flex flex-col items-center justify-center border-b border-zinc-900 overflow-hidden">
+                  {isAdminEditing ? (
+                    /* Admin Stream Override Box */
+                    <div className="w-full max-w-xl p-6 md:p-8 space-y-4 text-right font-sans my-auto">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+                          <Sparkles className="w-5 h-5" />
                         </div>
-
-                        <div className="space-y-1.5 pt-2">
-                          <label className="block text-[10px] font-bold text-zinc-400">رابط البث المباشر الجديد (رابط iframe أو رابط السيرفر):</label>
-                          <textarea
-                            dir="ltr"
-                            rows={3}
-                            value={customUrlInput}
-                            onChange={(e) => setCustomUrlInput(e.target.value)}
-                            placeholder="https://..."
-                            className="w-full bg-zinc-950 border border-zinc-900 focus:border-amber-500 rounded-xl px-4 py-3 text-xs text-white focus:outline-none placeholder-zinc-700 transition font-mono whitespace-pre-wrap resize-none"
-                          />
-                        </div>
-
-                        <div className="bg-zinc-900/40 border border-zinc-850 p-3.5 rounded-xl text-[10px] leading-relaxed text-zinc-400">
-                          ℹ️ <span className="font-bold text-amber-500">ملاحظة:</span> يمكنك وضع رابط iframe مباشر (أو رابط البث المستخرج). لاستعادة تشغيل البث التلقائي الافتراضي من مصدر الموقع، اضغط على زر "استعادة البث التلقائي".
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                          <button
-                            onClick={handleSaveCustomStream}
-                            disabled={isSavingCustomUrl}
-                            className="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black font-black text-[11px] py-3 rounded-xl transition active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-amber-500/10"
-                          >
-                            {isSavingCustomUrl ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <CheckCircle className="w-4 h-4" />
-                            )}
-                            <span>حفظ وتعميم البث سحابياً</span>
-                          </button>
-
-                          <button
-                            onClick={handleDeleteCustomStream}
-                            disabled={isSavingCustomUrl}
-                            className="bg-red-950/40 hover:bg-red-950/70 border border-red-500/20 text-red-400 font-bold text-[10px] px-4 py-3 rounded-xl transition cursor-pointer"
-                          >
-                            استعادة البث التلقائي 🔄
-                          </button>
-
-                          <button
-                            onClick={() => setIsAdminEditing(false)}
-                            className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 font-bold text-[10px] px-4 py-3 rounded-xl transition cursor-pointer"
-                          >
-                            إلغاء التعديل
-                          </button>
-                        </div>
-                      </div>
-                    ) : activeStream.streamError ? (
-                      /* LUXURY STREAM ABSENT CARD (REPLACES ALERT DIALOG) */
-                      <div className="p-8 text-center space-y-4 max-w-md mx-auto">
-                        <div className="w-14 h-14 rounded-full bg-red-950/15 border border-red-500/20 flex items-center justify-center text-red-500 mx-auto">
-                          <AlertCircle className="w-8 h-8 animate-bounce" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <h4 className="text-sm font-black text-white">بث اللقاء غير متوفر حالياً</h4>
-                          <p className="text-[11px] text-zinc-500 leading-relaxed">
-                            البث المباشر لهذه المباراة لم يبدأ من المصدر بعد، أو أن السيرفرات الناقلة تخضع للتجهيز حالياً. يرجى الانتظار والمحاولة مع انطلاق صافرة البداية.
+                        <div>
+                          <h4 className="text-sm font-black text-white">تعديل رابط البث المباشر (لوحة الإدارة)</h4>
+                          <p className="text-[10px] text-zinc-500 mt-0.5 leading-relaxed">
+                            سيتم مزامنة الرابط الجديد سحابياً في Firebase فوراً عند جميع الزوار!
                           </p>
                         </div>
-                        <div className="flex justify-center gap-3 pt-2">
-                          <button
-                            onClick={() => handleWatchStream(activeStream.match, true)}
-                            className="bg-red-600 hover:bg-red-500 text-white font-extrabold text-[10px] px-5 py-2.5 rounded-xl transition active:scale-95 cursor-pointer"
-                          >
-                            تثبيت الاتصال بالبث 🔄
-                          </button>
-                          <button
-                            onClick={() => {
-                              setActiveStream(null);
-                              setIsAdminEditing(false);
-                            }}
-                            className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 font-extrabold text-[10px] px-5 py-2.5 rounded-xl transition cursor-pointer"
-                          >
-                            رجوع
-                          </button>
-                        </div>
                       </div>
-                    ) : (
-                      /* Embed Stream Frame output */
-                      <iframe
-                        src={activeStream.iframeUrl}
-                        title="Live Match Player"
-                        className="w-full h-full border-none bg-black"
-                        allowFullScreen
-                        scrolling="no"
-                        allow="autoplay; encrypted-media"
-                      />
-                    )}
-                  </div>
 
-                  {/* Right Box (Col span 1) - Real-time match Chat Room */}
-                  <div className="lg:col-span-1 h-[420px] lg:h-full flex flex-col">
-                    <MatchChat 
-                      matchId={activeStream.match.id} 
-                      matchTitle={`${activeStream.match.team1} VS ${activeStream.match.team2}`} 
+                      <div className="space-y-1.5 pt-2">
+                        <label className="block text-[10px] font-bold text-zinc-400">رابط البث المباشر الجديد (iframe/server URL):</label>
+                        <textarea
+                          dir="ltr"
+                          rows={3}
+                          value={customUrlInput}
+                          onChange={(e) => setCustomUrlInput(e.target.value)}
+                          placeholder="https://..."
+                          className="w-full bg-zinc-950 border border-zinc-900 focus:border-amber-500 rounded-xl px-4 py-3 text-xs text-white focus:outline-none placeholder-zinc-700 transition font-mono whitespace-pre-wrap resize-none"
+                        />
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                        <button
+                          onClick={handleSaveCustomStream}
+                          disabled={isSavingCustomUrl}
+                          className="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black font-black text-[11px] py-3 rounded-xl transition active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-amber-500/10"
+                        >
+                          {isSavingCustomUrl ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                          <span>حفظ وتعميم البث سحابياً</span>
+                        </button>
+
+                        <button
+                          onClick={handleDeleteCustomStream}
+                          disabled={isSavingCustomUrl}
+                          className="bg-red-950/40 hover:bg-red-950/70 border border-red-500/20 text-red-400 font-bold text-[10px] px-4 py-3 rounded-xl transition cursor-pointer"
+                        >
+                          استعادة البث التلقائي 🔄
+                        </button>
+
+                        <button
+                          onClick={() => setIsAdminEditing(false)}
+                          className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 font-bold text-[10px] px-4 py-3 rounded-xl transition cursor-pointer"
+                        >
+                          إلغاء
+                        </button>
+                      </div>
+                    </div>
+                  ) : activeStream.streamError ? (
+                    /* Stream Error Box */
+                    <div className="p-8 text-center space-y-4 max-w-md mx-auto my-auto">
+                      <div className="w-14 h-14 rounded-full bg-red-950/15 border border-red-500/20 flex items-center justify-center text-red-500 mx-auto">
+                        <AlertCircle className="w-8 h-8 animate-bounce" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <h4 className="text-sm font-black text-white">بث اللقاء غير متوفر حالياً</h4>
+                        <p className="text-[11px] text-zinc-500 leading-relaxed">
+                          البث المباشر لهذه المباراة لم يبدأ من المصدر بعد. يرجى التبديل بين السيرفرات بالأسفل أو المحاولة مجدداً.
+                        </p>
+                      </div>
+                      <div className="flex justify-center gap-3 pt-2">
+                        <button
+                          onClick={() => handleWatchStream(activeStream.match, true)}
+                          className="bg-red-600 hover:bg-red-500 text-white font-extrabold text-[10px] px-5 py-2.5 rounded-xl transition active:scale-95 cursor-pointer"
+                        >
+                          إعادة المحاولة 🔄
+                        </button>
+                        <button
+                          onClick={() => setActiveStream(null)}
+                          className="bg-zinc-900 hover:bg-zinc-800 text-zinc-400 font-extrabold text-[10px] px-5 py-2.5 rounded-xl transition cursor-pointer"
+                        >
+                          إغلاق
+                        </button>
+                      </div>
+                    </div>
+                  ) : useSeriesPlayerForMatches ? (
+                    /* SERIES CUSTOM PLAYER FOR MATCHES */
+                    <CustomPlayer
+                      videoUrl={selectedServerUrl || activeStream.iframeUrl}
+                      activeServerUrl={selectedServerUrl || activeStream.iframeUrl}
+                      seriesId={activeStream.match.id}
+                      seriesImage={activeStream.match.logo1 || activeStream.match.logo2 || 'https://yalla-sd.org/wp-content/uploads/2026/01/InShot_20260102_210059277-scaled-1-350x197.jpg'}
+                      episodeIndex={0}
+                      episodes={[{
+                        id: activeStream.match.id,
+                        episode: 1,
+                        title: `${activeStream.match.team1} ضد ${activeStream.match.team2}`,
+                        url: activeStream.match.matchPageUrl
+                      }]}
+                      servers={availableServers.map(s => ({ name: s.name, url: s.url }))}
+                      onSelectEpisode={() => {}}
+                      onSelectServer={(url) => setSelectedServerUrl(url)}
+                      isMaximized={isMatchPlayerMaximized}
+                      onToggleMaximize={() => setIsMatchPlayerMaximized(!isMatchPlayerMaximized)}
+                      seriesCategory={activeStream.match.league}
+                      seriesTitle={`${activeStream.match.team1} ضد ${activeStream.match.team2}`}
                     />
-                  </div>
+                  ) : (
+                    /* Direct Video Iframe Player */
+                    <iframe
+                      key={selectedServerUrl || activeStream.iframeUrl}
+                      src={selectedServerUrl || activeStream.iframeUrl}
+                      title="Live Match Player"
+                      className="w-full h-full border-none bg-black"
+                      allowFullScreen
+                      scrolling="no"
+                      allow="autoplay; encrypted-media; picture-in-picture"
+                    />
+                  )}
                 </div>
 
-                {/* Modal Footer */}
-                <div className="p-3.5 bg-[#0b0b0d] border-t border-zinc-900 text-[10px] text-zinc-550 font-bold flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-                  <span className="flex items-center gap-1.5 text-red-500">
-                    <CheckCircle className="w-3.5 h-3.5 fill-red-500/10" />
-                    خادم البث آمن وبجودة تلقائية متعددة الاستقرار
-                  </span>
-                  <span>الدردشة تخضع للرقابة التلقائية المباشرة، التزم بالتشجيع النظيف 💬</span>
-                </div>
+                {/* SERVER SELECTOR BAR ONLY (NO CHAT OR EXTRA TEXT) */}
+                {!isAdminEditing && !activeStream.streamError && (
+                  <div className="p-4 sm:p-5 bg-zinc-950/95 flex flex-col items-center justify-center gap-3 text-center">
+                    <div className="flex items-center gap-2 text-zinc-400 text-xs font-black">
+                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                      <span>اختر سيرفر المشاهدة المناسب:</span>
+                    </div>
+                    
+                    <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 w-full max-w-3xl">
+                      {availableServers.map((server) => {
+                        const activeUrl = selectedServerUrl || activeStream.iframeUrl;
+                        const isSelected = activeUrl === server.url;
+                        return (
+                          <button
+                            key={server.id}
+                            onClick={() => setSelectedServerUrl(server.url)}
+                            className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all cursor-pointer border active:scale-95 shadow-md flex items-center gap-2 ${
+                              isSelected
+                                ? "bg-red-600 text-white border-red-500 shadow-red-600/30 font-extrabold scale-105"
+                                : "bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 border-zinc-800 hover:border-zinc-700"
+                            }`}
+                          >
+                            <Tv className={`w-3.5 h-3.5 ${isSelected ? 'text-white animate-pulse' : 'text-zinc-500'}`} />
+                            <span>{server.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </motion.div>
             </motion.div>
           )}
@@ -1366,6 +1556,119 @@ export default function MatchesScreen() {
                     className="px-6 py-3.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-400 font-extrabold text-xs rounded-xl transition cursor-pointer"
                   >
                     إلغاء
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* SPORTS NEWS SECTION */}
+        {sportsNews.length > 0 && (
+          <div className="pt-8 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-1.5 h-6 bg-red-600 rounded-full" />
+              <h2 className="text-sm font-black text-white">آخر الأخبار الرياضية | حكايتنا 📰</h2>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {sportsNews.map((news, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleOpenArticle(news.link)}
+                  className="bg-zinc-950/40 border border-zinc-900/60 hover:border-red-600/40 rounded-2xl overflow-hidden group transition-all duration-300 flex flex-col justify-between text-right cursor-pointer"
+                >
+                  <div className="relative aspect-video w-full bg-zinc-900 overflow-hidden">
+                    <img
+                      src={news.img}
+                      alt={news.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = 'https://yalla-sd.org/wp-content/uploads/2026/01/InShot_20260102_210059277-scaled-1-350x197.jpg';
+                      }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                  </div>
+                  <div className="p-4 flex-1 flex flex-col justify-between">
+                    <h3 className="text-xs font-bold text-zinc-200 group-hover:text-red-400 transition-colors line-clamp-2 leading-relaxed">
+                      {news.title}
+                    </h3>
+                    <div className="mt-3 flex items-center justify-between text-[10px] text-zinc-500 font-medium">
+                      <span>حكايتنا رياضة ⚡</span>
+                      <span className="text-red-500 group-hover:underline">قراءة الخبر بالكامل 📖</span>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* IN-APP ARTICLE READER MODAL (NO EXTERNAL REDIRECTS) */}
+        <AnimatePresence>
+          {activeArticle && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[1300] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 font-sans overflow-y-auto"
+            >
+              <div 
+                className="absolute inset-0" 
+                onClick={() => setActiveArticle(null)}
+              />
+
+              <motion.div
+                initial={{ scale: 0.95, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.95, y: 20 }}
+                className="relative bg-zinc-950 border border-zinc-900 rounded-[2.5rem] max-w-2xl w-full p-6 md:p-8 space-y-6 shadow-2xl z-10 my-auto text-right"
+              >
+                <div className="flex items-center justify-between border-b border-zinc-900 pb-4">
+                  <span className="text-[10px] font-black text-red-500 bg-red-950/40 border border-red-500/20 px-3 py-1 rounded-full">
+                    حكايتنا رياضة ⚡
+                  </span>
+                  <button
+                    onClick={() => setActiveArticle(null)}
+                    className="p-2 hover:bg-zinc-900 rounded-full text-zinc-400 hover:text-white transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <h2 className="text-base md:text-lg font-black text-white leading-relaxed">
+                    {activeArticle.title}
+                  </h2>
+
+                  {activeArticle.img && (
+                    <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-zinc-900 shadow-md">
+                      <img
+                        src={activeArticle.img}
+                        alt={activeArticle.title}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://yalla-sd.org/wp-content/uploads/2026/01/InShot_20260103_114716968-scaled-1-630x300.jpg';
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  <div className="space-y-3 pt-2 text-zinc-300 text-xs md:text-sm leading-relaxed">
+                    {activeArticle.content.map((paragraph, pIdx) => (
+                      <p key={pIdx} className="bg-zinc-900/30 p-3.5 rounded-2xl border border-zinc-850/50">
+                        {paragraph}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-zinc-900 flex justify-end">
+                  <button
+                    onClick={() => setActiveArticle(null)}
+                    className="bg-red-600 hover:bg-red-500 text-white font-black text-xs px-6 py-3 rounded-2xl transition cursor-pointer active:scale-95"
+                  >
+                    إغلاق الخبر ✖️
                   </button>
                 </div>
               </motion.div>

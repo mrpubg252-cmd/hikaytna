@@ -48,7 +48,7 @@ import ProfileTemplateOverlay from '../components/ProfileTemplateOverlay';
 import Header from '../components/Header';
 import BottomNav from '../components/BottomNav';
 import { cn } from '../lib/utils';
-import { getApiUrl } from '../lib/apiConfig';
+import { getApiUrl, getRouteSearchParams, removeRouteSearchParam } from '../lib/apiConfig';
 
 const getProxiedUrl = (url?: string) => {
   if (!url) return '';
@@ -81,9 +81,9 @@ const getProxiedUrl = (url?: string) => {
 
   if (needsProxy) {
     if (isImage) {
-      return `/api/v1/image-proxy?url=${encodeURIComponent(url)}`;
+      return getApiUrl(`/api/v1/image-proxy?url=${encodeURIComponent(url)}`);
     } else {
-      return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
+      return getApiUrl(`/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`);
     }
   }
 
@@ -281,7 +281,7 @@ export default function DirectMessagesScreen() {
 
   // Initialize and check URL params for direct actions
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = getRouteSearchParams();
     const actPid = params.get('chat_with_pid');
     if (actPid && db) {
       setActiveChatFriendId(actPid);
@@ -304,9 +304,7 @@ export default function DirectMessagesScreen() {
       });
 
       // Clean up URL parameters quietly
-      const url = new URL(window.location.href);
-      url.searchParams.delete('chat_with_pid');
-      window.history.replaceState({}, '', url.pathname + url.search);
+      removeRouteSearchParam('chat_with_pid');
     }
   }, [db]);
 
@@ -788,7 +786,7 @@ export default function DirectMessagesScreen() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('/api/v1/upload-media', {
+      const res = await fetch(getApiUrl('/api/v1/upload-media'), {
         method: 'POST',
         body: formData,
       });
@@ -877,7 +875,7 @@ export default function DirectMessagesScreen() {
           const extension = isMp4 ? 'mp4' : 'mp3';
           formData.append("file", audioBlob, `dm_voice_${Date.now()}.${extension}`);
 
-          const uploadRes = await fetch("/api/v1/upload-media", {
+          const uploadRes = await fetch(getApiUrl("/api/v1/upload-media"), {
             method: "POST",
             body: formData
           });

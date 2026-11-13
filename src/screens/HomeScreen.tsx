@@ -9,7 +9,7 @@ import FeaturedSlider from "../components/FeaturedSlider";
 import { fetchCategoryPage, getCachedSeriesByCategory, getAllCachedSeries, fetchAllSeries, extractMainSeriesTitle, isEpisodeItem, isSimilarTitle } from "../services/dataService";
 import { applyPrioritySort, searchQesehLive } from "../services/api";
 import { useAuth } from "../context/AuthContext";
-import { Series, TopSeriesItem, subscribeTopSeriesOrder, subscribeSliderSeries, SliderSeriesItem } from "../services/firebase";
+import { Series, TopSeriesItem, subscribeTopSeriesOrder, subscribeSliderSeries, subscribeSliderImageOverrides, SliderSeriesItem, SliderImageOverrides } from "../services/firebase";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronLeft, ChevronRight, ArrowLeft, AlertCircle, AlertTriangle, X } from "lucide-react";
 import NoticeAndSupportBubble from "../components/NoticeAndSupportBubble";
@@ -54,6 +54,29 @@ export default function HomeScreen() {
   useEffect(() => {
     const unsub = subscribeTopSeriesOrder((items) => {
       setTopSeriesOrder(items);
+    });
+    return () => unsub();
+  }, []);
+
+  const [sliderImageOverrides, setSliderImageOverrides] = useState<SliderImageOverrides>(() => {
+    try {
+      const saved = localStorage.getItem('cached_slider_image_overrides');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (e) {}
+    return {};
+  });
+
+  useEffect(() => {
+    const unsub = subscribeSliderImageOverrides((overrides) => {
+      if (overrides && typeof overrides === 'object') {
+        setSliderImageOverrides(overrides);
+        try {
+          localStorage.setItem('cached_slider_image_overrides', JSON.stringify(overrides));
+        } catch (e) {}
+      }
     });
     return () => unsub();
   }, []);
@@ -368,15 +391,36 @@ export default function HomeScreen() {
       <Header />
 
       {/* Featured Hero Slider Banner at the very top of page (Full-width) */}
-      {!query && currentPage === 1 && (firebaseSliderSeries.length > 0 || top10VerticalSeries.length > 0) && (
-        <FeaturedSlider
-          items={firebaseSliderSeries.length > 0 ? firebaseSliderSeries : top10VerticalSeries.map(x => x.series)}
-          onPlay={(item) => {
-            markSeriesAsRead(item);
-            navigateToWatchOrAds(navigate, item);
-          }}
-        />
-      )}
+      {!query && currentPage === 1 && (firebaseSliderSeries.length > 0 || top10VerticalSeries.length > 0) && (() => {
+        const baseItems = firebaseSliderSeries.length > 0 ? firebaseSliderSeries : top10VerticalSeries.map(x => x.series);
+        const effectiveItems = baseItems.map((item) => {
+          const cleanTitle = extractMainSeriesTitle(item.title) || item.title;
+          const customImg = 
+            sliderImageOverrides[item.id] ||
+            sliderImageOverrides[item.title] ||
+            sliderImageOverrides[cleanTitle];
+
+          if (customImg && customImg.trim().length > 0) {
+            return {
+              ...item,
+              image: customImg
+            };
+          }
+          return item;
+        });
+
+        if (effectiveItems.length === 0) return null;
+
+        return (
+          <FeaturedSlider
+            items={effectiveItems}
+            onPlay={(item) => {
+              markSeriesAsRead(item);
+              navigateToWatchOrAds(navigate, item);
+            }}
+          />
+        );
+      })()}
 
       <CategoryBar selected={selectedCategory} onSelect={handleCategoryChange} />
 

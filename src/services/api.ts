@@ -223,7 +223,7 @@ export async function fetchPlayUrlFromAPI(episodeUrl: string, signal?: AbortSign
     const data = await res.json();
     if (data.status && data.player_url) {
       if (data.player_url.startsWith('/api/v1/')) {
-        return data.player_url;
+        return getApiUrl(data.player_url);
       }
       return decryptValue(data.player_url);
     }
@@ -237,8 +237,12 @@ export async function fetchPlayDetailsFromAPI(episodeUrl: string, signal?: Abort
     const data = await res.json();
     if (data.status) {
       let resolvedUrl = data.player_url || "";
-      if (resolvedUrl && !resolvedUrl.startsWith('/api/v1/')) {
-        resolvedUrl = decryptValue(resolvedUrl);
+      if (resolvedUrl) {
+        if (resolvedUrl.startsWith('/api/v1/')) {
+          resolvedUrl = getApiUrl(resolvedUrl);
+        } else {
+          resolvedUrl = decryptValue(resolvedUrl);
+        }
       }
       return {
         player_url: resolvedUrl,
