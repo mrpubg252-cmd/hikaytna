@@ -5,7 +5,7 @@ import BottomNav from '../components/BottomNav';
 import MatchChat from '../components/MatchChat';
 import CustomPlayer from '../components/CustomPlayer';
 import { motion, AnimatePresence } from 'motion/react';
-import { getApiUrl, getAppRouteUrl, getGatewayUrl, getRouteSearchParams, removeRouteSearchParam } from '../lib/apiConfig';
+import { getApiUrl } from '../lib/apiConfig';
 import { db, firestore } from '../services/firebase';
 import { ref, get, set, onValue } from 'firebase/database';
 import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -122,7 +122,7 @@ export default function MatchesScreen() {
       const formData = new FormData();
       formData.append('file', file);
       
-      const response = await fetch(getApiUrl('/api/v1/upload-media'), {
+      const response = await fetch('/api/v1/upload-media', {
         method: 'POST',
         body: formData
       });
@@ -479,12 +479,13 @@ export default function MatchesScreen() {
   }, []);
 
   const handleWatchStream = async (match: Match, bypassAdGate = false) => {
-    const params = getRouteSearchParams();
+    const params = new URLSearchParams(window.location.search);
     const isUnlocked = params.get('unlocked') === 'true' && params.get('matchId') === match.id;
 
     if (!isUnlocked && !bypassAdGate) {
-      const redirectPath = getAppRouteUrl(`/matches?matchId=${encodeURIComponent(match.id)}&unlocked=true`);
-      window.location.href = getGatewayUrl(undefined, redirectPath);
+      const currentOrigin = window.location.origin;
+      const redirectPath = `${currentOrigin}/matches?matchId=${encodeURIComponent(match.id)}&unlocked=true`;
+      window.location.href = `/gateway?redirect=${encodeURIComponent(redirectPath)}`;
       return;
     }
 
@@ -618,7 +619,7 @@ export default function MatchesScreen() {
   // Watch Screen Ad Redirect Callback Handler
   useEffect(() => {
     if (matches.length === 0) return;
-    const params = getRouteSearchParams();
+    const params = new URLSearchParams(window.location.search);
     const matchId = params.get('matchId');
     const unlocked = params.get('unlocked');
     
@@ -626,8 +627,8 @@ export default function MatchesScreen() {
       const targetMatch = matches.find(m => m.id === matchId);
       if (targetMatch) {
         handleWatchStream(targetMatch, true);
-        removeRouteSearchParam('matchId');
-        removeRouteSearchParam('unlocked');
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
       }
     }
   }, [matches]);

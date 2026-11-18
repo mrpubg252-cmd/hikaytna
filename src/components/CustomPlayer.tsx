@@ -14,7 +14,6 @@ import { progressService } from '../services/progressService';
 import HorizontalEpisodeList from './HorizontalEpisodeList';
 import { useDevice } from '../context/DeviceAndNavigationContext';
 import { formatEpisodeTitle } from './EpisodeGrid';
-import { getApiUrl } from '../lib/apiConfig';
 
 interface CustomPlayerProps {
   videoUrl: string;
@@ -891,7 +890,7 @@ const SafariNotification = () => {
         if (adLinkUrl) {
           console.log("Found VAST / Ad link:", adLinkUrl);
           try {
-            const resV = await fetch(getApiUrl(`/api/v1/resolve-vast?url=${encodeURIComponent(adLinkUrl)}`));
+            const resV = await fetch(`/api/v1/resolve-vast?url=${encodeURIComponent(adLinkUrl)}`);
             if (resV.ok) {
               const dataV = await resV.json();
               if (dataV.status) {
@@ -975,7 +974,7 @@ const SafariNotification = () => {
               camp.clickThrough.includes("demXFkz")
             )) {
               try {
-                const resV = await fetch(getApiUrl(`/api/v1/resolve-vast?url=${encodeURIComponent(camp.clickThrough)}`));
+                const resV = await fetch(`/api/v1/resolve-vast?url=${encodeURIComponent(camp.clickThrough)}`);
                 if (resV.ok) {
                   const dataV = await resV.json();
                   if (dataV.status) {
@@ -1229,7 +1228,7 @@ const SafariNotification = () => {
     const urlLower = resolvedVideoUrl.toLowerCase();
     
       // Explicitly handle our secure frame proxies
-      if (urlLower.includes('/api/v1/secured-player') || urlLower.includes('/api/v1/titanic-player') || urlLower.includes('/api/v1/3isk-player')) {
+      if (urlLower.startsWith('/api/v1/secured-player') || urlLower.startsWith('/api/v1/titanic-player') || urlLower.startsWith('/api/v1/3isk-player')) {
         setIsIframeFallback(true);
         setIsLoading(false);
         setIsPlaying(true);
@@ -1238,7 +1237,7 @@ const SafariNotification = () => {
     
     const isDirectVideo = 
       urlLower.startsWith('blob:') ||
-      urlLower.includes('/api/v1/stream-proxy') ||
+      urlLower.startsWith('/api/v1/stream-proxy') ||
       urlLower.includes('.mp4') || 
       urlLower.includes('.m3u8') || 
       urlLower.includes('.webm') || 

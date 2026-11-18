@@ -198,7 +198,7 @@ export default function AppIntro({ onComplete }: AppIntroProps) {
         {!videoFailed && (
           <video
             ref={videoRef}
-            src={`${(import.meta as any).env?.BASE_URL || '/'}intro.mp4`}
+            src="/intro.mp4"
             className="w-full h-full object-cover"
             playsInline
             autoPlay

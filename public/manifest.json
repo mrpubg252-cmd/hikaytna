@@ -1,16 +1,16 @@
 {
   "name": "حكايتنا",
   "short_name": "حكايتنا",
-  "start_url": "./?m=1",
+  "start_url": "/?m=1",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
   "orientation": "any",
-  "scope": "./",
+  "scope": "/",
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "./logo.png",
+      "src": "/logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

@@ -6,7 +6,6 @@ import BottomNav from '../components/BottomNav';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import CustomPlayer from '../components/CustomPlayer';
-import { getApiUrl } from '../lib/apiConfig';
 
 interface Channel {
   id: string;
@@ -45,7 +44,7 @@ export default function LiveTvScreen() {
     const loadChannels = async () => {
       try {
         setLoading(true);
-        const res = await fetch(getApiUrl("/api/v1/iptv/channels"));
+        const res = await fetch("/api/v1/iptv/channels");
         const json = await res.json();
         if (active) {
           if (json.status && Array.isArray(json.data)) {

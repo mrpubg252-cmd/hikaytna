@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { User, Camera, Check, ChevronLeft, Sparkles, Image, Settings, ZoomIn, ZoomOut, Move } from 'lucide-react';
 import ProfileTemplateOverlay from './ProfileTemplateOverlay';
 import { syncProfileToFirebase } from '../utils/profileSync';
-import { getApiUrl } from '../lib/apiConfig';
 
 export default function ProfileEnforcer() {
   const [show, setShow] = useState(false);
@@ -61,7 +60,7 @@ export default function ProfileEnforcer() {
       const formData = new FormData();
       formData.append('file', adjustingFile);
       
-      const response = await fetch(getApiUrl('/api/v1/upload-media'), {
+      const response = await fetch('/api/v1/upload-media', {
         method: 'POST',
         body: formData
       });

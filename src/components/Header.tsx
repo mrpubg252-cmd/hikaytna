@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import SettingsMenu from './SettingsMenu';
 import AiChatDrawer from './AiChatDrawer';
 import ProfileTemplateOverlay from './ProfileTemplateOverlay';
-import { getApiUrl } from '../lib/apiConfig';
 
 const getProxiedUrl = (url?: string) => {
   if (!url) return '';
@@ -36,9 +35,9 @@ const getProxiedUrl = (url?: string) => {
 
   if (needsProxy) {
     if (isImage) {
-      return getApiUrl(`/api/v1/image-proxy?url=${encodeURIComponent(url)}`);
+      return `/api/v1/image-proxy?url=${encodeURIComponent(url)}`;
     } else {
-      return getApiUrl(`/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`);
+      return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
     }
   }
 

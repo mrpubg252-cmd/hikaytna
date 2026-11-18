@@ -15,7 +15,7 @@ import { progressService } from '../services/progressService';
 import { encryptValue } from '../lib/security';
 import SeriesChat from '../components/SeriesChat';
 import { offlineService } from '../services/offlineService';
-import { getApiUrl, getAppRouteUrl, getGatewayUrl, isGitHubPages } from '../lib/apiConfig';
+import { getApiUrl } from '../lib/apiConfig';
 import { getTMDBPosterSync } from '../lib/tmdbHealing';
 
 export default function WatchScreen() {
@@ -188,9 +188,10 @@ export default function WatchScreen() {
       sessionStorage.setItem('unlocked_' + series.id, 'true');
     } else {
       setIsAdGatePassed(false);
-      // Direct full standalone window replace to the gateway endpoint (prevents history pollution)
-      const targetRedirect = getAppRouteUrl(`${location.pathname}?unlocked=true`);
-      window.location.replace(getGatewayUrl(series.id, targetRedirect));
+      // Direct full standalone window replace to the Express-served /ads endpoint (prevents history pollution)
+      const currentPathName = window.location.pathname;
+      const targetRedirect = `${window.location.origin}${currentPathName}?unlocked=true`;
+      window.location.replace(`/gateway?id=${encodeURIComponent(series.id)}&redirect=${encodeURIComponent(targetRedirect)}`);
     }
   }, [series, location.search]);
 
@@ -339,7 +340,7 @@ export default function WatchScreen() {
       };
 
       // 1. Persist directly inside Node back-end memory/JSON (100% reliable)
-      const res = await fetch(getApiUrl(`/api/v1/pins/${series.id}`), {
+      const res = await fetch(`/api/v1/pins/${series.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(pinData || { pinned: false })
@@ -979,7 +980,7 @@ export default function WatchScreen() {
   
   async function getSecuredUrl(rawUrl: string, signal?: AbortSignal) {
     if (!rawUrl) return '';
-    if (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be') || rawUrl.includes('/api/v1/')) {
+    if (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be') || rawUrl.startsWith('/api/v1/')) {
       return rawUrl;
     }
     
@@ -1023,7 +1024,7 @@ export default function WatchScreen() {
                      resultLower.includes('play.php') || 
                      resultLower.includes('iframe');
 
-    if ((isVideoFile || is3iskSource) && !isIframe && !result.includes('/api/v1/')) {
+    if ((isVideoFile || is3iskSource) && !isIframe && !result.startsWith('/api/v1/')) {
       const encrypted = encodeURIComponent(encryptValue(result));
       result = getApiUrl(`/api/v1/stream-proxy/${encrypted}`);
     }
@@ -1064,8 +1065,7 @@ export default function WatchScreen() {
           localStorage.setItem(`mo_play_last_ep_${series.id}`, index.toString());
           try {
             const cleanUrl = `/watch/${encodeURIComponent(series.title || series.id)}/${index}`;
-            const targetHistoryUrl = isGitHubPages() ? `${window.location.pathname}#${cleanUrl}` : cleanUrl;
-            window.history.replaceState({ ...window.history.state }, '', targetHistoryUrl);
+            window.history.replaceState({ ...window.history.state }, '', cleanUrl);
           } catch (e) {
             console.warn("Unable to push clean state offline", e);
           }
@@ -1113,8 +1113,7 @@ export default function WatchScreen() {
     // Gracefully update browser address bar with the clean URL without reloading!
     try {
       const cleanUrl = `/watch/${encodeURIComponent(series.title || series.id)}/${index}`;
-      const targetHistoryUrl = isGitHubPages() ? `${window.location.pathname}#${cleanUrl}` : cleanUrl;
-      window.history.replaceState({ ...window.history.state }, '', targetHistoryUrl);
+      window.history.replaceState({ ...window.history.state }, '', cleanUrl);
     } catch (e) {
       console.warn("Unable to push clean state", e);
     }
@@ -1125,7 +1124,7 @@ export default function WatchScreen() {
     let finalUrl = '';
     let fetchedServers: { name: string; url: string }[] = [];
 
-    if (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be') || rawUrl.includes('/api/v1/')) {
+    if (rawUrl.includes('youtube.com') || rawUrl.includes('youtu.be') || rawUrl.startsWith('/api/v1/')) {
       finalUrl = rawUrl;
       fetchedServers = [{ name: 'سيرفر رئيسي', url: rawUrl }];
     } else {

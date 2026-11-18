@@ -4,9 +4,7 @@
  */
 
 import React from 'react';
-import { BrowserRouter, HashRouter, Routes, Route } from 'react-router-dom';
-import { ref, onValue } from 'firebase/database';
-import { db } from './services/firebase';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { DeviceAndNavigationProvider, useDevice } from './context/DeviceAndNavigationContext';
 import HomeScreen from './screens/HomeScreen';
@@ -18,8 +16,7 @@ import DirectMessagesScreen from './screens/DirectMessagesScreen';
 import AdminScreen from './screens/AdminScreen';
 import MatchesScreen from './screens/MatchesScreen';
 import HakeemScreen from './screens/HakeemScreen';
-import GatewayScreen from './screens/GatewayScreen';
-import { getApiUrl, getRouteSearchParams, isGitHubPages, removeRouteSearchParam, setRuntimeApiBase } from './lib/apiConfig';
+import { getApiUrl } from './lib/apiConfig';
 import AppIntro from './components/AppIntro';
 import InstallWizard from './components/InstallWizard';
 import CookieConsent from './components/CookieConsent';
@@ -96,22 +93,10 @@ function AppLayout() {
       localStorage.setItem('my_referral_id', refId);
     }
 
-    // Optional dynamic backend URL sync from Firebase RTDB for static hosts
-    let unsubApiBase: (() => void) | undefined;
-    try {
-      const apiBaseRef = ref(db, 'app_settings/api_base_url');
-      unsubApiBase = onValue(apiBaseRef, (snap) => {
-        const val = snap.val();
-        if (typeof val === 'string' && val.startsWith('http')) {
-          setRuntimeApiBase(val);
-        }
-      });
-    } catch {}
-
     // 1. Sync user's premium gold ad-free state globally on mount
     const storedRefId = localStorage.getItem('my_referral_id');
     if (storedRefId) {
-      fetch(getApiUrl(`/api/v1/referral/points?id=${storedRefId}`))
+      fetch(`/api/v1/referral/points?id=${storedRefId}`)
         .then(res => res.json())
         .then(data => {
           if (data.status) {
@@ -126,8 +111,8 @@ function AppLayout() {
         .catch(err => console.warn('Could not sync points globally:', err));
     }
 
-    // 2. Check for referral code in url parameter directly from window.location (supports HashRouter)
-    const params = getRouteSearchParams();
+    // 2. Check for referral code in url parameter directly from window.location
+    const params = new URLSearchParams(window.location.search);
     const refCode = params.get('ref');
     
     // Clear the cheat alert on normal access to avoid showing it to regular visitors
@@ -150,14 +135,18 @@ function AppLayout() {
         window.dispatchEvent(new Event('cheated-alert-updated'));
         
         // Clean URL parameter
-        removeRouteSearchParam('ref');
+        const url = new URL(window.location.href);
+        url.searchParams.delete('ref');
+        window.history.replaceState({}, '', url.pathname + url.search);
       } else {
         // Check if this browser already completed a referral to exclude self-referrals or re-entries
         const alreadyReferred = localStorage.getItem('referred_registered');
         if (alreadyReferred) {
           console.log("User has already completed a referral.");
           // Clean URL parameter
-          removeRouteSearchParam('ref');
+          const url = new URL(window.location.href);
+          url.searchParams.delete('ref');
+          window.history.replaceState({}, '', url.pathname + url.search);
         } else {
           // Wait for real-person telemetry signatures before counting referrals
           const handleHumanActivity = () => {
@@ -177,7 +166,9 @@ function AppLayout() {
             .then(res => res.json())
             .then(data => {
               // Clean URL parameter
-              removeRouteSearchParam('ref');
+              const url = new URL(window.location.href);
+              url.searchParams.delete('ref');
+              window.history.replaceState({}, '', url.pathname + url.search);
 
               if (data.status) {
                 localStorage.setItem('referred_registered', 'true');
@@ -198,7 +189,9 @@ function AppLayout() {
             .catch(err => {
               console.warn("Failed sending verified telemetry request", err);
               // Clean URL parameter on error
-              removeRouteSearchParam('ref');
+              const url = new URL(window.location.href);
+              url.searchParams.delete('ref');
+              window.history.replaceState({}, '', url.pathname + url.search);
             });
           };
 
@@ -237,7 +230,6 @@ function AppLayout() {
     document.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      if (unsubApiBase) unsubApiBase();
       document.removeEventListener('contextmenu', handleContextMenu);
       document.removeEventListener('keydown', handleKeyDown);
     };
@@ -269,7 +261,6 @@ function AppLayout() {
         <Route path="/matches" element={<MatchesScreen />} />
         <Route path="/hakeem" element={<HakeemScreen />} />
         <Route path="/admin" element={<AdminScreen />} />
-        <Route path="/gateway" element={<GatewayScreen />} />
       </Routes>
 
       {isTV && showTvBadge && (
@@ -312,14 +303,12 @@ function AppLayout() {
 }
 
 export default function App() {
-  const Router = isGitHubPages() ? HashRouter : BrowserRouter;
-
   return (
     <AuthProvider>
       <DeviceAndNavigationProvider>
-        <Router>
+        <BrowserRouter>
           <AppLayout />
-        </Router>
+        </BrowserRouter>
       </DeviceAndNavigationProvider>
     </AuthProvider>
   );

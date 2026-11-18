@@ -5,7 +5,6 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../lib/utils";
-import { getApiUrl } from "../lib/apiConfig";
 
 interface ChatVideoPlayerProps {
   src: string;
@@ -43,7 +42,7 @@ export default function ChatVideoPlayer({
     if (!src) return '';
     if (!src.startsWith('http://') && !src.startsWith('https://')) return src;
     if (useProxy) {
-      return getApiUrl(`/api/v1/stream-range-proxy?url=${encodeURIComponent(src)}`);
+      return `/api/v1/stream-range-proxy?url=${encodeURIComponent(src)}`;
     }
     return src;
   }, [src, useProxy]);

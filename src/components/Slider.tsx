@@ -7,7 +7,6 @@ import { ref, set } from 'firebase/database';
 import { sliderSelections, syncSliderSelections, getProxiedImageUrl } from '../services/api';
 import { updateCachedSeriesTrailer } from '../services/dataService';
 import { navigateToWatchOrAds } from '../utils/watchNavigation';
-import { getApiUrl } from '../lib/apiConfig';
 
 interface SliderBackgroundImageProps {
   series: Series;
@@ -257,7 +256,7 @@ export default function Slider({ series, isAdmin = false, allSeriesForManager = 
 
     try {
       // 1. Save to custom node backend server (100% reliable)
-      const res = await fetch(getApiUrl(`/api/v1/slider-selections/${seriesItem.id}`), {
+      const res = await fetch(`/api/v1/slider-selections/${seriesItem.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(selectData || { selected: false })

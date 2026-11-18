@@ -5,7 +5,7 @@ import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getDatabase, ref, onValue, push, set } from 'firebase/database';
 import { decryptValue } from '../lib/security';
 import { db as fallbackDb } from '../services/firebase';
-import { getApiUrl, getRouteSearchParams } from '../lib/apiConfig';
+import { getApiUrl } from '../lib/apiConfig';
 import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
 
 export interface Notice {
@@ -214,7 +214,7 @@ export default function NoticeAndSupportBubble() {
     const myId = localStorage.getItem('my_referral_id');
     if (!myId) return;
     
-    fetch(getApiUrl(`/api/v1/referral/alerts?id=${myId}`))
+    fetch(`/api/v1/referral/alerts?id=${myId}`)
       .then(res => res.json())
       .then(data => {
         if (data.status && data.alerts) {
@@ -244,11 +244,11 @@ export default function NoticeAndSupportBubble() {
 
   // Check for the referral enter link logic on initial mount
   useEffect(() => {
-    const params = getRouteSearchParams();
+    const params = new URLSearchParams(window.location.search);
     const refCode = params.get('ref');
     if (refCode) {
       // Lookup referrer username
-      fetch(getApiUrl(`/api/v1/referral/lookup?id=${refCode}`))
+      fetch(`/api/v1/referral/lookup?id=${refCode}`)
         .then(res => res.json())
         .then(data => {
           if (data.status && data.username) {

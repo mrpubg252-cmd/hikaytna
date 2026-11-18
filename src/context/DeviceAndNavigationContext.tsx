@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, CornerUpLeft } from 'lucide-react';
-import { navigateAppUrl } from '../lib/apiConfig';
 
 type DisplayMode = 'auto' | 'mobile' | 'ipad' | 'sony' | 'tv';
 type DeviceMode = 'tv' | 'mobile' | 'desktop';
@@ -312,7 +311,7 @@ export const DeviceAndNavigationProvider: React.FC<{ children: React.ReactNode }
         if (window.history.length > 1) {
           window.history.back();
         } else {
-          navigateAppUrl('/');
+          window.location.href = '/';
         }
       }
     };

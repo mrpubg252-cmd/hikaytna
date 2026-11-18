@@ -1,5 +1,4 @@
 import { Series } from '../services/firebase';
-import { getAppRouteUrl, getGatewayUrl } from '../lib/apiConfig';
 
 /**
  * Checks if the user is currently premium (ad-free) through any of the active channels
@@ -63,9 +62,9 @@ export function navigateToWatchOrAds(
       console.warn("Storage failed", e);
     }
 
-    const targetRedirect = getAppRouteUrl(`${watchPath}?unlocked=true`);
+    const targetRedirect = `${window.location.origin}${watchPath}?unlocked=true`;
     
     // Direct link to the ads engine.
-    window.location.href = getGatewayUrl(item.id, targetRedirect);
+    window.location.href = `/gateway?id=${encodeURIComponent(item.id)}&redirect=${encodeURIComponent(targetRedirect)}`;
   }
 }

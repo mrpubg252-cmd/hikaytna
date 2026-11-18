@@ -900,12 +900,11 @@ async function startServer() {
 
   // Seeding and automatic configuration writing removed to ensure that Hakeem AI credentials only appear in Firebase Firestore and RTDB after the user clicks 'Activate' in the frontend.
 
-  // Prevent generic CORS "Failed to fetch" blocks in complex iframe previews and GitHub Pages
+  // Prevent generic CORS "Failed to fetch" blocks in complex iframe previews
   app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Content-Length, X-Requested-With, Range, Accept");
-    res.header("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Content-Length, X-Requested-With");
     if (req.method === "OPTIONS") {
       return res.sendStatus(200);
     }

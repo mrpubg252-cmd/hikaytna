@@ -11,7 +11,7 @@ import { decryptValue } from '../lib/security';
 import { useAuth } from '../context/AuthContext';
 import AuthContainer from './AuthContainer';
 import { fetchAllSeries, getAllCachedSeries } from '../services/dataService';
-import { getApiUrl, navigateAppUrl } from '../lib/apiConfig';
+import { getApiUrl } from '../lib/apiConfig';
 import chatFirebaseConfig from '../services/chatFirebaseConfig.json';
 import { firestore } from '../services/firebase';
 import { checkBanStatus, reportComment, getOrCreateUserId } from '../services/banService';
@@ -49,9 +49,9 @@ const getProxiedUrl = (url?: string) => {
 
   if (needsProxy) {
     if (isImage) {
-      return getApiUrl(`/api/v1/image-proxy?url=${encodeURIComponent(url)}`);
+      return `/api/v1/image-proxy?url=${encodeURIComponent(url)}`;
     } else {
-      return getApiUrl(`/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`);
+      return `/api/v1/stream-range-proxy?url=${encodeURIComponent(url)}`;
     }
   }
 
@@ -2274,7 +2274,7 @@ export default function SeriesChat({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (onClose) onClose();
-                                navigateAppUrl(`/watch/${msg.sharedSeries.id}`);
+                                window.location.href = `/watch/${msg.sharedSeries.id}`;
                               }}
                               className="mt-2 flex items-center justify-center gap-1.5 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-black font-black text-[10px] py-1.5 px-3 rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
                             >
@@ -2853,7 +2853,7 @@ export default function SeriesChat({
                 {actionMenuMessage.userId !== localStorage.getItem('guest_chat_pid') && (
                   <button
                     onClick={() => {
-                      navigateAppUrl(`/dms?chat_with_pid=${actionMenuMessage.userId}`);
+                      window.location.href = `/dms?chat_with_pid=${actionMenuMessage.userId}`;
                       setActionMenuMessage(null);
                     }}
                     className="w-full flex items-center justify-between p-3 rounded-2xl bg-[#e50914]/10 hover:bg-[#e50914]/20 border border-[#e50914]/20 hover:border-[#e50914]/40 text-primary font-bold text-xs transition active:scale-95 cursor-pointer"
@@ -3182,7 +3182,7 @@ export default function SeriesChat({
                     </p>
                     <button
                       onClick={() => {
-                        navigateAppUrl('/hakeem');
+                        window.location.href = '/hakeem';
                       }}
                       className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-purple-800 text-white font-black text-[11px] rounded-xl shadow-lg hover:shadow-purple-500/20 active:scale-95 transition-all"
                     >
@@ -3227,7 +3227,7 @@ export default function SeriesChat({
 
                     <button
                       onClick={() => {
-                        navigateAppUrl(`/dms?chat_with_pid=${clickedProfile.userId}`);
+                        window.location.href = `/dms?chat_with_pid=${clickedProfile.userId}`;
                         setClickedProfile(null);
                       }}
                       className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-white/5 text-zinc-200 text-xs font-black rounded-xl transition-all active:scale-95 flex items-center justify-center gap-1.5"
